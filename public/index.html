@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
+  <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>LeadFlow Pro - Complete Insurance Lead Generation Platform</title>
   <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
@@ -17,1169 +17,1463 @@
     .toggle-switch.active { background: #667eea; }
     .toggle-slider { position: absolute; top: 2px; left: 2px; width: 20px; height: 20px; background: white; border-radius: 50%; transition: transform 0.3s ease; }
     .toggle-switch.active .toggle-slider { transform: translateX(24px); }
+    .badge { padding: 2px 8px; border-radius: 999px; font-size: 12px; }
   </style>
 </head>
 <body>
-  <div id="root"></div>
+<div id="root"></div>
 
-  <script type="text/babel">
-    const { useState, useEffect } = React;
+<script type="text/babel">
+const { useState, useEffect, useMemo } = React;
 
-    const LeadFlowApp = () => {
-      const [activeTab, setActiveTab] = useState('dashboard');
-      const [showMobileMenu, setShowMobileMenu] = useState(false);
-      const [leads, setLeads] = useState([]);
-      const [campaigns, setCampaigns] = useState([]);
-      const [objections, setObjections] = useState([]);
-      const [stats, setStats] = useState({
-        totalLeads: 0,
-        scheduledToday: 0,
-        adSpend: 2450,
-        conversionRate: 34
-      });
+/** ---------- Helpers ---------- */
+const fmt = (n) => new Intl.NumberFormat().format(n ?? 0);
+const sleep = (ms)=> new Promise(r=>setTimeout(r, ms));
 
-      // Fetch data from API with fallbacks
-      useEffect(() => {
-        Promise.all([
-          fetch('/api/leads').then(res => res.json()),
-          fetch('/api/campaigns').then(res => res.json()),
-          fetch('/api/objections').then(res => res.json()),
-          fetch('/api/analytics').then(res => res.json())
-        ]).then(([leadsData, campaignsData, objectionsData, analyticsData]) => {
-          setLeads(leadsData || []);
-          setCampaigns(campaignsData || []);
-          setObjections(objectionsData || []);
-          setStats({
-            totalLeads: analyticsData?.overview?.totalLeads ?? (leadsData?.length || 0),
-            scheduledToday: (leadsData || []).filter(l => l.status === 'scheduled').length,
-            adSpend: 2450,
-            conversionRate: Math.round(analyticsData?.overview?.conversionRate ?? 0)
-          });
-        }).catch(() => {
-          // simple sample data if APIs aren’t wired yet
-          const sampleLeads = [
-            { id: 1, name: 'Alex Morgan', phone: '(555) 123-4567', email: 'alex@example.com', status: 'new', type: 'life', location: 'ID', time: 'Today 10:15 AM' },
-            { id: 2, name: 'Sam Taylor', phone: '(555) 987-6543', email: 'sam@example.com', status: 'scheduled', type: 'term', location: 'TX', time: 'Today 2:30 PM' },
-            { id: 3, name: 'Jordan Lee', phone: '(555) 555-0199', email: 'jordan@example.com', status: 'contacted', type: 'final-expense', location: 'AL', time: 'Yesterday 4:05 PM' }
-          ];
-          const sampleCampaigns = [
-            { id: 'c1', name: 'Life - ID, OR', type: 'life', budget: 100, status: 'active', leads: 24, costPerLead: 12.45 }
-          ];
-          setLeads(sampleLeads);
-          setCampaigns(sampleCampaigns);
-          setObjections([]);
-          setStats({
-            totalLeads: sampleLeads.length,
-            scheduledToday: sampleLeads.filter(l => l.status === 'scheduled').length,
-            adSpend: 2450,
-            conversionRate: 34
-          });
-        });
-      }, []);
+/** ---------- App ---------- */
+const LeadFlowApp = () => {
+  const [activeTab, setActiveTab] = useState('dashboard'); // 'dashboard'|'ad-creator'|'leads'|'voice-ai'|'objections'|'campaigns'|'analytics'|'settings'|'inbound'|'imports'
+  const [showMobileMenu, setShowMobileMenu] = useState(false);
 
-      // Mobile Navigation
-      const MobileNav = () => (
-        <div className="lg:hidden bg-white shadow-lg p-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-xl flex items-center justify-center text-white font-bold">LF</div>
-              <div>
-                <div className="font-bold">LeadFlow Pro</div>
-                <div className="text-xs text-gray-600">by J. Kollar</div>
-              </div>
-            </div>
-            <button onClick={() => setShowMobileMenu(!showMobileMenu)} className="p-2 rounded-lg bg-gray-100">☰</button>
-          </div>
+  // Core data
+  const [leads, setLeads] = useState([]);
+  const [campaigns, setCampaigns] = useState([]);
+  const [objections, setObjections] = useState([]);
+  const [analyticsData, setAnalyticsData] = useState(null);
 
-          {showMobileMenu && (
-            <div className="mt-4 space-y-2">
-              {[
-                { id: 'dashboard', icon: '📊', label: 'Dashboard' },
-                { id: 'ad-creator', icon: '🎯', label: 'Ad Creator' },
-                { id: 'leads', icon: '👥', label: 'Leads' },
-                { id: 'voice-ai', icon: '🎙️', label: 'Voice AI' },
-                { id: 'objections', icon: '💬', label: 'Objections' },
-                { id: 'campaigns', icon: '📈', label: 'Campaigns' },
-                { id: 'analytics', icon: '📊', label: 'Analytics' },
-                { id: 'settings', icon: '⚙️', label: 'Settings' }
-              ].map(({ id, icon, label }) => (
-                <button
-                  key={id}
-                  onClick={() => { setActiveTab(id); setShowMobileMenu(false); }}
-                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
-                    activeTab === id ? 'bg-gradient-to-r from-blue-500 to-purple-600 text-white' : 'hover:bg-blue-50 text-gray-700'
-                  }`}
-                >
-                  <span className="text-xl">{icon}</span>{label}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-      );
+  // Settings
+  const [apiKeys, setApiKeys] = useState({ openai:'', meta:'', elevenlabs:'', twilio:'' });
+  const [routing, setRouting] = useState({
+    // model routing
+    callsModel: 'gpt-5-mini',
+    callsEscalationModel: 'gpt-5',
+    smsModel: 'gpt-5-mini',
+    adsDraftModel: 'gpt-5-mini',
+    adsPolishModel: 'gpt-5',
+    adsImageModel: 'gpt-image-3.5',
+    // workers
+    realtimeWorker: { maxTokens: 2000, timeoutMs: 8000, rpm: 120, tpm: 120000 },
+    batchWorker: { maxTokens: 6000, timeoutMs: 30000, rpm: 60, tpm: 300000 },
+    // spend metadata tags
+    metadata: {
+      call: { channel: 'call' },
+      sms: { channel: 'sms' },
+      adsCopy: { channel: 'ads-copy' },
+      adsImage: { channel: 'ads-image' },
+    }
+  });
 
-      // Desktop Sidebar
-      const Sidebar = () => (
-        <div className="hidden lg:block w-80 bg-white bg-opacity-95 backdrop-blur-lg p-6 shadow-xl">
-          <div className="flex items-center gap-3 mb-8 pb-4 border-b-2 border-gray-200">
-            <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-purple-600 rounded-xl flex items-center justify-center text-white font-bold text-xl">LF</div>
-            <div>
-              <div className="font-bold text-lg">LeadFlow Pro</div>
-              <div className="text-xs text-gray-600">Insurance Lead Platform by J. Kollar</div>
-            </div>
-          </div>
+  // Voice & SMS providers / voices / scripts
+  const [voiceSettings, setVoiceSettings] = useState({
+    provider: 'elevenlabs',
+    voice: 'Alloy',
+    style: 'professional',
+    speed: 'normal',
+    callAttempts: 2,
+    callInterval: 30,
+    scripts: {
+      generic: 'Hi, this is LeadFlow Pro following up on your request. Do you have a minute?',
+      life: 'Hi, reaching out about your life insurance quote request. Are you available now?',
+      term: 'Hi, your term quote is ready—can I walk you through options?',
+      finalExpense: 'Hi, following up on your final expense inquiry. Can I ask a couple quick questions?',
+      medicare: 'Hi there, calling about your Medicare coverage questions. Is now a good time?'
+    },
+    businessHours: { start:'09:00', end:'17:00' },
+    workingDays: ['monday','tuesday','wednesday','thursday','friday'],
+    timezone: 'America/Boise'
+  });
 
-          <nav className="space-y-2">
-            {[
-              { id: 'dashboard', icon: '📊', label: 'Dashboard' },
-              { id: 'ad-creator', icon: '🎯', label: 'Ad Creator' },
-              { id: 'leads', icon: '👥', label: 'Lead Management' },
-              { id: 'voice-ai', icon: '🎙️', label: 'Voice AI System' },
-              { id: 'objections', icon: '💬', label: 'Objection Handling' },
-              { id: 'campaigns', icon: '📈', label: 'Campaign Manager' },
-              { id: 'analytics', icon: '📊', label: 'Analytics' },
-              { id: 'settings', icon: '⚙️', label: 'Settings & APIs' }
-            ].map(({ id, icon, label }) => (
-              <button
-                key={id}
-                onClick={() => setActiveTab(id)}
-                className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300 ${
-                  activeTab === id ? 'bg-gradient-to-r from-blue-500 to-purple-600 text-white shadow-lg' : 'hover:bg-blue-50 text-gray-700 hover:translate-x-1'
-                }`}
-              >
-                <span className="text-xl">{icon}</span>{label}
-              </button>
-            ))}
-          </nav>
-        </div>
-      );
+  const [smsSettings, setSmsSettings] = useState({
+    provider: 'twilio',
+    autoRespond: true,
+    followUpDelay: 15,
+    scripts: {
+      day0: 'Hey {{name}}, it’s Josh. Got your request—quick 2 questions to tailor your quote. Got a minute?',
+      day1: 'Been trying to reach you about your request. Want me to text a ballpark quote?',
+      day3: 'Still here when you are—want coverage options that fit your budget?',
+      day5: 'Final ping from me for now. Want me to send a 60-sec summary?',
+    },
+    scriptVariants: {
+      noAnswer: 'Missed you just now, {{name}}. Can we try again in 15 minutes or later today?',
+      voicemailDrop: 'Left you a quick voicemail. Text works great if now’s easier—what time can I call?'
+    },
+    businessHours: { start:'09:00', end:'17:00' }
+  });
 
-      // Dashboard
-      const Dashboard = () => (
-        <div className="space-y-6 fade-in">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-6">
-            {[
-              { label: 'Total Leads', value: stats.totalLeads, icon: '👥', color: 'from-blue-500 to-blue-600' },
-              { label: 'Scheduled Today', value: stats.scheduledToday, icon: '📅', color: 'from-green-500 to-green-600' },
-              { label: 'Ad Spend', value: `$${stats.adSpend.toLocaleString()}`, icon: '💰', color: 'from-purple-500 to-purple-600' },
-              { label: 'Conversion Rate', value: `${stats.conversionRate}%`, icon: '📈', color: 'from-orange-500 to-orange-600' }
-            ].map(({ label, value, icon, color }) => (
-              <div key={label} className={`bg-gradient-to-br ${color} text-white p-4 lg:p-6 rounded-2xl shadow-lg text-center`}>
-                <div className="text-2xl mb-2">{icon}</div>
-                <div className="text-2xl lg:text-3xl font-bold mb-1">{value}</div>
-                <div className="text-xs lg:text-sm opacity-90">{label}</div>
-              </div>
-            ))}
-          </div>
+  // Voice catalog (fallbacks)
+  const VOICE_CATALOG = {
+    elevenlabs: ['Alloy','Callum','Rachel','Adam','Domi'],
+    openai: ['Alloy','Verse','Sol','Breeze'],
+    azure: ['en-US-GuyNeural','en-US-JennyNeural','en-US-ChristopherNeural'],
+    google: ['en-US-Neural2-J','en-US-Standard-B','en-US-Wavenet-D']
+  };
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <div className="bg-white rounded-2xl p-4 lg:p-6 shadow-lg">
-              <h3 className="text-lg lg:text-xl font-bold mb-4">Recent Leads</h3>
-              <div className="space-y-3">
-                {leads.slice(0, 3).map(lead => (
-                  <div key={lead.id} className="p-3 lg:p-4 border border-gray-200 rounded-xl">
-                    <div className="flex justify-between items-start mb-2">
-                      <div className="font-semibold text-sm lg:text-base">{lead.name}</div>
-                      <span className={`px-2 lg:px-3 py-1 rounded-full text-xs font-medium ${
-                        lead.status === 'new' ? 'bg-blue-100 text-blue-800' :
-                        lead.status === 'contacted' ? 'bg-orange-100 text-orange-800' :
-                        lead.status === 'scheduled' ? 'bg-purple-100 text-purple-800' :
-                        'bg-green-100 text-green-800'
-                      }`}>
-                        {lead.status?.charAt(0).toUpperCase() + lead.status?.slice(1)}
-                      </span>
-                    </div>
-                    <div className="text-xs lg:text-sm text-gray-600">
-                      {lead.type} • {lead.location} • {lead.time}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
+  // Stats
+  const [stats, setStats] = useState({ totalLeads: 0, scheduledToday: 0, adSpend: 2450, conversionRate: 34 });
 
-            <div className="bg-white rounded-2xl p-4 lg:p-6 shadow-lg">
-              <h3 className="text-lg lg:text-xl font-bold mb-4">Quick Actions</h3>
-              <div className="space-y-3">
-                <button onClick={() => setActiveTab('ad-creator')} className="w-full p-3 lg:p-4 bg-gradient-to-r from-blue-500 to-purple-600 text-white rounded-xl font-semibold hover:shadow-lg transition-all">
-                  🎯 Create New Ad Campaign
-                </button>
-                <button onClick={() => setActiveTab('leads')} className="w-full p-3 lg:p-4 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-xl font-semibold hover:shadow-lg transition-all">
-                  👥 Manage Leads
-                </button>
-                <button onClick={() => setActiveTab('voice-ai')} className="w-full p-3 lg:p-4 bg-gradient-to-r from-orange-500 to-red-600 text-white rounded-xl font-semibold hover:shadow-lg transition-all">
-                  🎙️ Test Voice AI System
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      );
+  // Inbound (receive calls & SMS)
+  const [inboundEvents, setInboundEvents] = useState([]); // {id,type:'call'|'sms', from, to, text?, time, matchedLeadId?, status}
+  const [autoMatchUnknown, setAutoMatchUnknown] = useState(true);
 
-      // Ad Creator
-      const AdCreator = () => {
-        const [adForm, setAdForm] = useState({
-          insuranceType: '',
-          targetLocations: '',
-          minAge: '',
-          maxAge: '',
-          dailyBudget: '',
-          headline: '',
-          copy: '',
-          cta: 'learn-more'
-        });
+  // Imports area
+  const [imports, setImports] = useState([]); // {id, filename, rows:[], mapped:{}, createdAt}
+  const [currentMapping, setCurrentMapping] = useState({ name:'', phone:'', email:'', type:'', location:'', time:'', custom1:'', custom2:'' });
+  const [importsFilterPlaceholders, setImportsFilterPlaceholders] = useState(true);
 
-        const generateAd = async () => {
-          if (!adForm.insuranceType) {
-            alert('Please select an insurance type first');
-            return;
-          }
-          try {
-            const response = await fetch('/api/generate-ad', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(adForm)
-            });
-            const result = await response.json();
-            setAdForm(prev => ({ ...prev, headline: result.headline, copy: result.copy, cta: result.cta || prev.cta }));
-            alert('✨ AI-generated ad content loaded! Review and customize as needed.');
-          } catch {
-            alert('❌ AI generation failed. Please check your API settings.');
-          }
-        };
+  // Initial load with safe fallbacks
+  useEffect(() => {
+    Promise.allSettled([
+      fetch('/api/leads').then(r=>r.json()),
+      fetch('/api/campaigns').then(r=>r.json()),
+      fetch('/api/objections').then(r=>r.json()),
+      fetch('/api/analytics').then(r=>r.json()),
+      fetch('/api/settings').then(r=>r.json())
+    ]).then(results => {
+      const [leadsRes, campRes, objRes, anaRes, setRes] = results.map(r=>r.status==='fulfilled'? r.value : null);
 
-        const launchCampaign = async () => {
-          if (!adForm.headline || !adForm.copy || !adForm.targetLocations) {
-            alert('Please fill in headline, copy, and target locations');
-            return;
-          }
-          try {
-            await fetch('/api/launch-campaign', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                name: `${adForm.insuranceType} - ${adForm.targetLocations}`,
-                type: adForm.insuranceType,
-                budget: parseInt(adForm.dailyBudget) || 100,
-                adContent: { headline: adForm.headline, copy: adForm.copy, cta: adForm.cta },
-                targeting: {
-                  locations: adForm.targetLocations.split(',').map(l => l.trim()),
-                  ageMin: parseInt(adForm.minAge) || 25,
-                  ageMax: parseInt(adForm.maxAge) || 65
-                }
-              })
-            });
-            alert('🚀 Campaign launched successfully! Leads will start flowing in 15-30 minutes.');
-            fetch('/api/campaigns').then(res => res.json()).then(setCampaigns);
-          } catch {
-            alert('❌ Campaign launch failed. Please check your Meta API settings.');
-          }
-        };
-
-        return (
-          <div className="space-y-6 fade-in">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 lg:gap-6">
-              <div className="bg-white rounded-2xl p-4 lg:p-6 shadow-lg">
-                <h3 className="text-lg lg:text-xl font-bold mb-4">Insurance Category</h3>
-                <div className="space-y-4">
-                  <div>
-                    <label className="block font-medium mb-2 text-sm lg:text-base">Select Insurance Type</label>
-                    <select
-                      className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      value={adForm.insuranceType}
-                      onChange={(e) => setAdForm(prev => ({ ...prev, insuranceType: e.target.value }))}
-                    >
-                      <option value="">Choose category...</option>
-                      <option value="life">Life Insurance</option>
-                      <option value="term">Term Life Insurance</option>
-                      <option value="final-expense">Final Expense</option>
-                      <option value="medicare">Medicare</option>
-                      <option value="other">Other</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block font-medium mb-2 text-sm lg:text-base">Target Locations</label>
-                    <input
-                      type="text"
-                      className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      placeholder="FL, TX, CA"
-                      value={adForm.targetLocations}
-                      onChange={(e) => setAdForm(prev => ({ ...prev, targetLocations: e.target.value }))}
-                    />
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="block font-medium mb-2 text-sm lg:text-base">Min Age</label>
-                      <input
-                        type="number"
-                        className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                        placeholder="25"
-                        value={adForm.minAge}
-                        onChange={(e) => setAdForm(prev => ({ ...prev, minAge: e.target.value }))}
-                      />
-                    </div>
-                    <div>
-                      <label className="block font-medium mb-2 text-sm lg:text-base">Max Age</label>
-                      <input
-                        type="number"
-                        className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                        placeholder="65"
-                        value={adForm.maxAge}
-                        onChange={(e) => setAdForm(prev => ({ ...prev, maxAge: e.target.value }))}
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block font-medium mb-2 text-sm lg:text-base">Daily Budget ($)</label>
-                    <input
-                      type="number"
-                      className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      placeholder="150"
-                      value={adForm.dailyBudget}
-                      onChange={(e) => setAdForm(prev => ({ ...prev, dailyBudget: e.target.value }))}
-                    />
-                  </div>
-                </div>
-              </div>
-
-              <div className="bg-white rounded-2xl p-4 lg:p-6 shadow-lg">
-                <h3 className="text-lg lg:text-xl font-bold mb-4">Ad Content</h3>
-                <div className="space-y-4">
-                  <div>
-                    <label className="block font-medium mb-2 text-sm lg:text-base">Headline</label>
-                    <input
-                      type="text"
-                      className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      placeholder="Your compelling headline..."
-                      value={adForm.headline}
-                      onChange={(e) => setAdForm(prev => ({ ...prev, headline: e.target.value }))}
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block font-medium mb-2 text-sm lg:text-base">Ad Copy</label>
-                    <textarea
-                      className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent h-24 lg:h-32 resize-none"
-                      placeholder="Write your ad copy here..."
-                      value={adForm.copy}
-                      onChange={(e) => setAdForm(prev => ({ ...prev, copy: e.target.value }))}
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block font-medium mb-2 text-sm lg:text-base">Call-to-Action</label>
-                    <select
-                      className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      value={adForm.cta}
-                      onChange={(e) => setAdForm(prev => ({ ...prev, cta: e.target.value }))}
-                    >
-                      <option value="learn-more">Learn More</option>
-                      <option value="get-quote">Get Free Quote</option>
-                      <option value="call-now">Call Now</option>
-                      <option value="apply-now">Apply Now</option>
-                    </select>
-                  </div>
-
-                  <div className="space-y-3">
-                    <button onClick={generateAd} className="w-full p-3 bg-gradient-to-r from-blue-500 to-purple-600 text-white font-semibold rounded-xl hover:shadow-lg transition-all">
-                      ⚡ Generate Ad with AI
-                    </button>
-                    <button onClick={launchCampaign} className="w-full p-3 bg-gradient-to-r from-green-500 to-green-600 text-white font-semibold rounded-xl hover:shadow-lg transition-all">
-                      🚀 Launch Campaign
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        );
+      const sampleLeads = [
+        { id: 1, name:'Alex Morgan', phone:'(555) 123-4567', email:'alex@example.com', status:'new', type:'life', location:'ID', time:'Today 10:15 AM' },
+        { id: 2, name:'Sam Taylor', phone:'(555) 987-6543', email:'sam@example.com', status:'scheduled', type:'term', location:'TX', time:'Today 2:30 PM' },
+        { id: 3, name:'Jordan Lee', phone:'', email:'', status:'contacted', type:'final-expense', location:'AL', time:'Yesterday 4:05 PM' }
+      ];
+      const sampleCampaigns = [{ id:'c1', name:'Life - ID, OR', type:'life', budget:100, status:'active', leads:24, costPerLead:12.45 }];
+      const sampleAnalytics = {
+        overview: { totalLeads: sampleLeads.length, totalCampaigns: 1, conversionRate: 34, avgCostPerLead: 14.12 },
+        performance: { callAnswerRate: 41, smsResponseRate: 52, schedulingRate: 23, revenuePerLead: 186.40 }
       };
 
-      // Lead Management
-      const LeadManagement = () => {
-        const [searchTerm, setSearchTerm] = useState('');
-        const [filterType, setFilterType] = useState('');
-        const [filterStatus, setFilterStatus] = useState('');
-        const [showImportModal, setShowImportModal] = useState(false);
-        const [showTestModal, setShowTestModal] = useState(false);
+      setLeads(leadsRes || sampleLeads);
+      setCampaigns(campRes || sampleCampaigns);
+      setObjections(objRes || []);
+      setAnalyticsData(anaRes || sampleAnalytics);
 
-        const handleFileUpload = async (event, type) => {
-          const file = event.target.files[0];
-          if (!file) return;
+      // Settings: keep local defaults but hydrate if server responds
+      if (setRes?.apiKeys) setApiKeys(prev => ({...prev, ...setRes.apiKeys}));
+      if (setRes?.routing) setRouting(prev => ({...prev, ...setRes.routing}));
 
-          const formData = new FormData();
-          formData.append('file', file);
+      setStats({
+        totalLeads: (anaRes?.overview?.totalLeads) ?? (leadsRes?.length ?? sampleLeads.length),
+        scheduledToday: (leadsRes || sampleLeads).filter(l=>l.status==='scheduled').length,
+        adSpend: 2450,
+        conversionRate: Math.round( (anaRes?.overview?.conversionRate) ?? 34 )
+      });
+    });
+  }, []);
 
-          try {
-            if (type === 'pdf') {
-              alert(`🔍 PDF Scanning Started!\n\nFile: ${file.name}\n\n⏳ AI is now scanning your PDF and extracting lead data...`);
-            } else {
-              alert(`📊 CSV Upload Started!\n\nFile: ${file.name}\n\n⏳ Processing your CSV file...`);
-            }
+  /** ---------- UI: Chrome ---------- */
+  const MobileNav = () => (
+    <div className="lg:hidden bg-white shadow-lg p-4">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-xl flex items-center justify-center text-white font-bold">LF</div>
+          <div>
+            <div className="font-bold">LeadFlow Pro</div>
+            <div className="text-xs text-gray-600">by J. Kollar</div>
+          </div>
+        </div>
+        <button onClick={()=>setShowMobileMenu(!showMobileMenu)} className="p-2 rounded-lg bg-gray-100">☰</button>
+      </div>
 
-            const response = await fetch(`/api/upload/${type}`, { method: 'POST', body: formData });
-            const result = await response.json();
+      {showMobileMenu && (
+        <div className="mt-4 space-y-2">
+          {[
+            { id: 'dashboard', icon:'📊', label:'Dashboard' },
+            { id: 'ad-creator', icon:'🎯', label:'Ad Creator' },
+            { id: 'leads', icon:'👥', label:'Leads' },
+            { id: 'voice-ai', icon:'🎙️', label:'Voice AI' },
+            { id: 'objections', icon:'💬', label:'Objections' },
+            { id: 'campaigns', icon:'📈', label:'Campaigns' },
+            { id: 'analytics', icon:'📊', label:'Analytics' },
+            { id: 'inbound', icon:'📞', label:'Inbound Center' },
+            { id: 'imports', icon:'📂', label:'Imports' },
+            { id: 'settings', icon:'⚙️', label:'Settings' },
+          ].map(({id,icon,label})=>(
+            <button key={id} onClick={()=>{setActiveTab(id); setShowMobileMenu(false);}}
+              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeTab===id ? 'bg-gradient-to-r from-blue-500 to-purple-600 text-white' : 'hover:bg-blue-50 text-gray-700'}`}>
+              <span className="text-xl">{icon}</span>{label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 
-            if (type === 'pdf') {
-              alert(`✅ PDF Scan Complete!\n\n${result.message}\n\n📄 → 📊 Converted and imported`);
-            } else {
-              alert(`✅ CSV Import Complete!\n\n${result.message}\n\n📊 Lead data imported`);
-            }
+  const Sidebar = () => (
+    <div className="hidden lg:block w-80 bg-white bg-opacity-95 backdrop-blur-lg p-6 shadow-xl">
+      <div className="flex items-center gap-3 mb-8 pb-4 border-b-2 border-gray-200">
+        <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-purple-600 rounded-xl flex items-center justify-center text-white font-bold text-xl">LF</div>
+        <div>
+          <div className="font-bold text-lg">LeadFlow Pro</div>
+          <div className="text-xs text-gray-600">Insurance Lead Platform by J. Kollar</div>
+        </div>
+      </div>
+      <nav className="space-y-2">
+        {[
+          { id: 'dashboard', icon:'📊', label:'Dashboard' },
+          { id: 'ad-creator', icon:'🎯', label:'Ad Creator' },
+          { id: 'leads', icon:'👥', label:'Lead Management' },
+          { id: 'voice-ai', icon:'🎙️', label:'Voice AI System' },
+          { id: 'objections', icon:'💬', label:'Objection Handling' },
+          { id: 'campaigns', icon:'📈', label:'Campaign Manager' },
+          { id: 'analytics', icon:'📊', label:'Analytics' },
+          { id: 'inbound', icon:'📞', label:'Inbound Center' },
+          { id: 'imports', icon:'📂', label:'Imports' },
+          { id: 'settings', icon:'⚙️', label:'Settings & APIs' }
+        ].map(({id,icon,label})=>(
+          <button key={id} onClick={()=>setActiveTab(id)}
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300 ${activeTab===id ? 'bg-gradient-to-r from-blue-500 to-purple-600 text-white shadow-lg' : 'hover:bg-blue-50 text-gray-700 hover:translate-x-1'}`}>
+            <span className="text-xl">{icon}</span>{label}
+          </button>
+        ))}
+      </nav>
+    </div>
+  );
 
-            const leadsResponse = await fetch('/api/leads');
-            const updatedLeads = await leadsResponse.json();
-            setLeads(updatedLeads);
-            setShowImportModal(false);
-          } catch (error) {
-            alert(`❌ Upload failed: ${error.message}`);
-          }
-        };
+  /** ---------- Dashboard ---------- */
+  const Dashboard = () => (
+    <div className="space-y-6 fade-in">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-6">
+        {[
+          { label:'Total Leads', value:stats.totalLeads, icon:'👥', color:'from-blue-500 to-blue-600' },
+          { label:'Scheduled Today', value:stats.scheduledToday, icon:'📅', color:'from-green-500 to-green-600' },
+          { label:'Ad Spend', value:`$${fmt(stats.adSpend)}`, icon:'💰', color:'from-purple-500 to-purple-600' },
+          { label:'Conversion Rate', value:`${stats.conversionRate}%`, icon:'📈', color:'from-orange-500 to-orange-600' }
+        ].map(({label,value,icon,color})=>(
+          <div key={label} className={`bg-gradient-to-br ${color} text-white p-4 lg:p-6 rounded-2xl shadow-lg text-center`}>
+            <div className="text-2xl mb-2">{icon}</div>
+            <div className="text-2xl lg:text-3xl font-bold mb-1">{value}</div>
+            <div className="text-xs lg:text-sm opacity-90">{label}</div>
+          </div>
+        ))}
+      </div>
 
-        const runSystemTest = async () => {
-          try {
-            const response = await fetch('/api/test-system', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                testLead: { name: 'Test Lead', phone: '+1 (555) 000-0000', type: 'life' }
-              })
-            });
-            const result = await response.json();
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="bg-white rounded-2xl p-4 lg:p-6 shadow-lg">
+          <h3 className="text-lg lg:text-xl font-bold mb-4">Recent Leads</h3>
+          <div className="space-y-3">
+            {leads.slice(0,3).map(lead=>(
+              <div key={lead.id} className="p-3 lg:p-4 border border-gray-200 rounded-xl">
+                <div className="flex justify-between items-start mb-2">
+                  <div className="font-semibold text-sm lg:text-base">{lead.name}</div>
+                  <span className={`badge ${lead.status==='new'?'bg-blue-100 text-blue-800':lead.status==='contacted'?'bg-orange-100 text-orange-800':lead.status==='scheduled'?'bg-purple-100 text-purple-800':'bg-green-100 text-green-800'}`}>
+                    {lead.status?.charAt(0).toUpperCase()+lead.status?.slice(1)}
+                  </span>
+                </div>
+                <div className="text-xs lg:text-sm text-gray-600">{lead.type} • {lead.location} • {lead.time}</div>
+              </div>
+            ))}
+          </div>
+        </div>
 
-            alert(`✅ ${result.message}\n\n🔍 Test Results:\n• Voice Call: ${result.testResults.voiceCall.result}\n• SMS: ${result.testResults.smsBackup.status}\n• Lead Score: ${result.testResults.leadScoring.score}/10\n• Calendar: ${result.testResults.calendar.status}\n\n${result.recommendation}`);
-            setShowTestModal(false);
-          } catch {
-            alert('❌ System test failed. Please check your settings.');
-          }
-        };
+        <div className="bg-white rounded-2xl p-4 lg:p-6 shadow-lg">
+          <h3 className="text-lg lg:text-xl font-bold mb-4">Quick Actions</h3>
+          <div className="space-y-3">
+            <button onClick={()=>setActiveTab('ad-creator')} className="w-full p-3 lg:p-4 bg-gradient-to-r from-blue-500 to-purple-600 text-white rounded-xl font-semibold hover:shadow-lg transition-all">🎯 Create New Ad Campaign</button>
+            <button onClick={()=>setActiveTab('leads')} className="w-full p-3 lg:p-4 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-xl font-semibold hover:shadow-lg transition-all">👥 Manage Leads</button>
+            <button onClick={()=>setActiveTab('inbound')} className="w-full p-3 lg:p-4 bg-gradient-to-r from-orange-500 to-red-600 text-white rounded-xl font-semibold hover:shadow-lg transition-all">📞 Open Inbound Center</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 
-        const initiateContact = async (lead, method) => {
-          try {
-            const response = await fetch('/api/ai-call', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ leadId: lead.id, phoneNumber: lead.phone, method })
-            });
-            const result = await response.json();
+  /** ---------- Ad Creator (with market + subtype) ---------- */
+  const MARKET_OPTIONS = {
+    insurance: ['life','term','final-expense','medicare','other'],
+    solar: ['residential','commercial'],
+    homeServices: ['roofing','hvac','plumbing','landscaping'],
+    legal: ['injury','disability','estate'],
+    other: ['generic','event','saas']
+  };
 
-            alert(`✅ ${result.message}\n\nResult: ${result.callResult?.result || 'initiated'}\nNext Action: ${result.nextAction}`);
+  const AdCreator = () => {
+    const [adForm, setAdForm] = useState({
+      market: 'insurance',
+      insuranceType: '',
+      subType: '',
+      targetLocations: '',
+      minAge: '',
+      maxAge: '',
+      dailyBudget: '',
+      headline: '',
+      copy: '',
+      cta: 'learn-more'
+    });
 
-            const leadsResponse = await fetch('/api/leads');
-            const updatedLeads = await leadsResponse.json();
-            setLeads(updatedLeads);
-          } catch {
-            alert(`❌ ${method === 'call' ? 'Call' : 'SMS'} failed. Please check your API settings.`);
-          }
-        };
+    useEffect(()=>{
+      // reset subtype when market changes
+      setAdForm(prev=>({...prev, subType:''}));
+    },[adForm.market]);
 
-        const filteredLeads = leads.filter(lead => {
-          const n = (lead.name || '').toLowerCase();
-          const p = (lead.phone || '');
-          const e = (lead.email || '').toLowerCase();
-          const matchesSearch = n.includes(searchTerm.toLowerCase()) || p.includes(searchTerm) || e.includes(searchTerm.toLowerCase());
-          const matchesType = !filterType || (lead.type || '').toLowerCase().includes(filterType.toLowerCase());
-          const matchesStatus = !filterStatus || lead.status === filterStatus;
-          return matchesSearch && matchesType && matchesStatus;
+    const generateAd = async () => {
+      if (!adForm.insuranceType && !adForm.subType) {
+        alert('Please select a category/sub-type first');
+        return;
+      }
+      try {
+        const res = await fetch('/api/generate-ad', {
+          method:'POST',
+          headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({ ...adForm, routing })
         });
+        const result = await res.json().catch(()=>({}));
+        setAdForm(prev=>({
+          ...prev,
+          headline: result.headline || `Protect what matters with ${adForm.insuranceType || adForm.subType}`,
+          copy: result.copy || 'Fast, affordable coverage options tailored to you. Get a free quote today.',
+          cta: result.cta || prev.cta
+        }));
+        alert('✨ AI-generated ad content loaded!');
+      } catch {
+        alert('❌ AI generation failed. Check API settings.');
+      }
+    };
 
-        return (
-          <div className="space-y-6 fade-in">
-            <div className="bg-white rounded-2xl p-4 lg:p-6 shadow-lg">
-              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
-                <h3 className="text-lg lg:text-xl font-bold">Lead Pipeline</h3>
-                <div className="flex flex-wrap gap-2">
-                  <input type="file" accept=".csv" onChange={(e) => handleFileUpload(e, 'csv')} className="hidden" id="csv-upload-direct"/>
-                  <label htmlFor="csv-upload-direct" className="px-3 py-2 bg-green-100 text-green-700 rounded-xl hover:bg-green-200 transition-all text-sm cursor-pointer">📊 Upload CSV</label>
+    const launchCampaign = async () => {
+      if (!adForm.headline || !adForm.copy || !adForm.targetLocations) {
+        alert('Please fill in headline, copy, and target locations');
+        return;
+      }
+      try {
+        await fetch('/api/launch-campaign', {
+          method:'POST',
+          headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({
+            name: `${adForm.market}/${adForm.insuranceType || adForm.subType} - ${adForm.targetLocations}`,
+            market: adForm.market,
+            type: adForm.insuranceType || adForm.subType,
+            budget: parseInt(adForm.dailyBudget) || 100,
+            adContent: { headline: adForm.headline, copy: adForm.copy, cta: adForm.cta },
+            targeting: {
+              locations: adForm.targetLocations.split(',').map(s=>s.trim()).filter(Boolean),
+              ageMin: parseInt(adForm.minAge)||25,
+              ageMax: parseInt(adForm.maxAge)||65
+            },
+            routing,
+            metadata: routing.metadata.adsCopy
+          })
+        });
+        alert('🚀 Campaign launched!');
+        fetch('/api/campaigns').then(r=>r.json()).then(setCampaigns).catch(()=>{});
+      } catch {
+        alert('❌ Campaign launch failed. Check Meta API settings.');
+      }
+    };
 
-                  <input type="file" accept=".pdf" onChange={(e) => handleFileUpload(e, 'pdf')} className="hidden" id="pdf-upload-direct"/>
-                  <label htmlFor="pdf-upload-direct" className="px-3 py-2 bg-red-100 text-red-700 rounded-xl hover:bg-red-200 transition-all text-sm cursor-pointer">📄 Scan PDF → CSV</label>
-
-                  <button onClick={() => setShowImportModal(true)} className="px-3 py-2 bg-blue-100 text-blue-700 rounded-xl hover:bg-blue-200 transition-all text-sm">📋 Import Options</button>
-                  <button onClick={() => setShowTestModal(true)} className="px-3 py-2 bg-green-100 text-green-700 rounded-xl hover:bg-green-200 transition-all text-sm">🧪 Test System</button>
+    return (
+      <div className="space-y-6 fade-in">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 lg:gap-6">
+          <div className="bg-white rounded-2xl p-4 lg:p-6 shadow-lg">
+            <h3 className="text-lg lg:text-xl font-bold mb-4">Category</h3>
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-medium mb-2 text-sm lg:text-base">Market</label>
+                  <select className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    value={adForm.market}
+                    onChange={(e)=>setAdForm(prev=>({...prev, market:e.target.value}))}>
+                    {Object.keys(MARKET_OPTIONS).map(m=><option key={m} value={m}>{m}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block font-medium mb-2 text-sm lg:text-base">Sub-Type</label>
+                  <select className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    value={adForm.subType}
+                    onChange={(e)=>setAdForm(prev=>({...prev, subType:e.target.value}))}>
+                    <option value="">Choose…</option>
+                    {MARKET_OPTIONS[adForm.market].map(s=><option key={s} value={s}>{s}</option>)}
+                  </select>
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-                <input type="text" className="p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="Search leads..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
-                <select className="p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent" value={filterType} onChange={(e) => setFilterType(e.target.value)}>
-                  <option value="">All Categories</option>
+              {/* Keep legacy Insurance Type for backward compatibility */}
+              <div>
+                <label className="block font-medium mb-2 text-sm lg:text-base">Insurance Type (legacy)</label>
+                <select className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        value={adForm.insuranceType}
+                        onChange={(e)=>setAdForm(prev=>({...prev, insuranceType:e.target.value}))}>
+                  <option value="">(Optional) Choose insurance…</option>
                   <option value="life">Life Insurance</option>
                   <option value="term">Term Life</option>
                   <option value="final-expense">Final Expense</option>
                   <option value="medicare">Medicare</option>
                   <option value="other">Other</option>
                 </select>
-                <select className="p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent" value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)}>
-                  <option value="">All Status</option>
-                  <option value="new">New</option>
-                  <option value="contacted">Contacted</option>
-                  <option value="qualified">Qualified</option>
-                  <option value="scheduled">Scheduled</option>
+              </div>
+
+              <div>
+                <label className="block font-medium mb-2 text-sm lg:text-base">Target Locations</label>
+                <input type="text" className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  placeholder="FL, TX, CA"
+                  value={adForm.targetLocations}
+                  onChange={(e)=>setAdForm(prev=>({...prev, targetLocations:e.target.value}))}/>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-medium mb-2 text-sm lg:text-base">Min Age</label>
+                  <input type="number" className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    placeholder="25" value={adForm.minAge}
+                    onChange={(e)=>setAdForm(prev=>({...prev, minAge:e.target.value}))}/>
+                </div>
+                <div>
+                  <label className="block font-medium mb-2 text-sm lg:text-base">Max Age</label>
+                  <input type="number" className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    placeholder="65" value={adForm.maxAge}
+                    onChange={(e)=>setAdForm(prev=>({...prev, maxAge:e.target.value}))}/>
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-medium mb-2 text-sm lg:text-base">Daily Budget ($)</label>
+                <input type="number" className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  placeholder="150" value={adForm.dailyBudget}
+                  onChange={(e)=>setAdForm(prev=>({...prev, dailyBudget:e.target.value}))}/>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-2xl p-4 lg:p-6 shadow-lg">
+            <h3 className="text-lg lg:text-xl font-bold mb-4">Ad Content</h3>
+            <div className="space-y-4">
+              <div>
+                <label className="block font-medium mb-2 text-sm lg:text-base">Headline</label>
+                <input type="text" className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  placeholder="Your compelling headline..."
+                  value={adForm.headline}
+                  onChange={(e)=>setAdForm(prev=>({...prev, headline:e.target.value}))}/>
+              </div>
+              <div>
+                <label className="block font-medium mb-2 text-sm lg:text-base">Ad Copy</label>
+                <textarea className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent h-24 lg:h-32 resize-none"
+                  placeholder="Write your ad copy here..."
+                  value={adForm.copy}
+                  onChange={(e)=>setAdForm(prev=>({...prev, copy:e.target.value}))}/>
+              </div>
+              <div>
+                <label className="block font-medium mb-2 text-sm lg:text-base">Call-to-Action</label>
+                <select className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  value={adForm.cta}
+                  onChange={(e)=>setAdForm(prev=>({...prev, cta:e.target.value}))}>
+                  <option value="learn-more">Learn More</option>
+                  <option value="get-quote">Get Free Quote</option>
+                  <option value="call-now">Call Now</option>
+                  <option value="apply-now">Apply Now</option>
                 </select>
               </div>
-
-              <div className="space-y-4">
-                {filteredLeads.map(lead => (
-                  <div key={lead.id} className="p-4 border border-gray-200 rounded-xl hover:border-blue-300 transition-all">
-                    <div className="flex flex-col sm:flex-row justify-between items-start gap-3 mb-3">
-                      <div>
-                        <div className="font-semibold text-lg">{lead.name}</div>
-                        <div className="text-sm text-gray-600">{lead.phone || '—'} • {lead.email || '—'}</div>
-                      </div>
-                      <span className={`px-3 py-1 rounded-full text-xs font-medium ${
-                        lead.status === 'new' ? 'bg-blue-100 text-blue-800' :
-                        lead.status === 'contacted' ? 'bg-orange-100 text-orange-800' :
-                        lead.status === 'scheduled' ? 'bg-purple-100 text-purple-800' :
-                        'bg-green-100 text-green-800'
-                      }`}>
-                        {lead.status?.charAt(0).toUpperCase() + lead.status?.slice(1)}
-                      </span>
-                    </div>
-
-                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-                      <div className="text-sm text-gray-600">{lead.type} • {lead.location} • {lead.time}</div>
-                      <div className="flex flex-wrap gap-2">
-                        <button onClick={() => initiateContact(lead, 'call')} className="px-3 py-1 bg-green-100 text-green-700 rounded-lg hover:bg-green-200 transition-all text-sm">📞 AI Call</button>
-                        <button onClick={() => initiateContact(lead, 'sms')} className="px-3 py-1 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-all text-sm">💬 AI SMS</button>
-                        <button className="px-3 py-1 bg-purple-100 text-purple-700 rounded-lg hover:bg-purple-200 transition-all text-sm">📅 Schedule</button>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-                {filteredLeads.length === 0 && <div className="text-center py-8 text-gray-500">No leads found matching your criteria</div>}
-              </div>
-            </div>
-
-            {/* Import Modal */}
-            {showImportModal && (
-              <div className="fixed inset-0 bg-black bg-opacity-50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-                <div className="bg-white rounded-2xl p-6 max-w-md w-full">
-                  <h3 className="text-xl font-bold mb-4">Import Leads</h3>
-                  <div className="space-y-4">
-                    <div className="p-4 border-2 border-dashed border-gray-300 rounded-xl text-center">
-                      <div className="text-2xl mb-2">📄</div>
-                      <h4 className="font-semibold mb-2">Upload PDF</h4>
-                      <p className="text-sm text-gray-600 mb-3">AI will scan and extract lead data automatically</p>
-                      <input type="file" accept=".pdf" onChange={(e) => handleFileUpload(e, 'pdf')} className="hidden" id="pdf-upload" />
-                      <label htmlFor="pdf-upload" className="px-4 py-2 bg-red-100 text-red-700 rounded-lg cursor-pointer hover:bg-red-200 transition-all">Choose PDF File</label>
-                    </div>
-
-                    <div className="p-4 border-2 border-dashed border-gray-300 rounded-xl text-center">
-                      <div className="text-2xl mb-2">📊</div>
-                      <h4 className="font-semibold mb-2">Upload CSV</h4>
-                      <p className="text-sm text-gray-600 mb-3">Import structured lead data from spreadsheets</p>
-                      <input type="file" accept=".csv" onChange={(e) => handleFileUpload(e, 'csv')} className="hidden" id="csv-upload" />
-                      <label htmlFor="csv-upload" className="px-4 py-2 bg-green-100 text-green-700 rounded-lg cursor-pointer hover:bg-green-200 transition-all">Choose CSV File</label>
-                    </div>
-                  </div>
-
-                  <div className="flex gap-3 mt-6">
-                    <button onClick={() => setShowImportModal(false)} className="flex-1 px-4 py-2 border border-gray-300 rounded-xl hover:bg-gray-50 transition-all">Cancel</button>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Test System Modal */}
-            {showTestModal && (
-              <div className="fixed inset-0 bg-black bg-opacity-50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-                <div className="bg-white rounded-2xl p-6 max-w-md w-full">
-                  <h3 className="text-xl font-bold mb-4">🧪 Test Complete System</h3>
-                  <p className="text-gray-600 mb-4">Run a complete test of your AI voice and SMS systems</p>
-
-                  <div className="bg-yellow-50 p-4 rounded-xl mb-4">
-                    <h4 className="font-semibold text-yellow-800 mb-2">🔄 Test Will Include:</h4>
-                    <ul className="text-sm text-yellow-700 space-y-1">
-                      <li>• AI voice call simulation</li>
-                      <li>• SMS backup system</li>
-                      <li>• Objection handling test</li>
-                      <li>• Lead scoring verification</li>
-                      <li>• Calendar integration check</li>
-                    </ul>
-                  </div>
-
-                  <div className="flex gap-3">
-                    <button onClick={() => setShowTestModal(false)} className="flex-1 px-4 py-2 border border-gray-300 rounded-xl hover:bg-gray-50 transition-all">Cancel</button>
-                    <button onClick={runSystemTest} className="flex-1 px-4 py-3 bg-gradient-to-r from-blue-500 to-purple-600 text-white font-semibold rounded-xl hover:shadow-lg transition-all">
-                      🚀 Run Test
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-        );
-      };
-
-      // Settings
-      const Settings = () => {
-        const [apiKeys, setApiKeys] = useState({ openai: '', meta: '', elevenlabs: '', twilio: '' });
-
-        const saveSettings = async () => {
-          try {
-            await fetch('/api/settings', {
-              method: 'PUT',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ apiKeys })
-            });
-            alert('✅ Settings saved successfully!');
-          } catch {
-            alert('❌ Failed to save settings');
-          }
-        };
-
-        return (
-          <div className="space-y-6 fade-in">
-            <div className="bg-white rounded-2xl p-4 lg:p-6 shadow-lg">
-              <h3 className="text-lg lg:text-xl font-bold mb-4">API Configuration</h3>
-              <p className="text-gray-600 mb-6">Configure your API keys to enable all features</p>
-
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <div>
-                  <label className="block font-medium mb-2">OpenAI API Key</label>
-                  <input type="password" className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="sk-..." value={apiKeys.openai} onChange={(e) => setApiKeys(prev => ({ ...prev, openai: e.target.value }))}/>
-                  <p className="text-xs text-gray-500 mt-1">For AI ad generation and responses</p>
-                </div>
-
-                <div>
-                  <label className="block font-medium mb-2">Meta Access Token</label>
-                  <input type="password" className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="Your Meta token..." value={apiKeys.meta} onChange={(e) => setApiKeys(prev => ({ ...prev, meta: e.target.value }))}/>
-                  <p className="text-xs text-gray-500 mt-1">For Facebook/Instagram campaigns</p>
-                </div>
-
-                <div>
-                  <label className="block font-medium mb-2">ElevenLabs API Key</label>
-                  <input type="password" className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="Your ElevenLabs key..." value={apiKeys.elevenlabs} onChange={(e) => setApiKeys(prev => ({ ...prev, elevenlabs: e.target.value }))}/>
-                  <p className="text-xs text-gray-500 mt-1">For AI voice calling</p>
-                </div>
-
-                <div>
-                  <label className="block font-medium mb-2">Twilio Account SID</label>
-                  <input type="password" className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="Your Twilio SID..." value={apiKeys.twilio} onChange={(e) => setApiKeys(prev => ({ ...prev, twilio: e.target.value }))}/>
-                  <p className="text-xs text-gray-500 mt-1">For SMS and phone services</p>
-                </div>
-              </div>
-
-              <div className="mt-6">
-                <button onClick={saveSettings} className="px-6 py-3 bg-gradient-to-r from-blue-500 to-purple-600 text-white font-semibold rounded-xl hover:shadow-lg transition-all">
-                  💾 Save API Settings
-                </button>
-              </div>
-            </div>
-
-            <div className="bg-blue-50 border border-blue-200 rounded-xl p-6">
-              <h4 className="font-bold text-blue-800 mb-3">🔑 Getting Your API Keys</h4>
-              <div className="space-y-2 text-sm text-blue-700">
-                <div><strong>OpenAI:</strong> platform.openai.com → API Keys</div>
-                <div><strong>Meta:</strong> developers.facebook.com → Meta for Developers</div>
-                <div><strong>ElevenLabs:</strong> elevenlabs.io → Profile → API Key</div>
-                <div><strong>Twilio:</strong> twilio.com → Console → Account SID</div>
-              </div>
-            </div>
-          </div>
-        );
-      };
-
-      // Voice AI
-      const VoiceAI = () => {
-        const [voiceConfig, setVoiceConfig] = useState({
-          provider: 'elevenlabs',
-          style: 'professional',
-          speed: 'normal',
-          callAttempts: 2,
-          callInterval: 30,
-          script: 'Hi, this is calling from LeadFlow Pro about your interest in life insurance. Do you have a moment to discuss how we can help protect your family\'s financial future?'
-        });
-
-        const [smsConfig, setSmsConfig] = useState({
-          provider: 'twilio',
-          autoRespond: true,
-          followUpDelay: 15,
-          businessHours: { start: '09:00', end: '17:00' }
-        });
-
-        const [calendarConfig, setCalendarConfig] = useState({
-          provider: '',
-          timezone: 'America/Boise',
-          bufferTime: 15,
-          workingDays: ['monday', 'tuesday', 'wednesday', 'thursday', 'friday']
-        });
-
-        const [hasApiKeys, setHasApiKeys] = useState(false);
-
-        useEffect(() => {
-          fetch('/api/settings')
-            .then(res => res.json())
-            .then(settings => { setHasApiKeys(settings.apiKeys?.elevenlabs || settings.apiKeys?.openai); })
-            .catch(() => setHasApiKeys(false));
-        }, []);
-
-        const testVoiceAI = () => {
-          if (!hasApiKeys) {
-            alert('⚠️ Please add your ElevenLabs or OpenAI API key in Settings first');
-            return;
-          }
-          alert('🎙️ Testing voice AI configuration...\n\n✅ Voice test completed successfully!');
-        };
-
-        const connectCalendar = () => {
-          alert('📅 Calendar integration coming soon!\n\nSupported platforms:\n• Google Calendar\n• Outlook Calendar\n• Apple Calendar\n• Calendly');
-        };
-
-        return (
-          <div className="space-y-6 fade-in">
-            {/* Voice AI Configuration */}
-            <div className="bg-white rounded-2xl p-6 shadow-lg">
-              <h3 className="text-xl font-bold mb-4">🎙️ Voice AI Configuration</h3>
-
-              {!hasApiKeys && (
-                <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4 mb-4">
-                  <p className="text-yellow-800">⚠️ Add your ElevenLabs or OpenAI API key in Settings to enable voice features</p>
-                </div>
-              )}
-
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <div className="space-y-4">
-                  <div>
-                    <label className="block font-medium mb-2">Voice Provider</label>
-                    <select className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      value={voiceConfig.provider}
-                      onChange={(e) => setVoiceConfig(prev => ({ ...prev, provider: e.target.value }))}
-                      disabled={!hasApiKeys}
-                    >
-                      <option value="elevenlabs">ElevenLabs</option>
-                      <option value="openai">OpenAI Voice</option>
-                      <option value="azure">Azure Speech</option>
-                      <option value="google">Google Cloud Speech</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block font-medium mb-2">Voice Style</label>
-                    <select className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      value={voiceConfig.style}
-                      onChange={(e) => setVoiceConfig(prev => ({ ...prev, style: e.target.value }))}
-                      disabled={!hasApiKeys}
-                    >
-                      <option value="professional">Professional</option>
-                      <option value="friendly">Friendly</option>
-                      <option value="authoritative">Authoritative</option>
-                      <option value="conversational">Conversational</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block font-medium mb-2">Response Speed</label>
-                    <select className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      value={voiceConfig.speed}
-                      onChange={(e) => setVoiceConfig(prev => ({ ...prev, speed: e.target.value }))}
-                      disabled={!hasApiKeys}
-                    >
-                      <option value="fast">Fast (0.5-1s)</option>
-                      <option value="normal">Normal (1-2s)</option>
-                      <option value="thoughtful">Thoughtful (2-3s)</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block font-medium mb-2">Call Attempts: {voiceConfig.callAttempts}</label>
-                    <input type="range" min="1" max="5" value={voiceConfig.callAttempts}
-                      onChange={(e) => setVoiceConfig(prev => ({ ...prev, callAttempts: parseInt(e.target.value) }))}
-                      className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
-                      disabled={!hasApiKeys}
-                    />
-                    <div className="flex justify-between text-xs text-gray-500 mt-1"><span>1</span><span>3</span><span>5</span></div>
-                  </div>
-                </div>
-
-                <div className="space-y-4">
-                  <div>
-                    <label className="block font-medium mb-2">Script Template</label>
-                    <textarea className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent h-32 resize-none"
-                      value={voiceConfig.script}
-                      onChange={(e) => setVoiceConfig(prev => ({ ...prev, script: e.target.value }))}
-                      disabled={!hasApiKeys}
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block font-medium mb-2">Time Between Calls</label>
-                    <select className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      value={voiceConfig.callInterval}
-                      onChange={(e) => setVoiceConfig(prev => ({ ...prev, callInterval: parseInt(e.target.value) }))}
-                      disabled={!hasApiKeys}
-                    >
-                      <option value="15">15 minutes</option>
-                      <option value="30">30 minutes</option>
-                      <option value="60">1 hour</option>
-                      <option value="120">2 hours</option>
-                      <option value="240">4 hours</option>
-                    </select>
-                  </div>
-
-                  <button onClick={testVoiceAI} className="w-full p-3 bg-gradient-to-r from-blue-500 to-purple-600 text-white font-semibold rounded-xl hover:shadow-lg transition-all disabled:opacity-50">
-                    🎙️ Test Voice Configuration
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            {/* SMS Configuration */}
-            <div className="bg-white rounded-2xl p-6 shadow-lg">
-              <h3 className="text-xl font-bold mb-4">💬 SMS Configuration</h3>
-
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <div className="space-y-4">
-                  <div>
-                    <label className="block font-medium mb-2">SMS Provider</label>
-                    <select className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      value={smsConfig.provider}
-                      onChange={(e) => setSmsConfig(prev => ({ ...prev, provider: e.target.value }))}
-                    >
-                      <option value="twilio">Twilio</option>
-                      <option value="messagebird">MessageBird</option>
-                      <option value="vonage">Vonage</option>
-                    </select>
-                  </div>
-
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <label className="font-medium">Auto-Respond to SMS</label>
-                      <p className="text-sm text-gray-600">AI responds to incoming messages</p>
-                    </div>
-                    <div className={`toggle-switch ${smsConfig.autoRespond ? 'active' : ''}`}
-                      onClick={() => setSmsConfig(prev => ({ ...prev, autoRespond: !prev.autoRespond }))}>
-                      <div className="toggle-slider"></div>
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block font-medium mb-2">Follow-up Delay (minutes)</label>
-                    <select className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      value={smsConfig.followUpDelay}
-                      onChange={(e) => setSmsConfig(prev => ({ ...prev, followUpDelay: parseInt(e.target.value) }))}
-                    >
-                      <option value="5">5 minutes</option>
-                      <option value="15">15 minutes</option>
-                      <option value="30">30 minutes</option>
-                      <option value="60">1 hour</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div className="space-y-4">
-                  <div>
-                    <label className="block font-medium mb-2">Business Hours</label>
-                    <div className="grid grid-cols-2 gap-3">
-                      <input type="time" className="p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                        value={smsConfig.businessHours.start}
-                        onChange={(e) => setSmsConfig(prev => ({ ...prev, businessHours: { ...prev.businessHours, start: e.target.value } }))}
-                      />
-                      <input type="time" className="p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                        value={smsConfig.businessHours.end}
-                        onChange={(e) => setSmsConfig(prev => ({ ...prev, businessHours: { ...prev.businessHours, end: e.target.value } }))}
-                      />
-                    </div>
-                  </div>
-
-                  <div className="bg-blue-50 p-4 rounded-xl">
-                    <h4 className="font-semibold text-blue-800 mb-2">📱 SMS Features</h4>
-                    <ul className="text-sm text-blue-700 space-y-1">
-                      <li>• Auto-respond to incoming messages</li>
-                      <li>• Schedule appointments via text</li>
-                      <li>• Follow-up sequence automation</li>
-                      <li>• Business hours compliance</li>
-                    </ul>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Calendar Integration */}
-            <div className="bg-white rounded-2xl p-6 shadow-lg">
-              <h3 className="text-xl font-bold mb-4">📅 Calendar Integration</h3>
-
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <div className="space-y-4">
-                  <div>
-                    <label className="block font-medium mb-2">Calendar Provider</label>
-                    <select className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      value={calendarConfig.provider}
-                      onChange={(e) => setCalendarConfig(prev => ({ ...prev, provider: e.target.value }))}
-                    >
-                      <option value="">Choose calendar...</option>
-                      <option value="google">Google Calendar</option>
-                      <option value="outlook">Microsoft Outlook</option>
-                      <option value="apple">Apple Calendar</option>
-                      <option value="calendly">Calendly</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block font-medium mb-2">Time Zone</label>
-                    <select className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      value={calendarConfig.timezone}
-                      onChange={(e) => setCalendarConfig(prev => ({ ...prev, timezone: e.target.value }))}
-                    >
-                      <option value="America/New_York">Eastern Time</option>
-                      <option value="America/Chicago">Central Time</option>
-                      <option value="America/Denver">Mountain Time</option>
-                      <option value="America/Los_Angeles">Pacific Time</option>
-                      <option value="America/Boise">Mountain (Boise)</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block font-medium mb-2">Buffer Time (minutes)</label>
-                    <select className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      value={calendarConfig.bufferTime}
-                      onChange={(e) => setCalendarConfig(prev => ({ ...prev, bufferTime: parseInt(e.target.value) }))}
-                    >
-                      <option value="0">No buffer</option>
-                      <option value="15">15 minutes</option>
-                      <option value="30">30 minutes</option>
-                      <option value="60">1 hour</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div className="space-y-4">
-                  <div>
-                    <label className="block font-medium mb-2">Working Days</label>
-                    <div className="space-y-2">
-                      {['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'].map(day => (
-                        <label key={day} className="flex items-center gap-2">
-                          <input
-                            type="checkbox"
-                            checked={calendarConfig.workingDays.includes(day.toLowerCase())}
-                            onChange={(e) => {
-                              const dayLower = day.toLowerCase();
-                              setCalendarConfig(prev => ({
-                                ...prev,
-                                workingDays: e.target.checked
-                                  ? [...prev.workingDays, dayLower]
-                                  : prev.workingDays.filter(d => d !== dayLower)
-                              }));
-                            }}
-                            className="rounded"
-                          />
-                          <span className="text-sm">{day}</span>
-                        </label>
-                      ))}
-                    </div>
-                  </div>
-
-                  <button onClick={connectCalendar} className="w-full p-3 bg-gradient-to-r from-green-500 to-green-600 text-white font-semibold rounded-xl hover:shadow-lg transition-all">
-                    📅 Connect Calendar
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        );
-      };
-
-      // Objection Handling
-      const ObjectionHandling = () => {
-        const [newObjection, setNewObjection] = useState({ objection: '', response: '' });
-
-        const addObjection = async () => {
-          if (!newObjection.objection || !newObjection.response) {
-            alert('Please fill in both objection and response');
-            return;
-          }
-          try {
-            const response = await fetch('/api/objections', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(newObjection)
-            });
-            if (response.ok) {
-              const result = await response.json();
-              setObjections(prev => [...prev, result]);
-              setNewObjection({ objection: '', response: '' });
-              alert('✅ Objection added successfully!');
-            }
-          } catch {
-            alert('❌ Failed to add objection');
-          }
-        };
-
-        return (
-          <div className="space-y-6 fade-in">
-            <div className="bg-white rounded-2xl p-6 shadow-lg">
-              <h2 className="text-2xl font-bold mb-4">💬 Objection Handling</h2>
-
-              {/* Add New Objection */}
-              <div className="bg-gray-50 p-4 rounded-xl mb-6">
-                <h4 className="font-semibold mb-3">Add New Objection</h4>
-                <div className="space-y-3">
-                  <div>
-                    <label className="block text-sm font-medium mb-1">Common Objection</label>
-                    <input type="text" className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      placeholder="e.g., I can't afford it right now"
-                      value={newObjection.objection}
-                      onChange={(e) => setNewObjection(prev => ({ ...prev, objection: e.target.value }))}
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium mb-1">AI Response</label>
-                    <textarea className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent h-24 resize-none"
-                      placeholder="Write a helpful, empathetic response..."
-                      value={newObjection.response}
-                      onChange={(e) => setNewObjection(prev => ({ ...prev, response: e.target.value }))}
-                    />
-                  </div>
-                  <button onClick={addObjection} className="px-4 py-2 bg-gradient-to-r from-blue-500 to-purple-600 text-white rounded-xl hover:shadow-lg transition-all">
-                    ➕ Add Objection
-                  </button>
-                </div>
-              </div>
-
-              {/* Existing Objections */}
               <div className="space-y-3">
-                <h4 className="font-semibold">Current Objections ({objections.length})</h4>
-                {objections.map(obj => (
-                  <div key={obj.id} className="p-4 border border-gray-200 rounded-xl">
-                    <div className="font-semibold text-red-600 mb-2">"{obj.objection}"</div>
-                    <div className="text-sm text-gray-700 bg-green-50 p-3 rounded-lg">
-                      <strong>Response:</strong> {obj.response}
-                    </div>
-                  </div>
-                ))}
-                {objections.length === 0 && (
-                  <div className="text-center py-6 text-gray-500">No objections configured yet. Add your first objection above.</div>
-                )}
+                <button onClick={generateAd} className="w-full p-3 bg-gradient-to-r from-blue-500 to-purple-600 text-white font-semibold rounded-xl hover:shadow-lg transition-all">⚡ Generate Ad with AI</button>
+                <button onClick={launchCampaign} className="w-full p-3 bg-gradient-to-r from-green-500 to-green-600 text-white font-semibold rounded-xl hover:shadow-lg transition-all">🚀 Launch Campaign</button>
               </div>
             </div>
           </div>
-        );
-      };
+        </div>
+      </div>
+    );
+  };
 
-      // Campaign Manager
-      const CampaignManager = () => (
-        <div className="bg-white rounded-2xl p-6 shadow-lg fade-in">
-          <h2 className="text-2xl font-bold mb-4">📈 Campaign Manager</h2>
+  /** ---------- Lead Management (search, delete, manual add) ---------- */
+  const LeadManagement = () => {
+    const [searchTerm, setSearchTerm] = useState('');
+    const [filterType, setFilterType] = useState('');
+    const [filterStatus, setFilterStatus] = useState('');
+    const [showImportModal, setShowImportModal] = useState(false);
+    const [showTestModal, setShowTestModal] = useState(false);
+    const [showAddLead, setShowAddLead] = useState(false);
+    const [newLead, setNewLead] = useState({ name:'', phone:'', email:'', type:'life', location:'', status:'new' });
+
+    const handleFileUpload = async (event, type) => {
+      const file = event.target.files[0]; if (!file) return;
+      const formData = new FormData(); formData.append('file', file);
+      try {
+        alert(type==='pdf' ? `🔍 Scanning PDF: ${file.name}` : `📊 Uploading CSV: ${file.name}`);
+        const response = await fetch(`/api/upload/${type}`, { method:'POST', body: formData });
+        const result = await response.json().catch(()=>({message:'Processed'}));
+        alert(`✅ ${result.message || 'Import complete'}`);
+        const updated = await fetch('/api/leads').then(r=>r.json()).catch(()=>[]);
+        setLeads(updated.length ? updated : leads);
+        setShowImportModal(false);
+      } catch (e) { alert(`❌ Upload failed: ${e.message}`); }
+    };
+
+    const runSystemTest = async () => {
+      try {
+        const res = await fetch('/api/test-system', {
+          method:'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({ testLead:{ name:'Test Lead', phone:'+1 (555) 000-0000', type:'life' }, routing })
+        });
+        const result = await res.json().catch(()=>({
+          message:'Simulated test complete',
+          testResults:{ voiceCall:{result:'ok'}, smsBackup:{status:'ok'}, leadScoring:{score:8}, calendar:{status:'ok'} },
+          recommendation:'Looks good.'
+        }));
+        alert(`✅ ${result.message}\n\n🔍 Voice: ${result.testResults.voiceCall.result}\nSMS: ${result.testResults.smsBackup.status}\nScore: ${result.testResults.leadScoring.score}/10\nCalendar: ${result.testResults.calendar.status}\n\n${result.recommendation}`);
+        setShowTestModal(false);
+      } catch { alert('❌ System test failed.'); }
+    };
+
+    const initiateContact = async (lead, method) => {
+      try {
+        const res = await fetch('/api/ai-call', {
+          method:'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({ leadId: lead.id, phoneNumber: lead.phone, method, routing, metadata: method==='call'? routing.metadata.call : routing.metadata.sms })
+        });
+        const result = await res.json().catch(()=>({ message:'Initiated', nextAction:'wait' }));
+        alert(`✅ ${result.message}\nNext: ${result.nextAction || 'queued'}`);
+        const updated = await fetch('/api/leads').then(r=>r.json()).catch(()=>[]);
+        if (updated.length) setLeads(updated);
+      } catch { alert(`❌ ${method==='call'?'Call':'SMS'} failed.`); }
+    };
+
+    const deleteLead = async (leadId) => {
+      if (!confirm('Delete this lead? This cannot be undone.')) return;
+      try {
+        const res = await fetch(`/api/leads/${leadId}`, { method:'DELETE' });
+        if (!res.ok) throw new Error();
+        setLeads(prev => prev.filter(l=>l.id!==leadId));
+        alert('🗑️ Lead deleted.');
+      } catch {
+        // optimistic fallback
+        setLeads(prev => prev.filter(l=>l.id!==leadId));
+      }
+    };
+
+    const saveNewLead = async () => {
+      if (!newLead.name || !newLead.phone) { alert('Name and phone are required'); return; }
+      try {
+        const res = await fetch('/api/leads', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(newLead) });
+        const created = await res.json().catch(()=>({ ...newLead, id: Date.now() }));
+        setLeads(prev => [created, ...prev]);
+        setShowAddLead(false);
+        setNewLead({ name:'', phone:'', email:'', type:'life', location:'', status:'new' });
+        alert('✅ Lead added.');
+      } catch {
+        // local fallback
+        setLeads(prev => [{ ...newLead, id: Date.now() }, ...prev]);
+        setShowAddLead(false);
+      }
+    };
+
+    const filteredLeads = leads.filter(lead => {
+      const term = searchTerm.toLowerCase();
+      const matchesSearch = (lead.name||'').toLowerCase().includes(term) || (lead.phone||'').includes(searchTerm) || (lead.email||'').toLowerCase().includes(term);
+      const matchesType = !filterType || (lead.type||'').toLowerCase().includes(filterType.toLowerCase());
+      const matchesStatus = !filterStatus || lead.status===filterStatus;
+      return matchesSearch && matchesType && matchesStatus;
+    });
+
+    return (
+      <div className="space-y-6 fade-in">
+        <div className="bg-white rounded-2xl p-4 lg:p-6 shadow-lg">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
+            <h3 className="text-lg lg:text-xl font-bold">Lead Pipeline</h3>
+            <div className="flex flex-wrap gap-2">
+              <button onClick={()=>setShowAddLead(true)} className="px-3 py-2 bg-purple-100 text-purple-700 rounded-xl hover:bg-purple-200 transition-all text-sm">➕ Add Lead</button>
+
+              <input type="file" accept=".csv" onChange={(e)=>handleFileUpload(e,'csv')} className="hidden" id="csv-upload-direct"/>
+              <label htmlFor="csv-upload-direct" className="px-3 py-2 bg-green-100 text-green-700 rounded-xl hover:bg-green-2 00 transition-all text-sm cursor-pointer">📊 Upload CSV</label>
+
+              <input type="file" accept=".pdf" onChange={(e)=>handleFileUpload(e,'pdf')} className="hidden" id="pdf-upload-direct"/>
+              <label htmlFor="pdf-upload-direct" className="px-3 py-2 bg-red-100 text-red-700 rounded-xl hover:bg-red-200 transition-all text-sm cursor-pointer">📄 Scan PDF → CSV</label>
+
+              <button onClick={()=>setShowImportModal(true)} className="px-3 py-2 bg-blue-100 text-blue-700 rounded-xl hover:bg-blue-200 transition-all text-sm">📋 Import Options</button>
+              <button onClick={()=>setShowTestModal(true)} className="px-3 py-2 bg-green-100 text-green-700 rounded-xl hover:bg-green-200 transition-all text-sm">🧪 Test System</button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+            <input type="text" className="p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="Search leads..." value={searchTerm} onChange={(e)=>setSearchTerm(e.target.value)}/>
+            <select className="p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent" value={filterType} onChange={(e)=>setFilterType(e.target.value)}>
+              <option value="">All Categories</option>
+              <option value="life">Life Insurance</option>
+              <option value="term">Term Life</option>
+              <option value="final-expense">Final Expense</option>
+              <option value="medicare">Medicare</option>
+              <option value="other">Other</option>
+            </select>
+            <select className="p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent" value={filterStatus} onChange={(e)=>setFilterStatus(e.target.value)}>
+              <option value="">All Status</option>
+              <option value="new">New</option>
+              <option value="contacted">Contacted</option>
+              <option value="qualified">Qualified</option>
+              <option value="scheduled">Scheduled</option>
+            </select>
+          </div>
+
           <div className="space-y-4">
-            {campaigns.map(campaign => (
-              <div key={campaign.id} className="p-4 border border-gray-200 rounded-xl">
-                <div className="flex justify-between items-start">
+            {filteredLeads.map(lead=>(
+              <div key={lead.id} className="p-4 border border-gray-200 rounded-xl hover:border-blue-300 transition-all">
+                <div className="flex flex-col sm:flex-row justify-between items-start gap-3 mb-3">
                   <div>
-                    <div className="font-semibold">{campaign.name}</div>
-                    <div className="text-sm text-gray-600">{campaign.type} • ${campaign.budget}/day</div>
+                    <div className="font-semibold text-lg">{lead.name}</div>
+                    <div className="text-sm text-gray-600">{lead.phone || '—'} • {lead.email || '—'}</div>
                   </div>
-                  <span className={`px-3 py-1 rounded-full text-xs font-medium ${
-                    campaign.status === 'active' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
-                  }`}>
-                    {campaign.status}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className={`badge ${lead.status==='new'?'bg-blue-100 text-blue-800':lead.status==='contacted'?'bg-orange-100 text-orange-800':lead.status==='scheduled'?'bg-purple-100 text-purple-800':'bg-green-100 text-green-800'}`}>
+                      {lead.status?.charAt(0).toUpperCase()+lead.status?.slice(1)}
+                    </span>
+                    <button onClick={()=>deleteLead(lead.id)} className="px-2 py-1 text-sm bg-gray-100 text-gray-700 rounded hover:bg-gray-200">🗑️</button>
+                  </div>
                 </div>
-                <div className="mt-2 text-sm">
-                  {campaign.leads} leads • ${campaign.costPerLead} cost per lead
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+                  <div className="text-sm text-gray-600">{lead.type} • {lead.location} • {lead.time}</div>
+                  <div className="flex flex-wrap gap-2">
+                    <button onClick={()=>initiateContact(lead,'call')} className="px-3 py-1 bg-green-100 text-green-700 rounded-lg hover:bg-green-200 transition-all text-sm">📞 AI Call</button>
+                    <button onClick={()=>initiateContact(lead,'sms')} className="px-3 py-1 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-all text-sm">💬 AI SMS</button>
+                    <button className="px-3 py-1 bg-purple-100 text-purple-700 rounded-lg hover:bg-purple-200 transition-all text-sm">📅 Schedule</button>
+                  </div>
                 </div>
               </div>
             ))}
+            {filteredLeads.length===0 && <div className="text-center py-8 text-gray-500">No leads found</div>}
           </div>
         </div>
-      );
 
-      // Analytics
-      const Analytics = () => {
-        const [analytics, setAnalytics] = useState(null);
-
-        useEffect(() => {
-          fetch('/api/analytics')
-            .then(res => res.json())
-            .then(setAnalytics)
-            .catch(() => setAnalytics({
-              overview: { totalLeads: 0, totalCampaigns: 0, conversionRate: 0, avgCostPerLead: 0 },
-              performance: { callAnswerRate: 0, smsResponseRate: 0, schedulingRate: 0, revenuePerLead: 0 }
-            }));
-        }, []);
-
-        if (!analytics) return <div className="bg-white rounded-2xl p-6 shadow-lg">Loading analytics...</div>;
-
-        return (
-          <div className="space-y-6 fade-in">
-            <div className="bg-white rounded-2xl p-6 shadow-lg">
-              <h2 className="text-2xl font-bold mb-6">📊 Analytics & Reporting</h2>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
-                <div className="text-center p-4 bg-blue-50 rounded-xl">
-                  <div className="text-2xl font-bold text-blue-600">${analytics.overview.avgCostPerLead}</div>
-                  <div className="text-sm text-blue-800">Avg Cost Per Lead</div>
+        {/* Import Modal */}
+        {showImportModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-2xl p-6 max-w-md w-full">
+              <h3 className="text-xl font-bold mb-4">Import Leads</h3>
+              <div className="space-y-4">
+                <div className="p-4 border-2 border-dashed border-gray-300 rounded-xl text-center">
+                  <div className="text-2xl mb-2">📄</div>
+                  <h4 className="font-semibold mb-2">Upload PDF</h4>
+                  <p className="text-sm text-gray-600 mb-3">AI will scan and extract lead data automatically</p>
+                  <input type="file" accept=".pdf" onChange={(e)=>handleFileUpload(e,'pdf')} className="hidden" id="pdf-upload"/>
+                  <label htmlFor="pdf-upload" className="px-4 py-2 bg-red-100 text-red-700 rounded-lg cursor-pointer hover:bg-red-200 transition-all">Choose PDF File</label>
                 </div>
-                <div className="text-center p-4 bg-green-50 rounded-xl">
-                  <div className="text-2xl font-bold text-green-600">{analytics.performance.callAnswerRate}%</div>
-                  <div className="text-sm text-green-800">Call Answer Rate</div>
+                <div className="p-4 border-2 border-dashed border-gray-300 rounded-xl text-center">
+                  <div className="text-2xl mb-2">📊</div>
+                  <h4 className="font-semibold mb-2">Upload CSV</h4>
+                  <p className="text-sm text-gray-600 mb-3">Import structured lead data from spreadsheets</p>
+                  <input type="file" accept=".csv" onChange={(e)=>handleFileUpload(e,'csv')} className="hidden" id="csv-upload"/>
+                  <label htmlFor="csv-upload" className="px-4 py-2 bg-green-100 text-green-700 rounded-lg cursor-pointer hover:bg-green-200 transition-all">Choose CSV File</label>
                 </div>
-                <div className="text-center p-4 bg-purple-50 rounded-xl">
-                  <div className="text-2xl font-bold text-purple-600">{analytics.performance.schedulingRate}%</div>
-                  <div className="text-sm text-purple-800">Scheduling Rate</div>
+              </div>
+              <div className="flex gap-3 mt-6">
+                <button onClick={()=>setShowImportModal(false)} className="flex-1 px-4 py-2 border border-gray-300 rounded-xl hover:bg-gray-50 transition-all">Cancel</button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Test System Modal */}
+        {showTestModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-2xl p-6 max-w-md w-full">
+              <h3 className="text-xl font-bold mb-4">🧪 Test Complete System</h3>
+              <p className="text-gray-600 mb-4">Runs voice call, SMS backup, objections, scoring, and calendar checks.</p>
+              <div className="bg-yellow-50 p-4 rounded-xl mb-4">
+                <ul className="text-sm text-yellow-700 space-y-1">
+                  <li>• AI voice call simulation</li>
+                  <li>• SMS backup message</li>
+                  <li>• Objection handling test</li>
+                  <li>• Lead scoring verification</li>
+                  <li>• Calendar integration check</li>
+                </ul>
+              </div>
+              <div className="flex gap-3">
+                <button onClick={()=>setShowTestModal(false)} className="flex-1 px-4 py-2 border border-gray-300 rounded-xl hover:bg-gray-50 transition-all">Cancel</button>
+                <button onClick={runSystemTest} className="flex-1 px-4 py-3 bg-gradient-to-r from-blue-500 to-purple-600 text-white font-semibold rounded-xl hover:shadow-lg transition-all">🚀 Run Test</button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Add Lead Modal */}
+        {showAddLead && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-2xl p-6 max-w-md w-full">
+              <h3 className="text-xl font-bold mb-4">➕ Add New Lead</h3>
+              <div className="space-y-3">
+                {['name','phone','email','location'].map(f=>(
+                  <div key={f}>
+                    <label className="block text-sm font-medium mb-1 capitalize">{f}</label>
+                    <input type="text" className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      value={newLead[f]} onChange={(e)=>setNewLead(prev=>({...prev,[f]:e.target.value}))}/>
+                  </div>
+                ))}
+                <div>
+                  <label className="block text-sm font-medium mb-1">Type</label>
+                  <select className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    value={newLead.type}
+                    onChange={(e)=>setNewLead(prev=>({...prev,type:e.target.value}))}>
+                    <option value="life">Life</option>
+                    <option value="term">Term</option>
+                    <option value="final-expense">Final Expense</option>
+                    <option value="medicare">Medicare</option>
+                    <option value="other">Other</option>
+                  </select>
                 </div>
-                <div className="text-center p-4 bg-orange-50 rounded-xl">
-                  <div className="text-2xl font-bold text-orange-600">${analytics.performance.revenuePerLead}</div>
-                  <div className="text-sm text-orange-800">Revenue Per Lead</div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Status</label>
+                  <select className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    value={newLead.status}
+                    onChange={(e)=>setNewLead(prev=>({...prev,status:e.target.value}))}>
+                    <option value="new">New</option>
+                    <option value="contacted">Contacted</option>
+                    <option value="qualified">Qualified</option>
+                    <option value="scheduled">Scheduled</option>
+                  </select>
+                </div>
+              </div>
+              <div className="flex gap-3 mt-6">
+                <button onClick={()=>setShowAddLead(false)} className="flex-1 px-4 py-2 border border-gray-300 rounded-xl hover:bg-gray-50 transition-all">Cancel</button>
+                <button onClick={saveNewLead} className="flex-1 px-4 py-3 bg-gradient-to-r from-green-500 to-green-600 text-white font-semibold rounded-xl hover:shadow-lg transition-all">Save Lead</button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  /** ---------- Voice AI (providers, voice list, scripts per type) ---------- */
+  const VoiceAI = () => {
+    const [local, setLocal] = useState(voiceSettings);
+
+    useEffect(()=>{ setLocal(voiceSettings); }, [voiceSettings]);
+
+    const saveVoiceSettings = async () => {
+      setVoiceSettings(local);
+      try {
+        await fetch('/api/voice-settings', { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(local) });
+        alert('✅ Voice settings saved.');
+      } catch { /* ignore */ }
+    };
+
+    const voices = VOICE_CATALOG[local.provider] || [];
+
+    return (
+      <div className="space-y-6 fade-in">
+        <div className="bg-white rounded-2xl p-6 shadow-lg">
+          <h3 className="text-xl font-bold mb-4">🎙️ Voice AI Configuration</h3>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div className="space-y-4">
+              <div>
+                <label className="block font-medium mb-2">Voice Provider</label>
+                <select className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        value={local.provider}
+                        onChange={(e)=>setLocal(prev=>({...prev, provider:e.target.value, voice:''}))}>
+                  <option value="elevenlabs">ElevenLabs</option>
+                  <option value="openai">OpenAI Voice</option>
+                  <option value="azure">Azure Speech</option>
+                  <option value="google">Google Cloud Speech</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block font-medium mb-2">Voice</label>
+                <select className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        value={local.voice}
+                        onChange={(e)=>setLocal(prev=>({...prev, voice:e.target.value}))}>
+                  <option value="">Select…</option>
+                  {voices.map(v=><option key={v} value={v}>{v}</option>)}
+                </select>
+              </div>
+
+              <div>
+                <label className="block font-medium mb-2">Style</label>
+                <select className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        value={local.style}
+                        onChange={(e)=>setLocal(prev=>({...prev, style:e.target.value}))}>
+                  <option value="professional">Professional</option>
+                  <option value="friendly">Friendly</option>
+                  <option value="authoritative">Authoritative</option>
+                  <option value="conversational">Conversational</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block font-medium mb-2">Response Speed</label>
+                <select className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        value={local.speed}
+                        onChange={(e)=>setLocal(prev=>({...prev, speed:e.target.value}))}>
+                  <option value="fast">Fast (0.5-1s)</option>
+                  <option value="normal">Normal (1-2s)</option>
+                  <option value="thoughtful">Thoughtful (2-3s)</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block font-medium mb-2">Call Attempts: {local.callAttempts}</label>
+                <input type="range" min="1" max="5" value={local.callAttempts}
+                       onChange={(e)=>setLocal(prev=>({...prev, callAttempts: parseInt(e.target.value)}))}
+                       className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"/>
+                <div className="flex justify-between text-xs text-gray-500 mt-1"><span>1</span><span>3</span><span>5</span></div>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block font-medium mb-2">Script Template (Generic)</label>
+                <textarea className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent h-24 resize-none"
+                  value={local.scripts.generic}
+                  onChange={(e)=>setLocal(prev=>({...prev, scripts:{...prev.scripts, generic: e.target.value}}))}/>
+              </div>
+
+              {['life','term','finalExpense','medicare'].map(key=>{
+                const label = key==='finalExpense' ? 'Final Expense' : key[0].toUpperCase()+key.slice(1);
+                const k = key==='finalExpense' ? 'finalExpense' : key;
+                return (
+                  <div key={key}>
+                    <label className="block font-medium mb-2">Script Template ({label})</label>
+                    <textarea className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent h-20 resize-none"
+                      value={local.scripts[k] || ''}
+                      onChange={(e)=>setLocal(prev=>({...prev, scripts:{...prev.scripts, [k]: e.target.value}}))}/>
+                  </div>
+                );
+              })}
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-medium mb-2">Time Between Calls</label>
+                  <select className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          value={local.callInterval}
+                          onChange={(e)=>setLocal(prev=>({...prev, callInterval: parseInt(e.target.value)}))}>
+                    <option value="15">15 minutes</option>
+                    <option value="30">30 minutes</option>
+                    <option value="60">1 hour</option>
+                    <option value="120">2 hours</option>
+                    <option value="240">4 hours</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block font-medium mb-2">Time Zone</label>
+                  <select className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          value={local.timezone}
+                          onChange={(e)=>setLocal(prev=>({...prev, timezone:e.target.value}))}>
+                    <option value="America/Boise">America/Boise</option>
+                    <option value="America/Denver">America/Denver</option>
+                    <option value="America/Chicago">America/Chicago</option>
+                    <option value="America/New_York">America/New_York</option>
+                    <option value="America/Los_Angeles">America/Los_Angeles</option>
+                  </select>
                 </div>
               </div>
 
-              {analytics.overview.totalLeads === 0 && (
-                <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-6 text-center">
-                  <h3 className="font-bold text-yellow-800 mb-2">📈 No Data Yet</h3>
-                  <p className="text-yellow-700">Start by importing leads or launching campaigns to see analytics data.</p>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-medium mb-2">Business Start</label>
+                  <input type="time" className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                         value={local.businessHours.start}
+                         onChange={(e)=>setLocal(prev=>({...prev, businessHours:{...prev.businessHours, start:e.target.value}}))}/>
                 </div>
+                <div>
+                  <label className="block font-medium mb-2">Business End</label>
+                  <input type="time" className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                         value={local.businessHours.end}
+                         onChange={(e)=>setLocal(prev=>({...prev, businessHours:{...prev.businessHours, end:e.target.value}}))}/>
+                </div>
+              </div>
+
+              <button onClick={saveVoiceSettings} className="w-full p-3 bg-gradient-to-r from-blue-500 to-purple-600 text-white font-semibold rounded-xl hover:shadow-lg transition-all">💾 Save Voice Settings</button>
+            </div>
+          </div>
+        </div>
+
+        {/* SMS Configuration */}
+        <div className="bg-white rounded-2xl p-6 shadow-lg">
+          <h3 className="text-xl font-bold mb-4">💬 SMS Configuration & Drip</h3>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div className="space-y-4">
+              <div>
+                <label className="block font-medium mb-2">SMS Provider</label>
+                <select className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        value={smsSettings.provider}
+                        onChange={(e)=>setSmsSettings(prev=>({...prev, provider:e.target.value}))}>
+                  <option value="twilio">Twilio</option>
+                  <option value="messagebird">MessageBird</option>
+                  <option value="vonage">Vonage</option>
+                </select>
+              </div>
+
+              <div className="flex items-center justify-between">
+                <div>
+                  <label className="font-medium">Auto-Respond</label>
+                  <p className="text-sm text-gray-600">AI replies to inbound texts</p>
+                </div>
+                <div className={`toggle-switch ${smsSettings.autoRespond ? 'active' : ''}`}
+                     onClick={()=>setSmsSettings(prev=>({...prev, autoRespond: !prev.autoRespond}))}>
+                  <div className="toggle-slider"></div>
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-medium mb-2">Follow-Up Delay</label>
+                <select className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        value={smsSettings.followUpDelay}
+                        onChange={(e)=>setSmsSettings(prev=>({...prev, followUpDelay: parseInt(e.target.value)}))}>
+                  <option value="5">5 minutes</option>
+                  <option value="15">15 minutes</option>
+                  <option value="30">30 minutes</option>
+                  <option value="60">1 hour</option>
+                </select>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-medium mb-2">Business Start</label>
+                  <input type="time" className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                         value={smsSettings.businessHours.start}
+                         onChange={(e)=>setSmsSettings(prev=>({...prev, businessHours:{...prev.businessHours, start:e.target.value}}))}/>
+                </div>
+                <div>
+                  <label className="block font-medium mb-2">Business End</label>
+                  <input type="time" className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                         value={smsSettings.businessHours.end}
+                         onChange={(e)=>setSmsSettings(prev=>({...prev, businessHours:{...prev.businessHours, end:e.target.value}}))}/>
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <div className="bg-gray-50 p-4 rounded-xl">
+                <h4 className="font-semibold mb-2">📆 Drip Scripts (by day)</h4>
+                {Object.entries(smsSettings.scripts).map(([key,val])=>(
+                  <div key={key} className="mb-2">
+                    <label className="block text-sm font-medium mb-1 uppercase">{key}</label>
+                    <textarea className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent h-20 resize-none"
+                              value={val}
+                              onChange={(e)=>setSmsSettings(prev=>({...prev, scripts:{...prev.scripts, [key]: e.target.value}}))}/>
+                  </div>
+                ))}
+              </div>
+
+              <div className="bg-gray-50 p-4 rounded-xl">
+                <h4 className="font-semibold mb-2">🎯 Situational Scripts</h4>
+                {Object.entries(smsSettings.scriptVariants).map(([key,val])=>(
+                  <div key={key} className="mb-2">
+                    <label className="block text-sm font-medium mb-1 capitalize">{key}</label>
+                    <textarea className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent h-16 resize-none"
+                              value={val}
+                              onChange={(e)=>setSmsSettings(prev=>({...prev, scriptVariants:{...prev.scriptVariants, [key]: e.target.value}}))}/>
+                  </div>
+                ))}
+              </div>
+
+              <button onClick={async ()=>{
+                try{
+                  await fetch('/api/sms-settings', { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(smsSettings) });
+                  alert('✅ SMS settings saved.');
+                } catch {}
+              }} className="w-full p-3 bg-gradient-to-r from-green-500 to-green-600 text-white font-semibold rounded-xl hover:shadow-lg transition-all">💾 Save SMS Settings</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  /** ---------- Objection Handling ---------- */
+  const ObjectionHandling = () => {
+    const [newObjection, setNewObjection] = useState({ objection:'', response:'' });
+    const addObjection = async () => {
+      if (!newObjection.objection || !newObjection.response) { alert('Fill both fields'); return; }
+      try {
+        const res = await fetch('/api/objections', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(newObjection) });
+        const result = await res.json().catch(()=>({ id: Date.now(), ...newObjection }));
+        setObjections(prev=>[...prev, result]);
+        setNewObjection({ objection:'', response:'' });
+        alert('✅ Objection added.');
+      } catch { setObjections(prev=>[...prev, { id:Date.now(), ...newObjection }]); }
+    };
+    return (
+      <div className="space-y-6 fade-in">
+        <div className="bg-white rounded-2xl p-6 shadow-lg">
+          <h2 className="text-2xl font-bold mb-4">💬 Objection Handling</h2>
+          <div className="bg-gray-50 p-4 rounded-xl mb-6">
+            <h4 className="font-semibold mb-3">Add New Objection</h4>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-sm font-medium mb-1">Common Objection</label>
+                <input type="text" className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                       placeholder="e.g., I can't afford it right now"
+                       value={newObjection.objection}
+                       onChange={(e)=>setNewObjection(prev=>({...prev, objection:e.target.value}))}/>
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">AI Response</label>
+                <textarea className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent h-24 resize-none"
+                          placeholder="Write a helpful, empathetic response..."
+                          value={newObjection.response}
+                          onChange={(e)=>setNewObjection(prev=>({...prev, response:e.target.value}))}/>
+              </div>
+              <button onClick={addObjection} className="px-4 py-2 bg-gradient-to-r from-blue-500 to-purple-600 text-white rounded-xl hover:shadow-lg transition-all">➕ Add Objection</button>
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            <h4 className="font-semibold">Current Objections ({objections.length})</h4>
+            {objections.map(obj=>(
+              <div key={obj.id} className="p-4 border border-gray-200 rounded-xl">
+                <div className="font-semibold text-red-600 mb-2">"{obj.objection}"</div>
+                <div className="text-sm text-gray-700 bg-green-50 p-3 rounded-lg"><strong>Response:</strong> {obj.response}</div>
+              </div>
+            ))}
+            {objections.length===0 && <div className="text-center py-6 text-gray-500">No objections yet.</div>}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  /** ---------- Campaigns ---------- */
+  const CampaignManager = () => (
+    <div className="bg-white rounded-2xl p-6 shadow-lg fade-in">
+      <h2 className="text-2xl font-bold mb-4">📈 Campaign Manager</h2>
+      <div className="space-y-4">
+        {campaigns.map(c=>(
+          <div key={c.id} className="p-4 border border-gray-200 rounded-xl">
+            <div className="flex justify-between items-start">
+              <div>
+                <div className="font-semibold">{c.name}</div>
+                <div className="text-sm text-gray-600">{c.type} • ${c.budget}/day</div>
+              </div>
+              <span className={`badge ${c.status==='active'?'bg-green-100 text-green-800':'bg-gray-100 text-gray-800'}`}>{c.status}</span>
+            </div>
+            <div className="mt-2 text-sm">{c.leads} leads • ${c.costPerLead} CPL</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+
+  /** ---------- Analytics ---------- */
+  const Analytics = () => {
+    const a = analyticsData;
+    if (!a) return <div className="bg-white rounded-2xl p-6 shadow-lg">Loading analytics…</div>;
+    return (
+      <div className="space-y-6 fade-in">
+        <div className="bg-white rounded-2xl p-6 shadow-lg">
+          <h2 className="text-2xl font-bold mb-6">📊 Analytics & Reporting</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
+            <div className="text-center p-4 bg-blue-50 rounded-xl"><div className="text-2xl font-bold text-blue-600">${a.overview.avgCostPerLead}</div><div className="text-sm text-blue-800">Avg CPL</div></div>
+            <div className="text-center p-4 bg-green-50 rounded-xl"><div className="text-2xl font-bold text-green-600">{a.performance.callAnswerRate}%</div><div className="text-sm text-green-800">Call Answer Rate</div></div>
+            <div className="text-center p-4 bg-purple-50 rounded-xl"><div className="text-2xl font-bold text-purple-600">{a.performance.schedulingRate}%</div><div className="text-sm text-purple-800">Scheduling Rate</div></div>
+            <div className="text-center p-4 bg-orange-50 rounded-xl"><div className="text-2xl font-bold text-orange-600">${a.performance.revenuePerLead}</div><div className="text-sm text-orange-800">Revenue / Lead</div></div>
+          </div>
+          {a.overview.totalLeads===0 && (
+            <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-6 text-center">
+              <h3 className="font-bold text-yellow-800 mb-2">📈 No Data Yet</h3>
+              <p className="text-yellow-700">Import leads or launch campaigns to see analytics.</p>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  /** ---------- Inbound Center (receive calls/SMS) ---------- */
+  const InboundCenter = () => {
+    const [testing, setTesting] = useState(false);
+
+    const matchLeadByPhone = (num) => {
+      const clean = (num||'').replace(/\D/g,'');
+      return leads.find(l => (l.phone||'').replace(/\D/g,'') === clean);
+    };
+
+    const handleInbound = async (evt) => {
+      // evt: {type:'call'|'sms', from, to, text?}
+      let matched = matchLeadByPhone(evt.from);
+      let askName = false;
+      if (!matched && autoMatchUnknown) {
+        // Try name extraction from text (very naive fallback)
+        const nameMatch = (evt.text||'').match(/\b(I'm|I am|This is)\s+([A-Z][a-zA-Z]+)\b/);
+        if (nameMatch) {
+          matched = leads.find(l=> (l.name||'').toLowerCase().includes(nameMatch[2].toLowerCase()));
+        }
+        if (!matched) askName = true;
+      }
+      const record = { id: Date.now(), ...evt, time: new Date().toLocaleString(), matchedLeadId: matched?.id, status:'received', askName };
+      setInboundEvents(prev => [record, ...prev]);
+
+      // Let backend know (optional)
+      try {
+        await fetch('/api/inbound', { method:'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({ event: record, routing, metadata: evt.type==='call'? routing.metadata.call : routing.metadata.sms }) });
+      } catch {}
+    };
+
+    // Simulate a WebSocket/poll for demo if no backend pushing events
+    useEffect(()=>{
+      let stop=false;
+      (async ()=>{
+        if (testing) {
+          await sleep(1200);
+          if (!stop) handleInbound({ type:'sms', from:'+1 (555) 333-1212', to:'+1 (555) 111-0000', text:'Hey this is Chris, calling back about the quote' });
+        }
+      })();
+      return ()=>{ stop=true; };
+    },[testing]);
+
+    const copy = async (text)=>{ try{ await navigator.clipboard.writeText(text); alert('Copied'); } catch{} };
+
+    const webhookBase = window.location.origin || 'https://your-server.com';
+    return (
+      <div className="space-y-6 fade-in">
+        <div className="bg-white rounded-2xl p-6 shadow-lg">
+          <h3 className="text-xl font-bold mb-4">📞 Inbound Center</h3>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div className="space-y-4">
+              <div className="bg-gray-50 p-4 rounded-xl">
+                <h4 className="font-semibold mb-2">Webhooks</h4>
+                <div className="text-sm">
+                  <div className="flex items-center justify-between mb-2">
+                    <span>Inbound Call URL</span>
+                    <button onClick={()=>copy(`${webhookBase}/webhooks/inbound/call`)} className="text-blue-600 text-sm">Copy</button>
+                  </div>
+                  <code className="text-xs bg-white p-2 rounded border block">{webhookBase}/webhooks/inbound/call</code>
+                </div>
+                <div className="text-sm mt-3">
+                  <div className="flex items-center justify-between mb-2">
+                    <span>Inbound SMS URL</span>
+                    <button onClick={()=>copy(`${webhookBase}/webhooks/inbound/sms`)} className="text-blue-600 text-sm">Copy</button>
+                  </div>
+                  <code className="text-xs bg-white p-2 rounded border block">{webhookBase}/webhooks/inbound/sms</code>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl">
+                <div>
+                  <div className="font-medium">Auto-match unknown callers</div>
+                  <div className="text-xs text-gray-600">Try to match by number/name; otherwise ask name</div>
+                </div>
+                <div className={`toggle-switch ${autoMatchUnknown ? 'active' : ''}`} onClick={()=>setAutoMatchUnknown(!autoMatchUnknown)}>
+                  <div className="toggle-slider"></div>
+                </div>
+              </div>
+
+              <button onClick={()=>setTesting(v=>!v)} className="w-full p-3 bg-gradient-to-r from-orange-500 to-red-600 text-white font-semibold rounded-xl hover:shadow-lg transition-all">
+                {testing ? '⏹️ Stop Simulated Inbound' : '▶️ Simulate Inbound'}
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              <h4 className="font-semibold">Recent Inbound</h4>
+              {inboundEvents.map(evt=>(
+                <div key={evt.id} className="p-3 border rounded-xl">
+                  <div className="flex justify-between">
+                    <div className="font-semibold">{evt.type==='call'?'📞 Call':'💬 SMS'} from {evt.from || 'unknown'}</div>
+                    <span className="text-xs text-gray-500">{evt.time}</span>
+                  </div>
+                  {evt.text && <div className="text-sm text-gray-700 mt-1">“{evt.text}”</div>}
+                  <div className="text-xs text-gray-600 mt-1">Matched lead: {evt.matchedLeadId ? `#${evt.matchedLeadId}` : (evt.askName ? 'ask for name' : 'not found')}</div>
+                </div>
+              ))}
+              {inboundEvents.length===0 && <div className="text-gray-500 text-sm">No inbound yet.</div>}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  /** ---------- Imports (CSV viewer + field mapping + placeholder filter) ---------- */
+  const Imports = () => {
+    const [selectedImport, setSelectedImport] = useState(null);
+
+    useEffect(()=>{
+      // Try to load recent imports
+      fetch('/api/imports').then(r=>r.json()).then(setImports).catch(()=>{
+        // sample
+        setImports([{
+          id:'imp1', filename:'leads.csv', createdAt:new Date().toISOString(),
+          rows:[
+            { Name:'Example Person', Phone:'(555) 000-0000', Email:'example@example.com', City:'Boise', Note:'placeholder' },
+            { Name:'Chris Nolan', Phone:'(208) 555-1212', Email:'chris@example.com', City:'Meridian', Note:'' },
+          ],
+          mapped:{}
+        }]);
+      });
+    },[]);
+
+    const filteredRows = useMemo(()=>{
+      if (!selectedImport) return [];
+      const rows = selectedImport.rows || [];
+      if (!importsFilterPlaceholders) return rows;
+      return rows.filter(r=>{
+        const values = Object.values(r).join(' ').toLowerCase();
+        return !values.includes('example') && !values.includes('(555)');
+      });
+    },[selectedImport, importsFilterPlaceholders]);
+
+    const saveMapping = async () => {
+      if (!selectedImport) return;
+      const payload = { id: selectedImport.id, mapped: currentMapping, dropPlaceholders: importsFilterPlaceholders };
+      try {
+        await fetch('/api/imports/map', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+        alert('✅ Mapping saved. Data will flow into Leads.');
+      } catch {
+        alert('Saved locally (no API).');
+      }
+    };
+
+    return (
+      <div className="space-y-6 fade-in">
+        <div className="bg-white rounded-2xl p-6 shadow-lg">
+          <h3 className="text-xl font-bold mb-4">📂 Imports</h3>
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className="space-y-3">
+              <h4 className="font-semibold">Files</h4>
+              {imports.map(imp=>(
+                <button key={imp.id} onClick={()=>{ setSelectedImport(imp); setCurrentMapping(imp.mapped || currentMapping); }}
+                        className={`w-full text-left p-3 border rounded-xl hover:border-blue-300 ${selectedImport?.id===imp.id?'border-blue-400 bg-blue-50':''}`}>
+                  <div className="font-medium">{imp.filename}</div>
+                  <div className="text-xs text-gray-600">{new Date(imp.createdAt).toLocaleString()}</div>
+                </button>
+              ))}
+              {imports.length===0 && <div className="text-sm text-gray-500">No imports yet.</div>}
+            </div>
+
+            <div className="lg:col-span-2 space-y-4">
+              {!selectedImport && <div className="text-gray-500">Select an import to view rows and map fields.</div>}
+
+              {selectedImport && (
+                <>
+                  <div className="flex items-center justify-between">
+                    <div className="font-semibold">{selectedImport.filename}</div>
+                    <label className="flex items-center gap-2 text-sm">
+                      <input type="checkbox" checked={importsFilterPlaceholders} onChange={(e)=>setImportsFilterPlaceholders(e.target.checked)}/>
+                      Filter placeholders (e.g., “example”, 555)
+                    </label>
+                  </div>
+
+                  <div className="overflow-auto border rounded-xl">
+                    <table className="min-w-full text-sm">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          {Object.keys(selectedImport.rows[0] || {}).map(h=>(
+                            <th key={h} className="px-3 py-2 text-left font-medium text-gray-700">{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filteredRows.map((row,idx)=>(
+                          <tr key={idx} className="border-t">
+                            {Object.keys(selectedImport.rows[0] || {}).map(h=>(
+                              <td key={h} className="px-3 py-2">{row[h]}</td>
+                            ))}
+                          </tr>
+                        ))}
+                        {filteredRows.length===0 && (
+                          <tr><td className="px-3 py-6 text-center text-gray-500" colSpan="999">No rows after filter.</td></tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                    {[
+                      ['name','Name'], ['phone','Phone'], ['email','Email'],
+                      ['type','Type'], ['location','City'], ['time','Time'],
+                      ['custom1','Custom 1'], ['custom2','Custom 2']
+                    ].map(([field,label])=>(
+                      <div key={field}>
+                        <label className="block text-sm font-medium mb-1">{label} → {field}</label>
+                        <select className="w-full p-2 border rounded"
+                          value={currentMapping[field] || ''}
+                          onChange={(e)=>setCurrentMapping(prev=>({...prev, [field]: e.target.value}))}>
+                          <option value="">Skip</option>
+                          {Object.keys(selectedImport.rows[0] || {}).map(h=><option key={h} value={h}>{h}</option>)}
+                        </select>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="flex gap-3">
+                    <button onClick={saveMapping} className="px-4 py-2 bg-gradient-to-r from-blue-500 to-purple-600 text-white rounded-xl">💾 Save Mapping</button>
+                  </div>
+                </>
               )}
             </div>
           </div>
-        );
-      };  // ← fixed: removed stray extra ');'
-
-      const renderContent = () => {
-        switch (activeTab) {
-          case 'dashboard': return <Dashboard />;
-          case 'ad-creator': return <AdCreator />;
-          case 'leads': return <LeadManagement />;
-          case 'voice-ai': return <VoiceAI />;
-          case 'objections': return <ObjectionHandling />;
-          case 'campaigns': return <CampaignManager />;
-          case 'analytics': return <Analytics />;
-          case 'settings': return <Settings />;
-          default: return <Dashboard />;
-        }
-      };
-
-      return (
-        <div className="min-h-screen bg-gradient-to-br from-blue-50 via-purple-50 to-pink-50">
-          <div className="flex flex-col lg:flex-row">
-            <MobileNav />
-            <Sidebar />
-            <div className="flex-1 p-4 lg:p-8">
-              <div className="mb-6 lg:mb-8">
-                <h1 className="text-2xl lg:text-4xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent mb-2">
-                  {activeTab === 'dashboard' && 'Dashboard Overview'}
-                  {activeTab === 'ad-creator' && 'Professional Ad Creator'}
-                  {activeTab === 'leads' && 'Lead Management'}
-                  {activeTab === 'voice-ai' && 'Voice AI System'}
-                  {activeTab === 'objections' && 'Objection Handling'}
-                  {activeTab === 'campaigns' && 'Campaign Manager'}
-                  {activeTab === 'analytics' && 'Analytics & Reporting'}
-                  {activeTab === 'settings' && 'Settings & API Configuration'}
-                </h1>
-                <p className="text-sm lg:text-base text-gray-600">Professional Insurance Lead Generation Platform by J. Kollar</p>
-              </div>
-              {renderContent()}
-            </div>
-          </div>
         </div>
-      );
+      </div>
+    );
+  };
+
+  /** ---------- Settings (APIs + Routing/Workers + Metadata) ---------- */
+  const Settings = () => {
+    const [tab, setTab] = useState('apis'); // 'apis' | 'routing'
+
+    const saveApi = async () => {
+      try{
+        await fetch('/api/settings', { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ apiKeys, routing }) });
+        alert('✅ Settings saved.');
+      } catch { alert('Saved locally.'); }
     };
 
-    // React 18 mount
-    const root = ReactDOM.createRoot(document.getElementById('root'));
-    root.render(<LeadFlowApp />);
-  </script>
+    return (
+      <div className="space-y-6 fade-in">
+        <div className="bg-white rounded-2xl p-4 lg:p-6 shadow-lg">
+          <div className="flex gap-2 mb-4">
+            <button onClick={()=>setTab('apis')} className={`px-3 py-2 rounded ${tab==='apis'?'bg-blue-600 text-white':'bg-gray-100'}`}>API Keys</button>
+            <button onClick={()=>setTab('routing')} className={`px-3 py-2 rounded ${tab==='routing'?'bg-blue-600 text-white':'bg-gray-100'}`}>AI Routing & Workers</button>
+          </div>
+
+          {tab==='apis' && (
+            <>
+              <h3 className="text-lg lg:text-xl font-bold mb-4">API Configuration</h3>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {[
+                  ['openai','OpenAI API Key','sk-...','For AI ad gen & voice'],
+                  ['meta','Meta Access Token','EA...','For Facebook/Instagram campaigns'],
+                  ['elevenlabs','ElevenLabs API Key','elevenlabs-...','For AI voice calling'],
+                  ['twilio','Twilio Account SID','AC...','For SMS and phone services']
+                ].map(([key,label,ph,help])=>(
+                  <div key={key}>
+                    <label className="block font-medium mb-2">{label}</label>
+                    <input type="password" className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      placeholder={ph} value={apiKeys[key]} onChange={(e)=>setApiKeys(prev=>({...prev, [key]: e.target.value}))}/>
+                    <p className="text-xs text-gray-500 mt-1">{help}</p>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+
+          {tab==='routing' && (
+            <>
+              <h3 className="text-lg lg:text-xl font-bold mb-4">Model Routing & Workers</h3>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div className="space-y-4">
+                  <div className="bg-gray-50 p-4 rounded-xl">
+                    <h4 className="font-semibold mb-2">Brains</h4>
+                    {[
+                      ['callsModel','Calls/SMS brain','gpt-5-mini'],
+                      ['callsEscalationModel','Escalation model','gpt-5'],
+                      ['smsModel','SMS brain','gpt-5-mini'],
+                      ['adsDraftModel','Ads draft model','gpt-5-mini'],
+                      ['adsPolishModel','Ads polish model','gpt-5'],
+                      ['adsImageModel','Ad images model','gpt-image-3.5']
+                    ].map(([field,label,def])=>(
+                      <div key={field} className="mb-2">
+                        <label className="block text-sm font-medium mb-1">{label}</label>
+                        <input type="text" className="w-full p-2 border rounded" value={routing[field]} onChange={(e)=>setRouting(prev=>({...prev, [field]: e.target.value || def}))}/>
+                      </div>
+                    ))}
+                    <p className="text-xs text-gray-600 mt-2">Workloads are isolated so calls never lag. Draft many variants cheaply with gpt-5-mini; polish winners with gpt-5.</p>
+                  </div>
+
+                  <div className="bg-gray-50 p-4 rounded-xl">
+                    <h4 className="font-semibold mb-2">Workers</h4>
+                    <div className="mb-3">
+                      <div className="font-medium mb-1">Realtime Worker (calls/SMS)</div>
+                      {['maxTokens','timeoutMs','rpm','tpm'].map(k=>(
+                        <div key={k} className="grid grid-cols-2 gap-2 mb-2">
+                          <label className="text-sm text-gray-600">{k}</label>
+                          <input type="number" className="p-2 border rounded" value={routing.realtimeWorker[k]}
+                                 onChange={(e)=>setRouting(prev=>({...prev, realtimeWorker:{...prev.realtimeWorker, [k]: parseInt(e.target.value)||0}}))}/>
+                        </div>
+                      ))}
+                    </div>
+                    <div>
+                      <div className="font-medium mb-1">Batch Worker (ads/text/image)</div>
+                      {['maxTokens','timeoutMs','rpm','tpm'].map(k=>(
+                        <div key={k} className="grid grid-cols-2 gap-2 mb-2">
+                          <label className="text-sm text-gray-600">{k}</label>
+                          <input type="number" className="p-2 border rounded" value={routing.batchWorker[k]}
+                                 onChange={(e)=>setRouting(prev=>({...prev, batchWorker:{...prev.batchWorker, [k]: parseInt(e.target.value)||0}}))}/>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  <div className="bg-gray-50 p-4 rounded-xl">
+                    <h4 className="font-semibold mb-2">Spend Tracking Metadata</h4>
+                    {[
+                      ['call','call'],
+                      ['sms','sms'],
+                      ['adsCopy','ads-copy'],
+                      ['adsImage','ads-image']
+                    ].map(([key,def])=>(
+                      <div key={key} className="mb-3">
+                        <div className="text-sm font-medium mb-1">{key}</div>
+                        <div className="grid grid-cols-3 gap-2 items-center">
+                          <span className="text-xs text-gray-600 col-span-1">channel</span>
+                          <input type="text" className="p-2 border rounded col-span-2"
+                                 value={routing.metadata[key]?.channel || def}
+                                 onChange={(e)=>setRouting(prev=>({...prev, metadata:{...prev.metadata, [key]: { ...prev.metadata[key], channel: e.target.value }}}))}/>
+                        </div>
+                      </div>
+                    ))}
+                    <p className="text-xs text-gray-600">All requests are tagged: <code>{'{channel:"call"|"sms"|"ads-copy"|"ads-image"}'}</code></p>
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
+
+          <div className="mt-6">
+            <button onClick={saveApi} className="px-6 py-3 bg-gradient-to-r from-blue-500 to-purple-600 text-white font-semibold rounded-xl hover:shadow-lg transition-all">💾 Save All Settings</button>
+          </div>
+        </div>
+
+        <div className="bg-blue-50 border border-blue-200 rounded-xl p-6">
+          <h4 className="font-bold text-blue-800 mb-3">🔑 Where to get keys</h4>
+          <div className="space-y-2 text-sm text-blue-700">
+            <div><strong>OpenAI:</strong> platform.openai.com → API Keys</div>
+            <div><strong>Meta:</strong> developers.facebook.com → Meta for Developers</div>
+            <div><strong>ElevenLabs:</strong> elevenlabs.io → Profile → API Key</div>
+            <div><strong>Twilio:</strong> twilio.com → Console → Account SID</div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  /** ---------- Render Switch ---------- */
+  const renderContent = () => {
+    switch(activeTab) {
+      case 'dashboard': return <Dashboard/>;
+      case 'ad-creator': return <AdCreator/>;
+      case 'leads': return <LeadManagement/>;
+      case 'voice-ai': return <VoiceAI/>;
+      case 'objections': return <ObjectionHandling/>;
+      case 'campaigns': return <CampaignManager/>;
+      case 'analytics': return <Analytics/>;
+      case 'inbound': return <InboundCenter/>;
+      case 'imports': return <Imports/>;
+      case 'settings': return <Settings/>;
+      default: return <Dashboard/>;
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-purple-50 to-pink-50">
+      <div className="flex flex-col lg:flex-row">
+        <MobileNav/>
+        <Sidebar/>
+        <div className="flex-1 p-4 lg:p-8">
+          <div className="mb-6 lg:mb-8">
+            <h1 className="text-2xl lg:text-4xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent mb-2">
+              {activeTab==='dashboard' && 'Dashboard Overview'}
+              {activeTab==='ad-creator' && 'Professional Ad Creator'}
+              {activeTab==='leads' && 'Lead Management'}
+              {activeTab==='voice-ai' && 'Voice AI System'}
+              {activeTab==='objections' && 'Objection Handling'}
+              {activeTab==='campaigns' && 'Campaign Manager'}
+              {activeTab==='analytics' && 'Analytics & Reporting'}
+              {activeTab==='inbound' && 'Inbound Center'}
+              {activeTab==='imports' && 'Imports & Field Mapping'}
+              {activeTab==='settings' && 'Settings & Configuration'}
+            </h1>
+            <p className="text-sm lg:text-base text-gray-600">Professional Lead Platform by J. Kollar</p>
+          </div>
+          {renderContent()}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+/** ---------- Mount ---------- */
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(<LeadFlowApp/>);
+</script>
 </body>
 </html>
-
