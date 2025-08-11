@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>LeadFlow Pro - Complete Insurance Lead Generation Platform</title>
+  <title>LeadFlow Pro — Multi-Tenant</title>
   <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -11,156 +11,366 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   <style>
     body { font-family: 'Inter', sans-serif; }
-    .fade-in { animation: fadeIn 0.5s ease-in; }
-    @keyframes fadeIn { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
-    .toggle-switch { position: relative; width: 48px; height: 24px; background: #ccc; border-radius: 12px; cursor: pointer; transition: background 0.3s ease; }
+    .fade-in { animation: fadeIn .4s ease-in; }
+    @keyframes fadeIn { from { opacity:0; transform: translateY(6px);} to { opacity:1; transform: translateY(0);} }
+    .toggle-switch { position: relative; width: 48px; height: 24px; background: #ccc; border-radius: 12px; cursor: pointer; transition: background .2s; }
     .toggle-switch.active { background: #667eea; }
-    .toggle-slider { position: absolute; top: 2px; left: 2px; width: 20px; height: 20px; background: white; border-radius: 50%; transition: transform 0.3s ease; }
+    .toggle-slider { position:absolute; top:2px; left:2px; width:20px; height:20px; background:#fff; border-radius:50%; transition: transform .2s; }
     .toggle-switch.active .toggle-slider { transform: translateX(24px); }
     .badge { padding: 2px 8px; border-radius: 999px; font-size: 12px; }
+    .card { background: white; border-radius: 16px; box-shadow: 0 10px 20px rgba(0,0,0,.06); }
+    code.inline { background:#f9fafb; padding:2px 6px; border-radius:6px; border:1px solid #e5e7eb; }
   </style>
 </head>
 <body>
 <div id="root"></div>
 
 <script type="text/babel">
+/* =========================
+   UTIL + PERSISTENCE (no backend required)
+   ========================= */
 const { useState, useEffect, useMemo } = React;
 
-/** ---------- Helpers ---------- */
-const fmt = (n) => new Intl.NumberFormat().format(n ?? 0);
-const sleep = (ms)=> new Promise(r=>setTimeout(r, ms));
+const STORAGE_USERS = 'lfp:users';
+const STORAGE_SESSION = 'lfp:session';
+const WORKSPACE_PREFIX = 'lfp:workspace:'; // + email
 
-/** ---------- App ---------- */
-const LeadFlowApp = () => {
-  const [activeTab, setActiveTab] = useState('dashboard'); // 'dashboard'|'ad-creator'|'leads'|'voice-ai'|'objections'|'campaigns'|'analytics'|'settings'|'inbound'|'imports'
-  const [showMobileMenu, setShowMobileMenu] = useState(false);
+const ADMIN_EMAIL = 'Joshua.kollar@me.com';
+const ADMIN_PLAIN = 'Allglorytogod12!';
 
-  // Core data
-  const [leads, setLeads] = useState([]);
-  const [campaigns, setCampaigns] = useState([]);
-  const [objections, setObjections] = useState([]);
-  const [analyticsData, setAnalyticsData] = useState(null);
+async function sha256(text){
+  try{
+    const enc = new TextEncoder();
+    const buf = await crypto.subtle.digest('SHA-256', enc.encode(text));
+    return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
+  } catch {
+    // fallback (non-crypto; only for demo)
+    return btoa(unescape(encodeURIComponent(text)));
+  }
+}
+function emailEq(a,b){ return (a||'').trim().toLowerCase() === (b||'').trim().toLowerCase(); }
+function fmt(n){ return new Intl.NumberFormat().format(n ?? 0); }
 
-  // Settings
-  const [apiKeys, setApiKeys] = useState({ openai:'', meta:'', elevenlabs:'', twilio:'' });
-  const [routing, setRouting] = useState({
-    // model routing
-    callsModel: 'gpt-5-mini',
-    callsEscalationModel: 'gpt-5',
-    smsModel: 'gpt-5-mini',
-    adsDraftModel: 'gpt-5-mini',
-    adsPolishModel: 'gpt-5',
-    adsImageModel: 'gpt-image-3.5',
-    // workers
-    realtimeWorker: { maxTokens: 2000, timeoutMs: 8000, rpm: 120, tpm: 120000 },
-    batchWorker: { maxTokens: 6000, timeoutMs: 30000, rpm: 60, tpm: 300000 },
-    // spend metadata tags
-    metadata: {
-      call: { channel: 'call' },
-      sms: { channel: 'sms' },
-      adsCopy: { channel: 'ads-copy' },
-      adsImage: { channel: 'ads-image' },
+function loadUsers(){ try { return JSON.parse(localStorage.getItem(STORAGE_USERS)) || []; } catch { return []; } }
+function saveUsers(users){ localStorage.setItem(STORAGE_USERS, JSON.stringify(users)); }
+
+function loadSession(){ try { return JSON.parse(localStorage.getItem(STORAGE_SESSION)); } catch { return null; } }
+function saveSession(sess){ localStorage.setItem(STORAGE_SESSION, JSON.stringify(sess)); }
+function clearSession(){ localStorage.removeItem(STORAGE_SESSION); }
+
+function wsKey(email){ return WORKSPACE_PREFIX + (email||'').trim().toLowerCase(); }
+function loadWorkspace(email){ try{ return JSON.parse(localStorage.getItem(wsKey(email))) || null; } catch { return null; } }
+function saveWorkspace(email, data){ localStorage.setItem(wsKey(email), JSON.stringify(data)); }
+
+async function ensureAdmin(){
+  let users = loadUsers();
+  const hasAdmin = users.some(u => emailEq(u.email, ADMIN_EMAIL));
+  if (!hasAdmin){
+    const hash = await sha256(ADMIN_PLAIN);
+    users.push({ email: ADMIN_EMAIL, passHash: hash, isAdmin: true, locked: false, createdAt: new Date().toISOString() });
+    saveUsers(users);
+    if (!loadWorkspace(ADMIN_EMAIL)){ saveWorkspace(ADMIN_EMAIL, seedWorkspace()); }
+  }
+}
+
+function seedWorkspace(){
+  return {
+    apiKeys: { openai:'', meta:'', elevenlabs:'', twilio:'' },
+    routing: {
+      callsModel: 'gpt-5-mini',
+      callsEscalationModel: 'gpt-5',
+      smsModel: 'gpt-5-mini',
+      adsDraftModel: 'gpt-5-mini',
+      adsPolishModel: 'gpt-5',
+      adsImageModel: 'gpt-image-3.5',
+      realtimeWorker: { maxTokens: 2000, timeoutMs: 8000, rpm: 120, tpm: 120000 },
+      batchWorker:    { maxTokens: 6000, timeoutMs: 30000, rpm: 60,  tpm: 300000 },
+      metadata: {
+        call:     { channel: 'call' },
+        sms:      { channel: 'sms' },
+        adsCopy:  { channel: 'ads-copy' },
+        adsImage: { channel: 'ads-image' },
+      }
+    },
+    voiceSettings: {
+      provider: 'elevenlabs',
+      voice: 'Alloy',
+      style: 'professional',
+      speed: 'normal',
+      callAttempts: 2,
+      callInterval: 30,
+      scripts: {
+        generic: 'Hi, this is LeadFlow Pro following up on your request. Do you have a minute?',
+        life: 'Hi, reaching out about your life insurance request. Do you have a minute now?',
+        term: 'Hi, your term quote is ready—can I walk you through options?',
+        finalExpense: 'Hi, following up on your final expense inquiry. Quick questions?',
+        medicare: 'Hi there, calling about your Medicare coverage questions. Is now good?'
+      },
+      businessHours: { start:'09:00', end:'17:00' },
+      workingDays: ['monday','tuesday','wednesday','thursday','friday'],
+      timezone: 'America/Boise'
+    },
+    smsSettings: {
+      provider: 'twilio',
+      autoRespond: true,
+      followUpDelay: 15,
+      scripts: {
+        day0: 'Hey {{name}}, it’s Josh. Got your request—2 quick questions for your quote. Got a minute?',
+        day1: 'Been trying to reach you about your request. Want me to text a ballpark quote?',
+        day3: 'Still here when you are—want coverage options that fit your budget?',
+        day5: 'Final ping for now. Want me to send a 60-sec summary?'
+      },
+      scriptVariants: {
+        noAnswer: 'Missed you, {{name}}. Try again in 15 minutes or later today?',
+        voicemailDrop: 'Left you a short voicemail. Text works great if easier—what time can I call?'
+      },
+      businessHours: { start:'09:00', end:'17:00' }
+    },
+    data: {
+      leads: [
+        { id: 1, name:'Alex Morgan', phone:'(555) 123-4567', email:'alex@example.com', status:'new', type:'life', location:'ID', time:'Today 10:15 AM' },
+        { id: 2, name:'Sam Taylor', phone:'(555) 987-6543', email:'sam@example.com', status:'scheduled', type:'term', location:'TX', time:'Today 2:30 PM' },
+        { id: 3, name:'Jordan Lee', phone:'', email:'', status:'contacted', type:'final-expense', location:'AL', time:'Yesterday 4:05 PM' }
+      ],
+      campaigns: [{ id:'c1', name:'Life - ID, OR', type:'life', budget:100, status:'active', leads:24, costPerLead:12.45 }],
+      objections: [],
+      analytics: {
+        overview: { totalLeads: 3, totalCampaigns: 1, conversionRate: 34, avgCostPerLead: 14.12 },
+        performance: { callAnswerRate: 41, smsResponseRate: 52, schedulingRate: 23, revenuePerLead: 186.4 }
+      },
+      inbound: [],
+      imports: [] // {id, filename, createdAt, rows:[{...},...], mapped:{}, dropPlaceholders:boolean}
     }
-  });
+  };
+}
 
-  // Voice & SMS providers / voices / scripts
-  const [voiceSettings, setVoiceSettings] = useState({
-    provider: 'elevenlabs',
-    voice: 'Alloy',
-    style: 'professional',
-    speed: 'normal',
-    callAttempts: 2,
-    callInterval: 30,
-    scripts: {
-      generic: 'Hi, this is LeadFlow Pro following up on your request. Do you have a minute?',
-      life: 'Hi, reaching out about your life insurance quote request. Are you available now?',
-      term: 'Hi, your term quote is ready—can I walk you through options?',
-      finalExpense: 'Hi, following up on your final expense inquiry. Can I ask a couple quick questions?',
-      medicare: 'Hi there, calling about your Medicare coverage questions. Is now a good time?'
-    },
-    businessHours: { start:'09:00', end:'17:00' },
-    workingDays: ['monday','tuesday','wednesday','thursday','friday'],
-    timezone: 'America/Boise'
-  });
+/* =========================
+   CATALOGS
+   ========================= */
+const VOICE_CATALOG = {
+  elevenlabs: ['Alloy','Callum','Rachel','Adam','Domi'],
+  openai:     ['Alloy','Verse','Sol','Breeze'],
+  azure:      ['en-US-GuyNeural','en-US-JennyNeural','en-US-ChristopherNeural'],
+  google:     ['en-US-Neural2-J','en-US-Standard-B','en-US-Wavenet-D']
+};
 
-  const [smsSettings, setSmsSettings] = useState({
-    provider: 'twilio',
-    autoRespond: true,
-    followUpDelay: 15,
-    scripts: {
-      day0: 'Hey {{name}}, it’s Josh. Got your request—quick 2 questions to tailor your quote. Got a minute?',
-      day1: 'Been trying to reach you about your request. Want me to text a ballpark quote?',
-      day3: 'Still here when you are—want coverage options that fit your budget?',
-      day5: 'Final ping from me for now. Want me to send a 60-sec summary?',
-    },
-    scriptVariants: {
-      noAnswer: 'Missed you just now, {{name}}. Can we try again in 15 minutes or later today?',
-      voicemailDrop: 'Left you a quick voicemail. Text works great if now’s easier—what time can I call?'
-    },
-    businessHours: { start:'09:00', end:'17:00' }
-  });
+const MARKET_OPTIONS = {
+  insurance:    ['life','term','final-expense','medicare','other'],
+  solar:        ['residential','commercial'],
+  homeServices: ['roofing','hvac','plumbing','landscaping'],
+  legal:        ['injury','disability','estate'],
+  other:        ['generic','event','saas']
+};
 
-  // Voice catalog (fallbacks)
-  const VOICE_CATALOG = {
-    elevenlabs: ['Alloy','Callum','Rachel','Adam','Domi'],
-    openai: ['Alloy','Verse','Sol','Breeze'],
-    azure: ['en-US-GuyNeural','en-US-JennyNeural','en-US-ChristopherNeural'],
-    google: ['en-US-Neural2-J','en-US-Standard-B','en-US-Wavenet-D']
+/* =========================
+   AUTH
+   ========================= */
+function LoginView({onLoggedIn}){
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+
+  const login = async (e) => {
+    e?.preventDefault();
+    setErr('');
+    setBusy(true);
+    try{
+      const users = loadUsers();
+      const u = users.find(x=>emailEq(x.email, email));
+      if (!u) throw new Error('No such user');
+      if (u.locked) throw new Error('Account locked');
+      const hash = await sha256(password);
+      if (hash !== u.passHash) throw new Error('Invalid password');
+      saveSession({ email: u.email, isAdmin: !!u.isAdmin });
+      if (!loadWorkspace(u.email)) saveWorkspace(u.email, seedWorkspace());
+      onLoggedIn({ email: u.email, isAdmin: !!u.isAdmin });
+    } catch(ex){ setErr(ex.message || 'Login failed'); }
+    finally { setBusy(false); }
   };
 
-  // Stats
-  const [stats, setStats] = useState({ totalLeads: 0, scheduledToday: 0, adSpend: 2450, conversionRate: 34 });
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 via-purple-50 to-pink-50 p-6">
+      <div className="card w-full max-w-md p-8">
+        <div className="flex items-center gap-3 mb-6">
+          <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-500 to-purple-600 text-white font-bold flex items-center justify-center">LF</div>
+          <div>
+            <div className="text-xl font-bold">LeadFlow Pro</div>
+            <div className="text-xs text-gray-500">Secure login</div>
+          </div>
+        </div>
+        <form onSubmit={login} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium mb-1">Email</label>
+            <input type="email" className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500" value={email} onChange={e=>setEmail(e.target.value)} placeholder="you@domain.com" required/>
+          </div>
+          <div>
+            <label className="block text-sm font-medium mb-1">Password</label>
+            <input type="password" className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500" value={password} onChange={e=>setPassword(e.target.value)} placeholder="••••••••" required/>
+          </div>
+          {err && <div className="text-sm text-red-600">{err}</div>}
+          <button disabled={busy} className="w-full p-3 bg-gradient-to-r from-blue-500 to-purple-600 text-white rounded-xl font-semibold hover:shadow-lg transition-all">{busy ? 'Signing in…' : 'Sign In'}</button>
+          <div className="text-xs text-gray-500">
+            Admin: <code class="inline">Joshua.kollar@me.com</code> / <code class="inline">Allglorytogod12!</code> (change it in Settings).
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
 
-  // Inbound (receive calls & SMS)
-  const [inboundEvents, setInboundEvents] = useState([]); // {id,type:'call'|'sms', from, to, text?, time, matchedLeadId?, status}
-  const [autoMatchUnknown, setAutoMatchUnknown] = useState(true);
+function UsersAdmin({ me, onImpersonate }){
+  const [users, setUsers] = useState(loadUsers());
+  const [form, setForm] = useState({ email:'', password:'', isAdmin:false });
 
-  // Imports area
-  const [imports, setImports] = useState([]); // {id, filename, rows:[], mapped:{}, createdAt}
-  const [currentMapping, setCurrentMapping] = useState({ name:'', phone:'', email:'', type:'', location:'', time:'', custom1:'', custom2:'' });
-  const [importsFilterPlaceholders, setImportsFilterPlaceholders] = useState(true);
+  const addUser = async ()=>{
+    if (!form.email || !form.password) { alert('Email and password required'); return; }
+    let list = loadUsers();
+    if (list.some(u=>emailEq(u.email, form.email))) { alert('User already exists'); return; }
+    const hash = await sha256(form.password);
+    const u = { email: form.email.trim(), passHash: hash, isAdmin: !!form.isAdmin, locked:false, createdAt: new Date().toISOString() };
+    list.push(u); saveUsers(list); setUsers(list);
+    if (!loadWorkspace(u.email)) saveWorkspace(u.email, seedWorkspace());
+    setForm({ email:'', password:'', isAdmin:false });
+    alert('✅ User added');
+  };
+  const toggleLock = (email)=>{
+    let list = loadUsers().map(u=> emailEq(u.email, email) ? { ...u, locked: !u.locked } : u);
+    saveUsers(list); setUsers(list);
+  };
+  const resetPassword = async (email)=>{
+    const np = prompt('New password for '+email+':'); if (!np) return;
+    const hash = await sha256(np);
+    let list = loadUsers().map(u=> emailEq(u.email, email)? { ...u, passHash: hash } : u);
+    saveUsers(list); setUsers(list);
+    alert('✅ Password reset');
+  };
+  const toggleAdmin = (email)=>{
+    if (emailEq(email, me.email)) { alert('You cannot change your own admin flag here.'); return; }
+    let list = loadUsers().map(u=> emailEq(u.email, email)? { ...u, isAdmin: !u.isAdmin } : u);
+    saveUsers(list); setUsers(list);
+  };
 
-  // Initial load with safe fallbacks
-  useEffect(() => {
+  return (
+    <div className="bg-white rounded-2xl p-6 shadow-lg">
+      <h3 className="text-xl font-bold mb-4">👥 Users (Admin)</h3>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
+        <input type="email" placeholder="user@email.com" className="p-3 border rounded-xl" value={form.email} onChange={e=>setForm(prev=>({...prev,email:e.target.value}))}/>
+        <input type="text" placeholder="Temp password" className="p-3 border rounded-xl" value={form.password} onChange={e=>setForm(prev=>({...prev,password:e.target.value}))}/>
+        <div className="flex items-center gap-2">
+          <label className="text-sm">Admin?</label>
+          <input type="checkbox" checked={form.isAdmin} onChange={e=>setForm(prev=>({...prev,isAdmin:e.target.checked}))}/>
+          <button onClick={addUser} className="ml-auto px-4 py-2 bg-gradient-to-r from-blue-500 to-purple-600 text-white rounded-xl">Add</button>
+        </div>
+      </div>
+
+      <div className="overflow-auto border rounded-xl">
+        <table className="min-w-full text-sm">
+          <thead className="bg-gray-50">
+            <tr>
+              <th className="px-3 py-2 text-left">Email</th>
+              <th className="px-3 py-2 text-left">Admin</th>
+              <th className="px-3 py-2 text-left">Locked</th>
+              <th className="px-3 py-2 text-left">Created</th>
+              <th className="px-3 py-2 text-left">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {users.map(u=>(
+              <tr key={u.email} className="border-t">
+                <td className="px-3 py-2">{u.email}</td>
+                <td className="px-3 py-2">{u.isAdmin ? 'Yes' : 'No'} {!emailEq(u.email, me.email) && <button onClick={()=>toggleAdmin(u.email)} className="ml-2 text-blue-600">toggle</button>}</td>
+                <td className="px-3 py-2">{u.locked ? 'Locked' : 'Active'} <button onClick={()=>toggleLock(u.email)} className="ml-2 text-blue-600">{u.locked?'unlock':'lock'}</button></td>
+                <td className="px-3 py-2">{new Date(u.createdAt).toLocaleString()}</td>
+                <td className="px-3 py-2">
+                  <button onClick={()=>resetPassword(u.email)} className="text-blue-600 mr-3">reset pwd</button>
+                  {me.isAdmin && !emailEq(u.email, me.email) && <button onClick={()=>onImpersonate(u.email)} className="text-purple-600">impersonate</button>}
+                </td>
+              </tr>
+            ))}
+            {users.length===0 && <tr><td colSpan="5" className="px-3 py-3 text-center text-gray-500">No users</td></tr>}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+/* =========================
+   MAIN APP
+   ========================= */
+function LeadFlowApp({ me, onLogout, onImpersonate }){
+  const ws0 = loadWorkspace(me.email) || seedWorkspace();
+
+  // app state (per-user workspace)
+  const [activeTab, setActiveTab] = useState('dashboard');
+  const [showMobileMenu, setShowMobileMenu] = useState(false);
+
+  const [apiKeys, setApiKeys] = useState(ws0.apiKeys);
+  const [routing, setRouting] = useState(ws0.routing);
+  const [voiceSettings, setVoiceSettings] = useState(ws0.voiceSettings);
+  const [smsSettings, setSmsSettings] = useState(ws0.smsSettings);
+
+  const [leads, _setLeads] = useState(ws0.data.leads || []);
+  const [campaigns, setCampaigns] = useState(ws0.data.campaigns || []);
+  const [objections, setObjections] = useState(ws0.data.objections || []);
+  const [analyticsData, setAnalyticsData] = useState(ws0.data.analytics || null);
+  const [inboundEvents, setInboundEvents] = useState(ws0.data.inbound || []);
+  const [imports, setImports] = useState(ws0.data.imports || []);
+
+  // helpers that ALWAYS persist immediately (fixes delete-not-sticking)
+  const saveNow = (next) => {
+    saveWorkspace(me.email, {
+      apiKeys, routing, voiceSettings, smsSettings,
+      data: {
+        leads: next?.leads ?? leads,
+        campaigns: next?.campaigns ?? campaigns,
+        objections: next?.objections ?? objections,
+        analytics: next?.analytics ?? analyticsData,
+        inbound: next?.inbound ?? inboundEvents,
+        imports: next?.imports ?? imports
+      }
+    });
+  };
+  const setLeads = (fnOrArr) => {
+    const nextLeads = typeof fnOrArr === 'function' ? fnOrArr(leads) : fnOrArr;
+    _setLeads(nextLeads);
+    saveNow({ leads: nextLeads });
+  };
+
+  const [stats, setStats] = useState({
+    totalLeads: analyticsData?.overview?.totalLeads ?? (leads?.length || 0),
+    scheduledToday: (leads||[]).filter(l=>l.status==='scheduled').length,
+    adSpend: 2450,
+    conversionRate: Math.round(analyticsData?.overview?.conversionRate ?? 34)
+  });
+  useEffect(()=>{
+    setStats({
+      totalLeads: leads.length,
+      scheduledToday: leads.filter(l=>l.status==='scheduled').length,
+      adSpend: 2450,
+      conversionRate: Math.round(analyticsData?.overview?.conversionRate ?? 34)
+    });
+  }, [leads, analyticsData]);
+
+  // try API if present, but NEVER block the UI
+  useEffect(()=>{
     Promise.allSettled([
       fetch('/api/leads').then(r=>r.json()),
       fetch('/api/campaigns').then(r=>r.json()),
       fetch('/api/objections').then(r=>r.json()),
-      fetch('/api/analytics').then(r=>r.json()),
-      fetch('/api/settings').then(r=>r.json())
-    ]).then(results => {
-      const [leadsRes, campRes, objRes, anaRes, setRes] = results.map(r=>r.status==='fulfilled'? r.value : null);
+      fetch('/api/analytics').then(r=>r.json())
+    ]).then(([leadsRes, campRes, objRes, anaRes])=>{
+      if (leadsRes.status==='fulfilled' && Array.isArray(leadsRes.value)) setLeads(leadsRes.value);
+      if (campRes.status==='fulfilled' && Array.isArray(campRes.value)) setCampaigns(campRes.value), saveNow({campaigns: campRes.value});
+      if (objRes.status==='fulfilled' && Array.isArray(objRes.value)) setObjections(objRes.value), saveNow({objections: objRes.value});
+      if (anaRes.status==='fulfilled' && anaRes.value) setAnalyticsData(anaRes.value), saveNow({analytics: anaRes.value});
+    }).catch(()=>{});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[]);
 
-      const sampleLeads = [
-        { id: 1, name:'Alex Morgan', phone:'(555) 123-4567', email:'alex@example.com', status:'new', type:'life', location:'ID', time:'Today 10:15 AM' },
-        { id: 2, name:'Sam Taylor', phone:'(555) 987-6543', email:'sam@example.com', status:'scheduled', type:'term', location:'TX', time:'Today 2:30 PM' },
-        { id: 3, name:'Jordan Lee', phone:'', email:'', status:'contacted', type:'final-expense', location:'AL', time:'Yesterday 4:05 PM' }
-      ];
-      const sampleCampaigns = [{ id:'c1', name:'Life - ID, OR', type:'life', budget:100, status:'active', leads:24, costPerLead:12.45 }];
-      const sampleAnalytics = {
-        overview: { totalLeads: sampleLeads.length, totalCampaigns: 1, conversionRate: 34, avgCostPerLead: 14.12 },
-        performance: { callAnswerRate: 41, smsResponseRate: 52, schedulingRate: 23, revenuePerLead: 186.40 }
-      };
-
-      setLeads(leadsRes || sampleLeads);
-      setCampaigns(campRes || sampleCampaigns);
-      setObjections(objRes || []);
-      setAnalyticsData(anaRes || sampleAnalytics);
-
-      // Settings: keep local defaults but hydrate if server responds
-      if (setRes?.apiKeys) setApiKeys(prev => ({...prev, ...setRes.apiKeys}));
-      if (setRes?.routing) setRouting(prev => ({...prev, ...setRes.routing}));
-
-      setStats({
-        totalLeads: (anaRes?.overview?.totalLeads) ?? (leadsRes?.length ?? sampleLeads.length),
-        scheduledToday: (leadsRes || sampleLeads).filter(l=>l.status==='scheduled').length,
-        adSpend: 2450,
-        conversionRate: Math.round( (anaRes?.overview?.conversionRate) ?? 34 )
-      });
-    });
-  }, []);
-
-  /** ---------- UI: Chrome ---------- */
+  /* ---------- Nav ---------- */
   const MobileNav = () => (
     <div className="lg:hidden bg-white shadow-lg p-4">
       <div className="flex items-center justify-between">
@@ -168,68 +378,72 @@ const LeadFlowApp = () => {
           <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-xl flex items-center justify-center text-white font-bold">LF</div>
           <div>
             <div className="font-bold">LeadFlow Pro</div>
-            <div className="text-xs text-gray-600">by J. Kollar</div>
+            <div className="text-xs text-gray-600">{me.email}</div>
           </div>
         </div>
         <button onClick={()=>setShowMobileMenu(!showMobileMenu)} className="p-2 rounded-lg bg-gray-100">☰</button>
       </div>
-
       {showMobileMenu && (
         <div className="mt-4 space-y-2">
           {[
-            { id: 'dashboard', icon:'📊', label:'Dashboard' },
-            { id: 'ad-creator', icon:'🎯', label:'Ad Creator' },
-            { id: 'leads', icon:'👥', label:'Leads' },
-            { id: 'voice-ai', icon:'🎙️', label:'Voice AI' },
-            { id: 'objections', icon:'💬', label:'Objections' },
-            { id: 'campaigns', icon:'📈', label:'Campaigns' },
-            { id: 'analytics', icon:'📊', label:'Analytics' },
-            { id: 'inbound', icon:'📞', label:'Inbound Center' },
-            { id: 'imports', icon:'📂', label:'Imports' },
-            { id: 'settings', icon:'⚙️', label:'Settings' },
+            { id:'dashboard', icon:'📊', label:'Dashboard' },
+            { id:'ad-creator', icon:'🎯', label:'Ad Creator' },
+            { id:'leads', icon:'👥', label:'Leads' },
+            { id:'voice-ai', icon:'🎙️', label:'Voice AI' },
+            { id:'objections', icon:'💬', label:'Objections' },
+            { id:'campaigns', icon:'📈', label:'Campaigns' },
+            { id:'analytics', icon:'📊', label:'Analytics' },
+            { id:'inbound', icon:'📞', label:'Inbound Center' },
+            { id:'imports', icon:'📂', label:'Imports' },
+            { id:'settings', icon:'⚙️', label:'Settings' },
+            ...(me.isAdmin ? [{ id:'admin-users', icon:'🛡️', label:'Users (Admin)' }] : []),
           ].map(({id,icon,label})=>(
-            <button key={id} onClick={()=>{setActiveTab(id); setShowMobileMenu(false);}}
+            <button key={id} onClick={()=>{ setActiveTab(id); setShowMobileMenu(false); }}
               className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeTab===id ? 'bg-gradient-to-r from-blue-500 to-purple-600 text-white' : 'hover:bg-blue-50 text-gray-700'}`}>
               <span className="text-xl">{icon}</span>{label}
             </button>
           ))}
+          <button onClick={onLogout} className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-red-50 text-red-600">🚪 Logout</button>
         </div>
       )}
     </div>
   );
-
   const Sidebar = () => (
     <div className="hidden lg:block w-80 bg-white bg-opacity-95 backdrop-blur-lg p-6 shadow-xl">
       <div className="flex items-center gap-3 mb-8 pb-4 border-b-2 border-gray-200">
         <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-purple-600 rounded-xl flex items-center justify-center text-white font-bold text-xl">LF</div>
         <div>
           <div className="font-bold text-lg">LeadFlow Pro</div>
-          <div className="text-xs text-gray-600">Insurance Lead Platform by J. Kollar</div>
+          <div className="text-xs text-gray-600">{me.email}</div>
         </div>
       </div>
       <nav className="space-y-2">
         {[
-          { id: 'dashboard', icon:'📊', label:'Dashboard' },
-          { id: 'ad-creator', icon:'🎯', label:'Ad Creator' },
-          { id: 'leads', icon:'👥', label:'Lead Management' },
-          { id: 'voice-ai', icon:'🎙️', label:'Voice AI System' },
-          { id: 'objections', icon:'💬', label:'Objection Handling' },
-          { id: 'campaigns', icon:'📈', label:'Campaign Manager' },
-          { id: 'analytics', icon:'📊', label:'Analytics' },
-          { id: 'inbound', icon:'📞', label:'Inbound Center' },
-          { id: 'imports', icon:'📂', label:'Imports' },
-          { id: 'settings', icon:'⚙️', label:'Settings & APIs' }
+          { id:'dashboard', icon:'📊', label:'Dashboard' },
+          { id:'ad-creator', icon:'🎯', label:'Ad Creator' },
+          { id:'leads', icon:'👥', label:'Lead Management' },
+          { id:'voice-ai', icon:'🎙️', label:'Voice AI System' },
+          { id:'objections', icon:'💬', label:'Objection Handling' },
+          { id:'campaigns', icon:'📈', label:'Campaign Manager' },
+          { id:'analytics', icon:'📊', label:'Analytics' },
+          { id:'inbound', icon:'📞', label:'Inbound Center' },
+          { id:'imports', icon:'📂', label:'Imports & Mapping' },
+          { id:'settings', icon:'⚙️', label:'Settings & APIs' },
+          ...(me.isAdmin ? [{ id:'admin-users', icon:'🛡️', label:'Users (Admin)' }] : []),
         ].map(({id,icon,label})=>(
           <button key={id} onClick={()=>setActiveTab(id)}
             className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300 ${activeTab===id ? 'bg-gradient-to-r from-blue-500 to-purple-600 text-white shadow-lg' : 'hover:bg-blue-50 text-gray-700 hover:translate-x-1'}`}>
             <span className="text-xl">{icon}</span>{label}
           </button>
         ))}
+        <button onClick={onLogout} className="w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300 hover:bg-red-50 text-red-600">
+          <span className="text-xl">🚪</span>Logout
+        </button>
       </nav>
     </div>
   );
 
-  /** ---------- Dashboard ---------- */
+  /* ---------- Dashboard ---------- */
   const Dashboard = () => (
     <div className="space-y-6 fade-in">
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-6">
@@ -264,7 +478,6 @@ const LeadFlowApp = () => {
             ))}
           </div>
         </div>
-
         <div className="bg-white rounded-2xl p-4 lg:p-6 shadow-lg">
           <h3 className="text-lg lg:text-xl font-bold mb-4">Quick Actions</h3>
           <div className="space-y-3">
@@ -277,20 +490,12 @@ const LeadFlowApp = () => {
     </div>
   );
 
-  /** ---------- Ad Creator (with market + subtype) ---------- */
-  const MARKET_OPTIONS = {
-    insurance: ['life','term','final-expense','medicare','other'],
-    solar: ['residential','commercial'],
-    homeServices: ['roofing','hvac','plumbing','landscaping'],
-    legal: ['injury','disability','estate'],
-    other: ['generic','event','saas']
-  };
-
+  /* ---------- Ad Creator (markets + subtypes) ---------- */
   const AdCreator = () => {
     const [adForm, setAdForm] = useState({
       market: 'insurance',
-      insuranceType: '',
       subType: '',
+      insuranceType: '', // legacy
       targetLocations: '',
       minAge: '',
       maxAge: '',
@@ -299,65 +504,41 @@ const LeadFlowApp = () => {
       copy: '',
       cta: 'learn-more'
     });
-
-    useEffect(()=>{
-      // reset subtype when market changes
-      setAdForm(prev=>({...prev, subType:''}));
-    },[adForm.market]);
+    useEffect(()=>{ setAdForm(prev=>({...prev, subType:''})); }, [adForm.market]);
 
     const generateAd = async () => {
-      if (!adForm.insuranceType && !adForm.subType) {
-        alert('Please select a category/sub-type first');
-        return;
-      }
-      try {
-        const res = await fetch('/api/generate-ad', {
-          method:'POST',
-          headers:{'Content-Type':'application/json'},
+      if (!adForm.subType && !adForm.insuranceType) { alert('Pick a market subtype or insurance type'); return; }
+      try{
+        // If you plug your backend, it can use routing.* to choose models
+        await fetch('/api/generate-ad', {
+          method:'POST', headers:{'Content-Type':'application/json'},
           body: JSON.stringify({ ...adForm, routing })
-        });
-        const result = await res.json().catch(()=>({}));
-        setAdForm(prev=>({
-          ...prev,
-          headline: result.headline || `Protect what matters with ${adForm.insuranceType || adForm.subType}`,
-          copy: result.copy || 'Fast, affordable coverage options tailored to you. Get a free quote today.',
-          cta: result.cta || prev.cta
-        }));
-        alert('✨ AI-generated ad content loaded!');
-      } catch {
-        alert('❌ AI generation failed. Check API settings.');
-      }
+        }).catch(()=>{});
+      } catch {}
+      setAdForm(prev=>({
+        ...prev,
+        headline: prev.headline || `Protect what matters with ${prev.insuranceType || prev.subType}`,
+        copy: prev.copy || 'Fast, affordable coverage options tailored to you. Get a free quote today.',
+      }));
+      alert('✨ Draft generated (or simulated). You can refine it here.');
     };
 
     const launchCampaign = async () => {
-      if (!adForm.headline || !adForm.copy || !adForm.targetLocations) {
-        alert('Please fill in headline, copy, and target locations');
-        return;
-      }
-      try {
+      if (!adForm.headline || !adForm.copy || !adForm.targetLocations) { alert('Fill headline, copy, and target locations'); return; }
+      try{
         await fetch('/api/launch-campaign', {
-          method:'POST',
-          headers:{'Content-Type':'application/json'},
+          method:'POST', headers:{'Content-Type':'application/json'},
           body: JSON.stringify({
             name: `${adForm.market}/${adForm.insuranceType || adForm.subType} - ${adForm.targetLocations}`,
-            market: adForm.market,
-            type: adForm.insuranceType || adForm.subType,
+            market: adForm.market, type: adForm.insuranceType || adForm.subType,
             budget: parseInt(adForm.dailyBudget) || 100,
             adContent: { headline: adForm.headline, copy: adForm.copy, cta: adForm.cta },
-            targeting: {
-              locations: adForm.targetLocations.split(',').map(s=>s.trim()).filter(Boolean),
-              ageMin: parseInt(adForm.minAge)||25,
-              ageMax: parseInt(adForm.maxAge)||65
-            },
-            routing,
-            metadata: routing.metadata.adsCopy
+            targeting: { locations: adForm.targetLocations.split(',').map(s=>s.trim()).filter(Boolean), ageMin: parseInt(adForm.minAge)||25, ageMax: parseInt(adForm.maxAge)||65 },
+            routing, metadata: routing.metadata.adsCopy
           })
-        });
-        alert('🚀 Campaign launched!');
-        fetch('/api/campaigns').then(r=>r.json()).then(setCampaigns).catch(()=>{});
-      } catch {
-        alert('❌ Campaign launch failed. Check Meta API settings.');
-      }
+        }).catch(()=>{});
+        alert('🚀 Campaign launched (simulated).');
+      } catch { alert('❌ Launch failed.'); }
     };
 
     return (
@@ -369,29 +550,22 @@ const LeadFlowApp = () => {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block font-medium mb-2 text-sm lg:text-base">Market</label>
-                  <select className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    value={adForm.market}
-                    onChange={(e)=>setAdForm(prev=>({...prev, market:e.target.value}))}>
+                  <select className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500" value={adForm.market} onChange={(e)=>setAdForm(prev=>({...prev, market:e.target.value}))}>
                     {Object.keys(MARKET_OPTIONS).map(m=><option key={m} value={m}>{m}</option>)}
                   </select>
                 </div>
                 <div>
                   <label className="block font-medium mb-2 text-sm lg:text-base">Sub-Type</label>
-                  <select className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    value={adForm.subType}
-                    onChange={(e)=>setAdForm(prev=>({...prev, subType:e.target.value}))}>
+                  <select className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500" value={adForm.subType} onChange={(e)=>setAdForm(prev=>({...prev, subType:e.target.value}))}>
                     <option value="">Choose…</option>
                     {MARKET_OPTIONS[adForm.market].map(s=><option key={s} value={s}>{s}</option>)}
                   </select>
                 </div>
               </div>
 
-              {/* Keep legacy Insurance Type for backward compatibility */}
               <div>
                 <label className="block font-medium mb-2 text-sm lg:text-base">Insurance Type (legacy)</label>
-                <select className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                        value={adForm.insuranceType}
-                        onChange={(e)=>setAdForm(prev=>({...prev, insuranceType:e.target.value}))}>
+                <select className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500" value={adForm.insuranceType} onChange={(e)=>setAdForm(prev=>({...prev, insuranceType:e.target.value}))}>
                   <option value="">(Optional) Choose insurance…</option>
                   <option value="life">Life Insurance</option>
                   <option value="term">Term Life</option>
@@ -403,32 +577,23 @@ const LeadFlowApp = () => {
 
               <div>
                 <label className="block font-medium mb-2 text-sm lg:text-base">Target Locations</label>
-                <input type="text" className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="FL, TX, CA"
-                  value={adForm.targetLocations}
-                  onChange={(e)=>setAdForm(prev=>({...prev, targetLocations:e.target.value}))}/>
+                <input type="text" className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500" placeholder="FL, TX, CA" value={adForm.targetLocations} onChange={(e)=>setAdForm(prev=>({...prev, targetLocations:e.target.value}))}/>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block font-medium mb-2 text-sm lg:text-base">Min Age</label>
-                  <input type="number" className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    placeholder="25" value={adForm.minAge}
-                    onChange={(e)=>setAdForm(prev=>({...prev, minAge:e.target.value}))}/>
+                  <input type="number" className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500" placeholder="25" value={adForm.minAge} onChange={(e)=>setAdForm(prev=>({...prev, minAge:e.target.value}))}/>
                 </div>
                 <div>
                   <label className="block font-medium mb-2 text-sm lg:text-base">Max Age</label>
-                  <input type="number" className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    placeholder="65" value={adForm.maxAge}
-                    onChange={(e)=>setAdForm(prev=>({...prev, maxAge:e.target.value}))}/>
+                  <input type="number" className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500" placeholder="65" value={adForm.maxAge} onChange={(e)=>setAdForm(prev=>({...prev, maxAge:e.target.value}))}/>
                 </div>
               </div>
 
               <div>
                 <label className="block font-medium mb-2 text-sm lg:text-base">Daily Budget ($)</label>
-                <input type="number" className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="150" value={adForm.dailyBudget}
-                  onChange={(e)=>setAdForm(prev=>({...prev, dailyBudget:e.target.value}))}/>
+                <input type="number" className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500" placeholder="150" value={adForm.dailyBudget} onChange={(e)=>setAdForm(prev=>({...prev, dailyBudget:e.target.value}))}/>
               </div>
             </div>
           </div>
@@ -438,23 +603,15 @@ const LeadFlowApp = () => {
             <div className="space-y-4">
               <div>
                 <label className="block font-medium mb-2 text-sm lg:text-base">Headline</label>
-                <input type="text" className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="Your compelling headline..."
-                  value={adForm.headline}
-                  onChange={(e)=>setAdForm(prev=>({...prev, headline:e.target.value}))}/>
+                <input type="text" className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500" placeholder="Your compelling headline..." value={adForm.headline} onChange={(e)=>setAdForm(prev=>({...prev, headline:e.target.value}))}/>
               </div>
               <div>
                 <label className="block font-medium mb-2 text-sm lg:text-base">Ad Copy</label>
-                <textarea className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent h-24 lg:h-32 resize-none"
-                  placeholder="Write your ad copy here..."
-                  value={adForm.copy}
-                  onChange={(e)=>setAdForm(prev=>({...prev, copy:e.target.value}))}/>
+                <textarea className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500 h-28 resize-none" placeholder="Write your ad copy here..." value={adForm.copy} onChange={(e)=>setAdForm(prev=>({...prev, copy:e.target.value}))}/>
               </div>
               <div>
                 <label className="block font-medium mb-2 text-sm lg:text-base">Call-to-Action</label>
-                <select className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  value={adForm.cta}
-                  onChange={(e)=>setAdForm(prev=>({...prev, cta:e.target.value}))}>
+                <select className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500" value={adForm.cta} onChange={(e)=>setAdForm(prev=>({...prev, cta:e.target.value}))}>
                   <option value="learn-more">Learn More</option>
                   <option value="get-quote">Get Free Quote</option>
                   <option value="call-now">Call Now</option>
@@ -472,7 +629,7 @@ const LeadFlowApp = () => {
     );
   };
 
-  /** ---------- Lead Management (search, delete, manual add) ---------- */
+  /* ---------- Leads (manual add + delete persists) ---------- */
   const LeadManagement = () => {
     const [searchTerm, setSearchTerm] = useState('');
     const [filterType, setFilterType] = useState('');
@@ -482,75 +639,51 @@ const LeadFlowApp = () => {
     const [showAddLead, setShowAddLead] = useState(false);
     const [newLead, setNewLead] = useState({ name:'', phone:'', email:'', type:'life', location:'', status:'new' });
 
-    const handleFileUpload = async (event, type) => {
-      const file = event.target.files[0]; if (!file) return;
-      const formData = new FormData(); formData.append('file', file);
-      try {
-        alert(type==='pdf' ? `🔍 Scanning PDF: ${file.name}` : `📊 Uploading CSV: ${file.name}`);
-        const response = await fetch(`/api/upload/${type}`, { method:'POST', body: formData });
-        const result = await response.json().catch(()=>({message:'Processed'}));
-        alert(`✅ ${result.message || 'Import complete'}`);
-        const updated = await fetch('/api/leads').then(r=>r.json()).catch(()=>[]);
-        setLeads(updated.length ? updated : leads);
-        setShowImportModal(false);
-      } catch (e) { alert(`❌ Upload failed: ${e.message}`); }
-    };
-
-    const runSystemTest = async () => {
-      try {
-        const res = await fetch('/api/test-system', {
-          method:'POST', headers:{'Content-Type':'application/json'},
-          body: JSON.stringify({ testLead:{ name:'Test Lead', phone:'+1 (555) 000-0000', type:'life' }, routing })
-        });
-        const result = await res.json().catch(()=>({
-          message:'Simulated test complete',
-          testResults:{ voiceCall:{result:'ok'}, smsBackup:{status:'ok'}, leadScoring:{score:8}, calendar:{status:'ok'} },
-          recommendation:'Looks good.'
-        }));
-        alert(`✅ ${result.message}\n\n🔍 Voice: ${result.testResults.voiceCall.result}\nSMS: ${result.testResults.smsBackup.status}\nScore: ${result.testResults.leadScoring.score}/10\nCalendar: ${result.testResults.calendar.status}\n\n${result.recommendation}`);
-        setShowTestModal(false);
-      } catch { alert('❌ System test failed.'); }
-    };
-
     const initiateContact = async (lead, method) => {
       try {
-        const res = await fetch('/api/ai-call', {
+        await fetch('/api/ai-call', {
           method:'POST', headers:{'Content-Type':'application/json'},
           body: JSON.stringify({ leadId: lead.id, phoneNumber: lead.phone, method, routing, metadata: method==='call'? routing.metadata.call : routing.metadata.sms })
-        });
-        const result = await res.json().catch(()=>({ message:'Initiated', nextAction:'wait' }));
-        alert(`✅ ${result.message}\nNext: ${result.nextAction || 'queued'}`);
-        const updated = await fetch('/api/leads').then(r=>r.json()).catch(()=>[]);
-        if (updated.length) setLeads(updated);
+        }).catch(()=>{});
+        alert(`✅ ${method==='call'?'Call':'SMS'} initiated (simulated).`);
       } catch { alert(`❌ ${method==='call'?'Call':'SMS'} failed.`); }
     };
 
     const deleteLead = async (leadId) => {
       if (!confirm('Delete this lead? This cannot be undone.')) return;
-      try {
-        const res = await fetch(`/api/leads/${leadId}`, { method:'DELETE' });
-        if (!res.ok) throw new Error();
-        setLeads(prev => prev.filter(l=>l.id!==leadId));
-        alert('🗑️ Lead deleted.');
-      } catch {
-        // optimistic fallback
-        setLeads(prev => prev.filter(l=>l.id!==leadId));
-      }
+      try { await fetch(`/api/leads/${leadId}`, { method:'DELETE' }).catch(()=>{}); } catch {}
+      setLeads(prev => prev.filter(l=>l.id!==leadId)); // persists immediately via setLeads helper
     };
 
     const saveNewLead = async () => {
       if (!newLead.name || !newLead.phone) { alert('Name and phone are required'); return; }
-      try {
-        const res = await fetch('/api/leads', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(newLead) });
-        const created = await res.json().catch(()=>({ ...newLead, id: Date.now() }));
-        setLeads(prev => [created, ...prev]);
-        setShowAddLead(false);
-        setNewLead({ name:'', phone:'', email:'', type:'life', location:'', status:'new' });
-        alert('✅ Lead added.');
-      } catch {
-        // local fallback
-        setLeads(prev => [{ ...newLead, id: Date.now() }, ...prev]);
-        setShowAddLead(false);
+      const created = { ...newLead, id: Date.now(), time: new Date().toLocaleString() };
+      try{ await fetch('/api/leads', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(created) }).catch(()=>{}); } catch {}
+      setLeads(prev => [created, ...prev]);
+      setShowAddLead(false);
+      setNewLead({ name:'', phone:'', email:'', type:'life', location:'', status:'new' });
+    };
+
+    // CSV + PDF (client-side parse for CSV only—fast and avoids freezes)
+    const handleFileUpload = async (event, type) => {
+      const file = event.target.files[0]; if (!file) return;
+
+      if (type === 'csv') {
+        const text = await file.text();
+        const rows = parseCSV(text).slice(0, 200); // preview cap to avoid freezing
+        const imp = { id: Date.now(), filename: file.name, createdAt: new Date().toISOString(), rows, mapped: {}, dropPlaceholders: true };
+        const next = [imp, ...imports];
+        setImports(next); saveNow({ imports: next });
+        alert(`✅ CSV loaded (${rows.length} preview rows). Go to Imports to map fields and import.`);
+        setShowImportModal(false);
+        setActiveTab('imports');
+      } else {
+        alert('🔍 PDF scanning is simulated in this front-end. For real OCR, connect a backend.');
+        const imp = { id: Date.now(), filename: file.name, createdAt: new Date().toISOString(), rows: [], mapped: {}, dropPlaceholders: true };
+        const next = [imp, ...imports];
+        setImports(next); saveNow({ imports: next });
+        setShowImportModal(false);
+        setActiveTab('imports');
       }
     };
 
@@ -571,27 +704,27 @@ const LeadFlowApp = () => {
               <button onClick={()=>setShowAddLead(true)} className="px-3 py-2 bg-purple-100 text-purple-700 rounded-xl hover:bg-purple-200 transition-all text-sm">➕ Add Lead</button>
 
               <input type="file" accept=".csv" onChange={(e)=>handleFileUpload(e,'csv')} className="hidden" id="csv-upload-direct"/>
-              <label htmlFor="csv-upload-direct" className="px-3 py-2 bg-green-100 text-green-700 rounded-xl hover:bg-green-2 00 transition-all text-sm cursor-pointer">📊 Upload CSV</label>
+              <label htmlFor="csv-upload-direct" className="px-3 py-2 bg-green-100 text-green-700 rounded-xl hover:bg-green-200 transition-all text-sm cursor-pointer">📊 Upload CSV</label>
 
               <input type="file" accept=".pdf" onChange={(e)=>handleFileUpload(e,'pdf')} className="hidden" id="pdf-upload-direct"/>
               <label htmlFor="pdf-upload-direct" className="px-3 py-2 bg-red-100 text-red-700 rounded-xl hover:bg-red-200 transition-all text-sm cursor-pointer">📄 Scan PDF → CSV</label>
 
               <button onClick={()=>setShowImportModal(true)} className="px-3 py-2 bg-blue-100 text-blue-700 rounded-xl hover:bg-blue-200 transition-all text-sm">📋 Import Options</button>
-              <button onClick={()=>setShowTestModal(true)} className="px-3 py-2 bg-green-100 text-green-700 rounded-xl hover:bg-green-200 transition-all text-sm">🧪 Test System</button>
+              <button onClick={()=>setShowTestModal(true)} className="px-3 py-2 bg-amber-100 text-amber-700 rounded-xl hover:bg-amber-200 transition-all text-sm">🧪 Test System</button>
             </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-            <input type="text" className="p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="Search leads..." value={searchTerm} onChange={(e)=>setSearchTerm(e.target.value)}/>
-            <select className="p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent" value={filterType} onChange={(e)=>setFilterType(e.target.value)}>
+            <input type="text" className="p-3 border rounded-xl focus:ring-2 focus:ring-blue-500" placeholder="Search leads..." value={searchTerm} onChange={(e)=>setSearchTerm(e.target.value)}/>
+            <select className="p-3 border rounded-xl focus:ring-2 focus:ring-blue-500" value={filterType} onChange={(e)=>setFilterType(e.target.value)}>
               <option value="">All Categories</option>
-              <option value="life">Life Insurance</option>
-              <option value="term">Term Life</option>
+              <option value="life">Life</option>
+              <option value="term">Term</option>
               <option value="final-expense">Final Expense</option>
               <option value="medicare">Medicare</option>
               <option value="other">Other</option>
             </select>
-            <select className="p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent" value={filterStatus} onChange={(e)=>setFilterStatus(e.target.value)}>
+            <select className="p-3 border rounded-xl focus:ring-2 focus:ring-blue-500" value={filterStatus} onChange={(e)=>setFilterStatus(e.target.value)}>
               <option value="">All Status</option>
               <option value="new">New</option>
               <option value="contacted">Contacted</option>
@@ -609,14 +742,12 @@ const LeadFlowApp = () => {
                     <div className="text-sm text-gray-600">{lead.phone || '—'} • {lead.email || '—'}</div>
                   </div>
                   <div className="flex items-center gap-2">
-                    <span className={`badge ${lead.status==='new'?'bg-blue-100 text-blue-800':lead.status==='contacted'?'bg-orange-100 text-orange-800':lead.status==='scheduled'?'bg-purple-100 text-purple-800':'bg-green-100 text-green-800'}`}>
-                      {lead.status?.charAt(0).toUpperCase()+lead.status?.slice(1)}
-                    </span>
+                    <span className={`badge ${lead.status==='new'?'bg-blue-100 text-blue-800':lead.status==='contacted'?'bg-orange-100 text-orange-800':lead.status==='scheduled'?'bg-purple-100 text-purple-800':'bg-green-100 text-green-800'}`}>{lead.status?.charAt(0).toUpperCase()+lead.status?.slice(1)}</span>
                     <button onClick={()=>deleteLead(lead.id)} className="px-2 py-1 text-sm bg-gray-100 text-gray-700 rounded hover:bg-gray-200">🗑️</button>
                   </div>
                 </div>
                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-                  <div className="text-sm text-gray-600">{lead.type} • {lead.location} • {lead.time}</div>
+                  <div className="text-sm text-gray-600">{lead.type} • {lead.location || '—'} • {lead.time || '—'}</div>
                   <div className="flex flex-wrap gap-2">
                     <button onClick={()=>initiateContact(lead,'call')} className="px-3 py-1 bg-green-100 text-green-700 rounded-lg hover:bg-green-200 transition-all text-sm">📞 AI Call</button>
                     <button onClick={()=>initiateContact(lead,'sms')} className="px-3 py-1 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-all text-sm">💬 AI SMS</button>
@@ -638,31 +769,31 @@ const LeadFlowApp = () => {
                 <div className="p-4 border-2 border-dashed border-gray-300 rounded-xl text-center">
                   <div className="text-2xl mb-2">📄</div>
                   <h4 className="font-semibold mb-2">Upload PDF</h4>
-                  <p className="text-sm text-gray-600 mb-3">AI will scan and extract lead data automatically</p>
+                  <p className="text-sm text-gray-600 mb-3">Front-end sim only. For OCR, connect backend later.</p>
                   <input type="file" accept=".pdf" onChange={(e)=>handleFileUpload(e,'pdf')} className="hidden" id="pdf-upload"/>
                   <label htmlFor="pdf-upload" className="px-4 py-2 bg-red-100 text-red-700 rounded-lg cursor-pointer hover:bg-red-200 transition-all">Choose PDF File</label>
                 </div>
                 <div className="p-4 border-2 border-dashed border-gray-300 rounded-xl text-center">
                   <div className="text-2xl mb-2">📊</div>
-                  <h4 className="font-semibold mb-2">Upload CSV</h4>
-                  <p className="text-sm text-gray-600 mb-3">Import structured lead data from spreadsheets</p>
+                  <h4 className="font-semibold mb-2">Upload CSV (client-side)</h4>
+                  <p className="text-sm text-gray-600 mb-3">We preview the first 200 rows to keep it fast.</p>
                   <input type="file" accept=".csv" onChange={(e)=>handleFileUpload(e,'csv')} className="hidden" id="csv-upload"/>
                   <label htmlFor="csv-upload" className="px-4 py-2 bg-green-100 text-green-700 rounded-lg cursor-pointer hover:bg-green-200 transition-all">Choose CSV File</label>
                 </div>
               </div>
               <div className="flex gap-3 mt-6">
-                <button onClick={()=>setShowImportModal(false)} className="flex-1 px-4 py-2 border border-gray-300 rounded-xl hover:bg-gray-50 transition-all">Cancel</button>
+                <button onClick={()=>setShowImportModal(false)} className="flex-1 px-4 py-2 border border-gray-300 rounded-xl hover:bg-gray-50 transition-all">Close</button>
               </div>
             </div>
           </div>
         )}
 
-        {/* Test System Modal */}
+        {/* Test Modal (simulated) */}
         {showTestModal && (
           <div className="fixed inset-0 bg-black bg-opacity-50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
             <div className="bg-white rounded-2xl p-6 max-w-md w-full">
               <h3 className="text-xl font-bold mb-4">🧪 Test Complete System</h3>
-              <p className="text-gray-600 mb-4">Runs voice call, SMS backup, objections, scoring, and calendar checks.</p>
+              <p className="text-gray-600 mb-4">Simulates voice, SMS, objections, scoring, and calendar.</p>
               <div className="bg-yellow-50 p-4 rounded-xl mb-4">
                 <ul className="text-sm text-yellow-700 space-y-1">
                   <li>• AI voice call simulation</li>
@@ -673,8 +804,8 @@ const LeadFlowApp = () => {
                 </ul>
               </div>
               <div className="flex gap-3">
-                <button onClick={()=>setShowTestModal(false)} className="flex-1 px-4 py-2 border border-gray-300 rounded-xl hover:bg-gray-50 transition-all">Cancel</button>
-                <button onClick={runSystemTest} className="flex-1 px-4 py-3 bg-gradient-to-r from-blue-500 to-purple-600 text-white font-semibold rounded-xl hover:shadow-lg transition-all">🚀 Run Test</button>
+                <button onClick={()=>setShowTestModal(false)} className="flex-1 px-4 py-2 border border-gray-300 rounded-xl hover:bg-gray-50 transition-all">Close</button>
+                <button onClick={()=>{ alert('✅ All checks passed (sim).'); setShowTestModal(false); }} className="flex-1 px-4 py-3 bg-gradient-to-r from-blue-500 to-purple-600 text-white font-semibold rounded-xl hover:shadow-lg transition-all">Run</button>
               </div>
             </div>
           </div>
@@ -689,15 +820,12 @@ const LeadFlowApp = () => {
                 {['name','phone','email','location'].map(f=>(
                   <div key={f}>
                     <label className="block text-sm font-medium mb-1 capitalize">{f}</label>
-                    <input type="text" className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      value={newLead[f]} onChange={(e)=>setNewLead(prev=>({...prev,[f]:e.target.value}))}/>
+                    <input type="text" className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500" value={newLead[f]} onChange={(e)=>setNewLead(prev=>({...prev,[f]:e.target.value}))}/>
                   </div>
                 ))}
                 <div>
                   <label className="block text-sm font-medium mb-1">Type</label>
-                  <select className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    value={newLead.type}
-                    onChange={(e)=>setNewLead(prev=>({...prev,type:e.target.value}))}>
+                  <select className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500" value={newLead.type} onChange={(e)=>setNewLead(prev=>({...prev,type:e.target.value}))}>
                     <option value="life">Life</option>
                     <option value="term">Term</option>
                     <option value="final-expense">Final Expense</option>
@@ -707,9 +835,7 @@ const LeadFlowApp = () => {
                 </div>
                 <div>
                   <label className="block text-sm font-medium mb-1">Status</label>
-                  <select className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    value={newLead.status}
-                    onChange={(e)=>setNewLead(prev=>({...prev,status:e.target.value}))}>
+                  <select className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500" value={newLead.status} onChange={(e)=>setNewLead(prev=>({...prev,status:e.target.value}))}>
                     <option value="new">New</option>
                     <option value="contacted">Contacted</option>
                     <option value="qualified">Qualified</option>
@@ -728,21 +854,12 @@ const LeadFlowApp = () => {
     );
   };
 
-  /** ---------- Voice AI (providers, voice list, scripts per type) ---------- */
+  /* ---------- Voice + SMS Config (unlocked controls) ---------- */
   const VoiceAI = () => {
     const [local, setLocal] = useState(voiceSettings);
-
     useEffect(()=>{ setLocal(voiceSettings); }, [voiceSettings]);
-
-    const saveVoiceSettings = async () => {
-      setVoiceSettings(local);
-      try {
-        await fetch('/api/voice-settings', { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(local) });
-        alert('✅ Voice settings saved.');
-      } catch { /* ignore */ }
-    };
-
     const voices = VOICE_CATALOG[local.provider] || [];
+    const saveVoiceSettings = () => { setVoiceSettings(local); saveNow(); alert('✅ Voice settings saved.'); };
 
     return (
       <div className="space-y-6 fade-in">
@@ -752,54 +869,40 @@ const LeadFlowApp = () => {
             <div className="space-y-4">
               <div>
                 <label className="block font-medium mb-2">Voice Provider</label>
-                <select className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                        value={local.provider}
-                        onChange={(e)=>setLocal(prev=>({...prev, provider:e.target.value, voice:''}))}>
+                <select className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500" value={local.provider} onChange={(e)=>setLocal(prev=>({...prev, provider:e.target.value, voice:''}))}>
                   <option value="elevenlabs">ElevenLabs</option>
                   <option value="openai">OpenAI Voice</option>
                   <option value="azure">Azure Speech</option>
                   <option value="google">Google Cloud Speech</option>
                 </select>
               </div>
-
               <div>
                 <label className="block font-medium mb-2">Voice</label>
-                <select className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                        value={local.voice}
-                        onChange={(e)=>setLocal(prev=>({...prev, voice:e.target.value}))}>
+                <select className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500" value={local.voice} onChange={(e)=>setLocal(prev=>({...prev, voice:e.target.value}))}>
                   <option value="">Select…</option>
                   {voices.map(v=><option key={v} value={v}>{v}</option>)}
                 </select>
               </div>
-
               <div>
                 <label className="block font-medium mb-2">Style</label>
-                <select className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                        value={local.style}
-                        onChange={(e)=>setLocal(prev=>({...prev, style:e.target.value}))}>
+                <select className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500" value={local.style} onChange={(e)=>setLocal(prev=>({...prev, style:e.target.value}))}>
                   <option value="professional">Professional</option>
                   <option value="friendly">Friendly</option>
                   <option value="authoritative">Authoritative</option>
                   <option value="conversational">Conversational</option>
                 </select>
               </div>
-
               <div>
                 <label className="block font-medium mb-2">Response Speed</label>
-                <select className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                        value={local.speed}
-                        onChange={(e)=>setLocal(prev=>({...prev, speed:e.target.value}))}>
-                  <option value="fast">Fast (0.5-1s)</option>
-                  <option value="normal">Normal (1-2s)</option>
-                  <option value="thoughtful">Thoughtful (2-3s)</option>
+                <select className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500" value={local.speed} onChange={(e)=>setLocal(prev=>({...prev, speed:e.target.value}))}>
+                  <option value="fast">Fast (0.5–1s)</option>
+                  <option value="normal">Normal (1–2s)</option>
+                  <option value="thoughtful">Thoughtful (2–3s)</option>
                 </select>
               </div>
-
               <div>
                 <label className="block font-medium mb-2">Call Attempts: {local.callAttempts}</label>
-                <input type="range" min="1" max="5" value={local.callAttempts}
-                       onChange={(e)=>setLocal(prev=>({...prev, callAttempts: parseInt(e.target.value)}))}
-                       className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"/>
+                <input type="range" min="1" max="5" value={local.callAttempts} onChange={(e)=>setLocal(prev=>({...prev, callAttempts: parseInt(e.target.value)}))} className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"/>
                 <div className="flex justify-between text-xs text-gray-500 mt-1"><span>1</span><span>3</span><span>5</span></div>
               </div>
             </div>
@@ -807,30 +910,22 @@ const LeadFlowApp = () => {
             <div className="space-y-4">
               <div>
                 <label className="block font-medium mb-2">Script Template (Generic)</label>
-                <textarea className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent h-24 resize-none"
-                  value={local.scripts.generic}
-                  onChange={(e)=>setLocal(prev=>({...prev, scripts:{...prev.scripts, generic: e.target.value}}))}/>
+                <textarea className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500 h-24 resize-none" value={local.scripts.generic} onChange={(e)=>setLocal(prev=>({...prev, scripts:{...prev.scripts, generic:e.target.value}}))}/>
               </div>
-
               {['life','term','finalExpense','medicare'].map(key=>{
                 const label = key==='finalExpense' ? 'Final Expense' : key[0].toUpperCase()+key.slice(1);
-                const k = key==='finalExpense' ? 'finalExpense' : key;
+                const k = key;
                 return (
                   <div key={key}>
                     <label className="block font-medium mb-2">Script Template ({label})</label>
-                    <textarea className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent h-20 resize-none"
-                      value={local.scripts[k] || ''}
-                      onChange={(e)=>setLocal(prev=>({...prev, scripts:{...prev.scripts, [k]: e.target.value}}))}/>
+                    <textarea className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500 h-20 resize-none" value={local.scripts[k] || ''} onChange={(e)=>setLocal(prev=>({...prev, scripts:{...prev.scripts, [k]: e.target.value}}))}/>
                   </div>
                 );
               })}
-
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block font-medium mb-2">Time Between Calls</label>
-                  <select className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                          value={local.callInterval}
-                          onChange={(e)=>setLocal(prev=>({...prev, callInterval: parseInt(e.target.value)}))}>
+                  <select className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500" value={local.callInterval} onChange={(e)=>setLocal(prev=>({...prev, callInterval: parseInt(e.target.value)}))}>
                     <option value="15">15 minutes</option>
                     <option value="30">30 minutes</option>
                     <option value="60">1 hour</option>
@@ -838,12 +933,9 @@ const LeadFlowApp = () => {
                     <option value="240">4 hours</option>
                   </select>
                 </div>
-
                 <div>
                   <label className="block font-medium mb-2">Time Zone</label>
-                  <select className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                          value={local.timezone}
-                          onChange={(e)=>setLocal(prev=>({...prev, timezone:e.target.value}))}>
+                  <select className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500" value={local.timezone} onChange={(e)=>setLocal(prev=>({...prev, timezone:e.target.value}))}>
                     <option value="America/Boise">America/Boise</option>
                     <option value="America/Denver">America/Denver</option>
                     <option value="America/Chicago">America/Chicago</option>
@@ -852,132 +944,106 @@ const LeadFlowApp = () => {
                   </select>
                 </div>
               </div>
-
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block font-medium mb-2">Business Start</label>
-                  <input type="time" className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                         value={local.businessHours.start}
-                         onChange={(e)=>setLocal(prev=>({...prev, businessHours:{...prev.businessHours, start:e.target.value}}))}/>
+                  <input type="time" className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500" value={local.businessHours.start} onChange={(e)=>setLocal(prev=>({...prev, businessHours:{...prev.businessHours, start:e.target.value}}))}/>
                 </div>
                 <div>
                   <label className="block font-medium mb-2">Business End</label>
-                  <input type="time" className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                         value={local.businessHours.end}
-                         onChange={(e)=>setLocal(prev=>({...prev, businessHours:{...prev.businessHours, end:e.target.value}}))}/>
+                  <input type="time" className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500" value={local.businessHours.end} onChange={(e)=>setLocal(prev=>({...prev, businessHours:{...prev.businessHours, end:e.target.value}}))}/>
                 </div>
               </div>
-
               <button onClick={saveVoiceSettings} className="w-full p-3 bg-gradient-to-r from-blue-500 to-purple-600 text-white font-semibold rounded-xl hover:shadow-lg transition-all">💾 Save Voice Settings</button>
             </div>
           </div>
         </div>
 
-        {/* SMS Configuration */}
-        <div className="bg-white rounded-2xl p-6 shadow-lg">
-          <h3 className="text-xl font-bold mb-4">💬 SMS Configuration & Drip</h3>
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <div className="space-y-4">
+        <SMSConfig smsSettings={smsSettings} setSmsSettings={(s)=>{ setSmsSettings(s); saveNow(); }}/>
+      </div>
+    );
+  };
+  function SMSConfig({ smsSettings, setSmsSettings }){
+    return (
+      <div className="bg-white rounded-2xl p-6 shadow-lg">
+        <h3 className="text-xl font-bold mb-4">💬 SMS Configuration & Drip</h3>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="space-y-4">
+            <div>
+              <label className="block font-medium mb-2">SMS Provider</label>
+              <select className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500" value={smsSettings.provider} onChange={(e)=>setSmsSettings(prev=>({...prev, provider:e.target.value}))}>
+                <option value="twilio">Twilio</option>
+                <option value="messagebird">MessageBird</option>
+                <option value="vonage">Vonage</option>
+              </select>
+            </div>
+            <div className="flex items-center justify-between">
               <div>
-                <label className="block font-medium mb-2">SMS Provider</label>
-                <select className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                        value={smsSettings.provider}
-                        onChange={(e)=>setSmsSettings(prev=>({...prev, provider:e.target.value}))}>
-                  <option value="twilio">Twilio</option>
-                  <option value="messagebird">MessageBird</option>
-                  <option value="vonage">Vonage</option>
-                </select>
+                <label className="font-medium">Auto-Respond</label>
+                <p className="text-sm text-gray-600">AI replies to inbound texts</p>
               </div>
-
-              <div className="flex items-center justify-between">
-                <div>
-                  <label className="font-medium">Auto-Respond</label>
-                  <p className="text-sm text-gray-600">AI replies to inbound texts</p>
-                </div>
-                <div className={`toggle-switch ${smsSettings.autoRespond ? 'active' : ''}`}
-                     onClick={()=>setSmsSettings(prev=>({...prev, autoRespond: !prev.autoRespond}))}>
-                  <div className="toggle-slider"></div>
-                </div>
-              </div>
-
-              <div>
-                <label className="block font-medium mb-2">Follow-Up Delay</label>
-                <select className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                        value={smsSettings.followUpDelay}
-                        onChange={(e)=>setSmsSettings(prev=>({...prev, followUpDelay: parseInt(e.target.value)}))}>
-                  <option value="5">5 minutes</option>
-                  <option value="15">15 minutes</option>
-                  <option value="30">30 minutes</option>
-                  <option value="60">1 hour</option>
-                </select>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-medium mb-2">Business Start</label>
-                  <input type="time" className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                         value={smsSettings.businessHours.start}
-                         onChange={(e)=>setSmsSettings(prev=>({...prev, businessHours:{...prev.businessHours, start:e.target.value}}))}/>
-                </div>
-                <div>
-                  <label className="block font-medium mb-2">Business End</label>
-                  <input type="time" className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                         value={smsSettings.businessHours.end}
-                         onChange={(e)=>setSmsSettings(prev=>({...prev, businessHours:{...prev.businessHours, end:e.target.value}}))}/>
-                </div>
+              <div className={`toggle-switch ${smsSettings.autoRespond ? 'active' : ''}`} onClick={()=>setSmsSettings(prev=>({...prev, autoRespond: !prev.autoRespond}))}>
+                <div className="toggle-slider"></div>
               </div>
             </div>
-
-            <div className="space-y-4">
-              <div className="bg-gray-50 p-4 rounded-xl">
-                <h4 className="font-semibold mb-2">📆 Drip Scripts (by day)</h4>
-                {Object.entries(smsSettings.scripts).map(([key,val])=>(
-                  <div key={key} className="mb-2">
-                    <label className="block text-sm font-medium mb-1 uppercase">{key}</label>
-                    <textarea className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent h-20 resize-none"
-                              value={val}
-                              onChange={(e)=>setSmsSettings(prev=>({...prev, scripts:{...prev.scripts, [key]: e.target.value}}))}/>
-                  </div>
-                ))}
-              </div>
-
-              <div className="bg-gray-50 p-4 rounded-xl">
-                <h4 className="font-semibold mb-2">🎯 Situational Scripts</h4>
-                {Object.entries(smsSettings.scriptVariants).map(([key,val])=>(
-                  <div key={key} className="mb-2">
-                    <label className="block text-sm font-medium mb-1 capitalize">{key}</label>
-                    <textarea className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent h-16 resize-none"
-                              value={val}
-                              onChange={(e)=>setSmsSettings(prev=>({...prev, scriptVariants:{...prev.scriptVariants, [key]: e.target.value}}))}/>
-                  </div>
-                ))}
-              </div>
-
-              <button onClick={async ()=>{
-                try{
-                  await fetch('/api/sms-settings', { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(smsSettings) });
-                  alert('✅ SMS settings saved.');
-                } catch {}
-              }} className="w-full p-3 bg-gradient-to-r from-green-500 to-green-600 text-white font-semibold rounded-xl hover:shadow-lg transition-all">💾 Save SMS Settings</button>
+            <div>
+              <label className="block font-medium mb-2">Follow-Up Delay</label>
+              <select className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500" value={smsSettings.followUpDelay} onChange={(e)=>setSmsSettings(prev=>({...prev, followUpDelay: parseInt(e.target.value)}))}>
+                <option value="5">5 minutes</option>
+                <option value="15">15 minutes</option>
+                <option value="30">30 minutes</option>
+                <option value="60">1 hour</option>
+              </select>
             </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block font-medium mb-2">Business Start</label>
+                <input type="time" className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500" value={smsSettings.businessHours.start} onChange={(e)=>setSmsSettings(prev=>({...prev, businessHours:{...prev.businessHours, start:e.target.value}}))}/>
+              </div>
+              <div>
+                <label className="block font-medium mb-2">Business End</label>
+                <input type="time" className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500" value={smsSettings.businessHours.end} onChange={(e)=>setSmsSettings(prev=>({...prev, businessHours:{...prev.businessHours, end:e.target.value}}))}/>
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            <div className="bg-gray-50 p-4 rounded-xl">
+              <h4 className="font-semibold mb-2">📆 Drip Scripts (by day)</h4>
+              {Object.entries(smsSettings.scripts).map(([key,val])=>(
+                <div key={key} className="mb-2">
+                  <label className="block text-sm font-medium mb-1 uppercase">{key}</label>
+                  <textarea className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500 h-20 resize-none" value={val} onChange={(e)=>setSmsSettings(prev=>({...prev, scripts:{...prev.scripts, [key]: e.target.value}}))}/>
+                </div>
+              ))}
+            </div>
+
+            <div className="bg-gray-50 p-4 rounded-xl">
+              <h4 className="font-semibold mb-2">🎯 Situational Scripts</h4>
+              {Object.entries(smsSettings.scriptVariants).map(([key,val])=>(
+                <div key={key} className="mb-2">
+                  <label className="block text-sm font-medium mb-1 capitalize">{key}</label>
+                  <textarea className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500 h-16 resize-none" value={val} onChange={(e)=>setSmsSettings(prev=>({...prev, scriptVariants:{...prev.scriptVariants, [key]: e.target.value}}))}/>
+                </div>
+              ))}
+            </div>
+
+            <button onClick={()=>{ alert('✅ SMS settings saved.'); }} className="w-full p-3 bg-gradient-to-r from-green-500 to-green-600 text-white font-semibold rounded-xl hover:shadow-lg transition-all">💾 Save SMS Settings</button>
           </div>
         </div>
       </div>
     );
-  };
+  }
 
-  /** ---------- Objection Handling ---------- */
+  /* ---------- Objections ---------- */
   const ObjectionHandling = () => {
     const [newObjection, setNewObjection] = useState({ objection:'', response:'' });
-    const addObjection = async () => {
+    const addObjection = () => {
       if (!newObjection.objection || !newObjection.response) { alert('Fill both fields'); return; }
-      try {
-        const res = await fetch('/api/objections', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(newObjection) });
-        const result = await res.json().catch(()=>({ id: Date.now(), ...newObjection }));
-        setObjections(prev=>[...prev, result]);
-        setNewObjection({ objection:'', response:'' });
-        alert('✅ Objection added.');
-      } catch { setObjections(prev=>[...prev, { id:Date.now(), ...newObjection }]); }
+      const obj = { id: Date.now(), ...newObjection };
+      setObjections(prev=>[...prev, obj]); saveNow({ objections: [...objections, obj] });
+      setNewObjection({ objection:'', response:'' });
+      alert('✅ Objection added.');
     };
     return (
       <div className="space-y-6 fade-in">
@@ -988,17 +1054,11 @@ const LeadFlowApp = () => {
             <div className="space-y-3">
               <div>
                 <label className="block text-sm font-medium mb-1">Common Objection</label>
-                <input type="text" className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                       placeholder="e.g., I can't afford it right now"
-                       value={newObjection.objection}
-                       onChange={(e)=>setNewObjection(prev=>({...prev, objection:e.target.value}))}/>
+                <input type="text" className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500" placeholder="e.g., I can't afford it right now" value={newObjection.objection} onChange={(e)=>setNewObjection(prev=>({...prev, objection:e.target.value}))}/>
               </div>
               <div>
                 <label className="block text-sm font-medium mb-1">AI Response</label>
-                <textarea className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent h-24 resize-none"
-                          placeholder="Write a helpful, empathetic response..."
-                          value={newObjection.response}
-                          onChange={(e)=>setNewObjection(prev=>({...prev, response:e.target.value}))}/>
+                <textarea className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500 h-24 resize-none" placeholder="Write a helpful, empathetic response..." value={newObjection.response} onChange={(e)=>setNewObjection(prev=>({...prev, response:e.target.value}))}/>
               </div>
               <button onClick={addObjection} className="px-4 py-2 bg-gradient-to-r from-blue-500 to-purple-600 text-white rounded-xl hover:shadow-lg transition-all">➕ Add Objection</button>
             </div>
@@ -1019,7 +1079,7 @@ const LeadFlowApp = () => {
     );
   };
 
-  /** ---------- Campaigns ---------- */
+  /* ---------- Campaigns ---------- */
   const CampaignManager = () => (
     <div className="bg-white rounded-2xl p-6 shadow-lg fade-in">
       <h2 className="text-2xl font-bold mb-4">📈 Campaign Manager</h2>
@@ -1040,7 +1100,7 @@ const LeadFlowApp = () => {
     </div>
   );
 
-  /** ---------- Analytics ---------- */
+  /* ---------- Analytics ---------- */
   const Analytics = () => {
     const a = analyticsData;
     if (!a) return <div className="bg-white rounded-2xl p-6 shadow-lg">Loading analytics…</div>;
@@ -1065,8 +1125,9 @@ const LeadFlowApp = () => {
     );
   };
 
-  /** ---------- Inbound Center (receive calls/SMS) ---------- */
+  /* ---------- Inbound Center (receive calls/SMS; match/ask name) ---------- */
   const InboundCenter = () => {
+    const [autoMatchUnknown, setAutoMatchUnknown] = useState(true);
     const [testing, setTesting] = useState(false);
 
     const matchLeadByPhone = (num) => {
@@ -1075,33 +1136,23 @@ const LeadFlowApp = () => {
     };
 
     const handleInbound = async (evt) => {
-      // evt: {type:'call'|'sms', from, to, text?}
       let matched = matchLeadByPhone(evt.from);
       let askName = false;
       if (!matched && autoMatchUnknown) {
-        // Try name extraction from text (very naive fallback)
         const nameMatch = (evt.text||'').match(/\b(I'm|I am|This is)\s+([A-Z][a-zA-Z]+)\b/);
-        if (nameMatch) {
-          matched = leads.find(l=> (l.name||'').toLowerCase().includes(nameMatch[2].toLowerCase()));
-        }
+        if (nameMatch) matched = leads.find(l=> (l.name||'').toLowerCase().includes(nameMatch[2].toLowerCase()));
         if (!matched) askName = true;
       }
       const record = { id: Date.now(), ...evt, time: new Date().toLocaleString(), matchedLeadId: matched?.id, status:'received', askName };
-      setInboundEvents(prev => [record, ...prev]);
-
-      // Let backend know (optional)
-      try {
-        await fetch('/api/inbound', { method:'POST', headers:{'Content-Type':'application/json'},
-          body: JSON.stringify({ event: record, routing, metadata: evt.type==='call'? routing.metadata.call : routing.metadata.sms }) });
-      } catch {}
+      setInboundEvents(prev => [record, ...prev]); saveNow({ inbound: [record, ...inboundEvents] });
+      try { await fetch('/api/inbound', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ event: record, routing, metadata: evt.type==='call'? routing.metadata.call : routing.metadata.sms }) }).catch(()=>{}); } catch {}
     };
 
-    // Simulate a WebSocket/poll for demo if no backend pushing events
     useEffect(()=>{
       let stop=false;
       (async ()=>{
         if (testing) {
-          await sleep(1200);
+          await new Promise(r=>setTimeout(r, 1000));
           if (!stop) handleInbound({ type:'sms', from:'+1 (555) 333-1212', to:'+1 (555) 111-0000', text:'Hey this is Chris, calling back about the quote' });
         }
       })();
@@ -1109,8 +1160,8 @@ const LeadFlowApp = () => {
     },[testing]);
 
     const copy = async (text)=>{ try{ await navigator.clipboard.writeText(text); alert('Copied'); } catch{} };
-
     const webhookBase = window.location.origin || 'https://your-server.com';
+
     return (
       <div className="space-y-6 fade-in">
         <div className="bg-white rounded-2xl p-6 shadow-lg">
@@ -1118,36 +1169,24 @@ const LeadFlowApp = () => {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <div className="space-y-4">
               <div className="bg-gray-50 p-4 rounded-xl">
-                <h4 className="font-semibold mb-2">Webhooks</h4>
+                <h4 className="font-semibold mb-2">Webhooks (for Twilio/Vonage)</h4>
                 <div className="text-sm">
-                  <div className="flex items-center justify-between mb-2">
-                    <span>Inbound Call URL</span>
-                    <button onClick={()=>copy(`${webhookBase}/webhooks/inbound/call`)} className="text-blue-600 text-sm">Copy</button>
-                  </div>
-                  <code className="text-xs bg-white p-2 rounded border block">{webhookBase}/webhooks/inbound/call</code>
+                  <div className="flex items-center justify-between mb-2"><span>Inbound Call URL</span><button onClick={()=>copy(`${webhookBase}/webhooks/inbound/call`)} className="text-blue-600 text-sm">Copy</button></div>
+                  <code class="inline block mb-2">{webhookBase}/webhooks/inbound/call</code>
                 </div>
-                <div className="text-sm mt-3">
-                  <div className="flex items-center justify-between mb-2">
-                    <span>Inbound SMS URL</span>
-                    <button onClick={()=>copy(`${webhookBase}/webhooks/inbound/sms`)} className="text-blue-600 text-sm">Copy</button>
-                  </div>
-                  <code className="text-xs bg-white p-2 rounded border block">{webhookBase}/webhooks/inbound/sms</code>
+                <div className="text-sm">
+                  <div className="flex items-center justify-between mb-2"><span>Inbound SMS URL</span><button onClick={()=>copy(`${webhookBase}/webhooks/inbound/sms`)} className="text-blue-600 text-sm">Copy</button></div>
+                  <code class="inline block">{webhookBase}/webhooks/inbound/sms</code>
                 </div>
               </div>
-
               <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl">
                 <div>
                   <div className="font-medium">Auto-match unknown callers</div>
-                  <div className="text-xs text-gray-600">Try to match by number/name; otherwise ask name</div>
+                  <div className="text-xs text-gray-600">Try number/name; otherwise ask their name</div>
                 </div>
-                <div className={`toggle-switch ${autoMatchUnknown ? 'active' : ''}`} onClick={()=>setAutoMatchUnknown(!autoMatchUnknown)}>
-                  <div className="toggle-slider"></div>
-                </div>
+                <div className={`toggle-switch ${autoMatchUnknown ? 'active' : ''}`} onClick={()=>setAutoMatchUnknown(!autoMatchUnknown)}><div className="toggle-slider"></div></div>
               </div>
-
-              <button onClick={()=>setTesting(v=>!v)} className="w-full p-3 bg-gradient-to-r from-orange-500 to-red-600 text-white font-semibold rounded-xl hover:shadow-lg transition-all">
-                {testing ? '⏹️ Stop Simulated Inbound' : '▶️ Simulate Inbound'}
-              </button>
+              <button onClick={()=>setTesting(v=>!v)} className="w-full p-3 bg-gradient-to-r from-orange-500 to-red-600 text-white font-semibold rounded-xl hover:shadow-lg transition-all">{testing ? '⏹️ Stop Simulated Inbound' : '▶️ Simulate Inbound'}</button>
             </div>
 
             <div className="space-y-3">
@@ -1170,44 +1209,53 @@ const LeadFlowApp = () => {
     );
   };
 
-  /** ---------- Imports (CSV viewer + field mapping + placeholder filter) ---------- */
+  /* ---------- Imports (fast CSV preview + mapping + import to leads) ---------- */
   const Imports = () => {
-    const [selectedImport, setSelectedImport] = useState(null);
+    const [selectedImport, setSelectedImport] = useState(imports[0] || null);
+    const [importsFilterPlaceholders, setImportsFilterPlaceholders] = useState(true);
+    const [currentMapping, setCurrentMapping] = useState({ name:'', phone:'', email:'', type:'', location:'', time:'', custom1:'', custom2:'' });
 
-    useEffect(()=>{
-      // Try to load recent imports
-      fetch('/api/imports').then(r=>r.json()).then(setImports).catch(()=>{
-        // sample
-        setImports([{
-          id:'imp1', filename:'leads.csv', createdAt:new Date().toISOString(),
-          rows:[
-            { Name:'Example Person', Phone:'(555) 000-0000', Email:'example@example.com', City:'Boise', Note:'placeholder' },
-            { Name:'Chris Nolan', Phone:'(208) 555-1212', Email:'chris@example.com', City:'Meridian', Note:'' },
-          ],
-          mapped:{}
-        }]);
-      });
-    },[]);
+    useEffect(()=>{ if (!selectedImport && imports.length) setSelectedImport(imports[0]); }, [imports, selectedImport]);
 
+    const rows0 = selectedImport?.rows || [];
+    const headers = Object.keys(rows0[0] || {});
     const filteredRows = useMemo(()=>{
-      if (!selectedImport) return [];
-      const rows = selectedImport.rows || [];
-      if (!importsFilterPlaceholders) return rows;
+      const rows = rows0;
+      if (!importsFilterPlaceholders) return rows.slice(0, 200);
       return rows.filter(r=>{
         const values = Object.values(r).join(' ').toLowerCase();
         return !values.includes('example') && !values.includes('(555)');
-      });
-    },[selectedImport, importsFilterPlaceholders]);
+      }).slice(0, 200);
+    },[rows0, importsFilterPlaceholders]);
 
-    const saveMapping = async () => {
+    const saveMapping = () => {
       if (!selectedImport) return;
-      const payload = { id: selectedImport.id, mapped: currentMapping, dropPlaceholders: importsFilterPlaceholders };
-      try {
-        await fetch('/api/imports/map', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
-        alert('✅ Mapping saved. Data will flow into Leads.');
-      } catch {
-        alert('Saved locally (no API).');
-      }
+      const updated = imports.map(i => i.id===selectedImport.id ? { ...i, mapped: currentMapping, dropPlaceholders: importsFilterPlaceholders } : i);
+      setImports(updated); saveNow({ imports: updated });
+      alert('✅ Mapping saved.');
+    };
+    const importToLeads = () => {
+      if (!selectedImport) return;
+      // Build new leads from mapping
+      const newLeads = filteredRows.map((row)=>({
+        id: Date.now() + Math.floor(Math.random()*100000),
+        name: row[currentMapping.name] || 'Unknown',
+        phone: row[currentMapping.phone] || '',
+        email: row[currentMapping.email] || '',
+        type: (row[currentMapping.type] || 'other').toString().toLowerCase(),
+        location: row[currentMapping.location] || '',
+        time: row[currentMapping.time] || new Date().toLocaleString(),
+        status: 'new'
+      }));
+      setLeads(prev => [...newLeads, ...prev]);
+      alert(`✅ Imported ${newLeads.length} leads.`);
+    };
+    const deleteImport = () => {
+      if (!selectedImport) return;
+      if (!confirm('Delete this import file from the list?')) return;
+      const updated = imports.filter(i => i.id !== selectedImport.id);
+      setImports(updated); saveNow({ imports: updated });
+      setSelectedImport(updated[0] || null);
     };
 
     return (
@@ -1224,7 +1272,7 @@ const LeadFlowApp = () => {
                   <div className="text-xs text-gray-600">{new Date(imp.createdAt).toLocaleString()}</div>
                 </button>
               ))}
-              {imports.length===0 && <div className="text-sm text-gray-500">No imports yet.</div>}
+              {imports.length===0 && <div className="text-sm text-gray-500">No imports yet. Use “Upload CSV”.</div>}
             </div>
 
             <div className="lg:col-span-2 space-y-4">
@@ -1234,35 +1282,29 @@ const LeadFlowApp = () => {
                 <>
                   <div className="flex items-center justify-between">
                     <div className="font-semibold">{selectedImport.filename}</div>
-                    <label className="flex items-center gap-2 text-sm">
-                      <input type="checkbox" checked={importsFilterPlaceholders} onChange={(e)=>setImportsFilterPlaceholders(e.target.checked)}/>
-                      Filter placeholders (e.g., “example”, 555)
-                    </label>
+                    <div className="flex gap-2">
+                      <label className="flex items-center gap-2 text-sm">
+                        <input type="checkbox" checked={importsFilterPlaceholders} onChange={(e)=>setImportsFilterPlaceholders(e.target.checked)}/>
+                        Filter placeholders (e.g., “example”, 555)
+                      </label>
+                      <button onClick={deleteImport} className="px-3 py-1 bg-gray-100 rounded">Delete</button>
+                    </div>
                   </div>
 
                   <div className="overflow-auto border rounded-xl">
                     <table className="min-w-full text-sm">
                       <thead className="bg-gray-50">
-                        <tr>
-                          {Object.keys(selectedImport.rows[0] || {}).map(h=>(
-                            <th key={h} className="px-3 py-2 text-left font-medium text-gray-700">{h}</th>
-                          ))}
-                        </tr>
+                        <tr>{headers.map(h=><th key={h} className="px-3 py-2 text-left font-medium text-gray-700">{h}</th>)}</tr>
                       </thead>
                       <tbody>
                         {filteredRows.map((row,idx)=>(
-                          <tr key={idx} className="border-t">
-                            {Object.keys(selectedImport.rows[0] || {}).map(h=>(
-                              <td key={h} className="px-3 py-2">{row[h]}</td>
-                            ))}
-                          </tr>
+                          <tr key={idx} className="border-t">{headers.map(h=><td key={h} className="px-3 py-2">{row[h]}</td>)}</tr>
                         ))}
-                        {filteredRows.length===0 && (
-                          <tr><td className="px-3 py-6 text-center text-gray-500" colSpan="999">No rows after filter.</td></tr>
-                        )}
+                        {filteredRows.length===0 && <tr><td className="px-3 py-6 text-center text-gray-500" colSpan="999">No rows to show.</td></tr>}
                       </tbody>
                     </table>
                   </div>
+                  <div className="text-xs text-gray-500">Showing up to 200 rows (preview).</div>
 
                   <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                     {[
@@ -1272,11 +1314,9 @@ const LeadFlowApp = () => {
                     ].map(([field,label])=>(
                       <div key={field}>
                         <label className="block text-sm font-medium mb-1">{label} → {field}</label>
-                        <select className="w-full p-2 border rounded"
-                          value={currentMapping[field] || ''}
-                          onChange={(e)=>setCurrentMapping(prev=>({...prev, [field]: e.target.value}))}>
+                        <select className="w-full p-2 border rounded" value={currentMapping[field] || ''} onChange={(e)=>setCurrentMapping(prev=>({...prev, [field]: e.target.value}))}>
                           <option value="">Skip</option>
-                          {Object.keys(selectedImport.rows[0] || {}).map(h=><option key={h} value={h}>{h}</option>)}
+                          {headers.map(h=><option key={h} value={h}>{h}</option>)}
                         </select>
                       </div>
                     ))}
@@ -1284,6 +1324,7 @@ const LeadFlowApp = () => {
 
                   <div className="flex gap-3">
                     <button onClick={saveMapping} className="px-4 py-2 bg-gradient-to-r from-blue-500 to-purple-600 text-white rounded-xl">💾 Save Mapping</button>
+                    <button onClick={importToLeads} className="px-4 py-2 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-xl">⬆️ Import to Leads</button>
                   </div>
                 </>
               )}
@@ -1294,23 +1335,31 @@ const LeadFlowApp = () => {
     );
   };
 
-  /** ---------- Settings (APIs + Routing/Workers + Metadata) ---------- */
+  /* ---------- Settings (API keys, routing, account, admin users) ---------- */
   const Settings = () => {
-    const [tab, setTab] = useState('apis'); // 'apis' | 'routing'
-
-    const saveApi = async () => {
-      try{
-        await fetch('/api/settings', { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ apiKeys, routing }) });
-        alert('✅ Settings saved.');
-      } catch { alert('Saved locally.'); }
+    const [tab, setTab] = useState('apis');
+    const saveApi = () => { saveNow(); alert('✅ Settings saved.'); };
+    const changePassword = async ()=>{
+      const oldp = prompt('Enter current password:'); if (!oldp) return;
+      const newp = prompt('Enter new password:'); if (!newp) return;
+      const conf = prompt('Confirm new password:'); if (conf !== newp) { alert('Passwords do not match'); return; }
+      const users = loadUsers();
+      const u = users.find(x=>emailEq(x.email, me.email)); if (!u) return alert('User not found');
+      const oldHash = await sha256(oldp);
+      if (oldHash !== u.passHash) return alert('Current password incorrect');
+      u.passHash = await sha256(newp);
+      saveUsers(users);
+      alert('✅ Password changed.');
     };
 
     return (
       <div className="space-y-6 fade-in">
         <div className="bg-white rounded-2xl p-4 lg:p-6 shadow-lg">
-          <div className="flex gap-2 mb-4">
+          <div className="flex gap-2 mb-4 flex-wrap">
             <button onClick={()=>setTab('apis')} className={`px-3 py-2 rounded ${tab==='apis'?'bg-blue-600 text-white':'bg-gray-100'}`}>API Keys</button>
             <button onClick={()=>setTab('routing')} className={`px-3 py-2 rounded ${tab==='routing'?'bg-blue-600 text-white':'bg-gray-100'}`}>AI Routing & Workers</button>
+            <button onClick={()=>setTab('account')} className={`px-3 py-2 rounded ${tab==='account'?'bg-blue-600 text-white':'bg-gray-100'}`}>Account</button>
+            {me.isAdmin && <button onClick={()=>setTab('users')} className={`px-3 py-2 rounded ${tab==='users'?'bg-blue-600 text-white':'bg-gray-100'}`}>Users (Admin)</button>}
           </div>
 
           {tab==='apis' && (
@@ -1318,15 +1367,14 @@ const LeadFlowApp = () => {
               <h3 className="text-lg lg:text-xl font-bold mb-4">API Configuration</h3>
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 {[
-                  ['openai','OpenAI API Key','sk-...','For AI ad gen & voice'],
+                  ['openai','OpenAI API Key','sk-...','For ad gen & voice'],
                   ['meta','Meta Access Token','EA...','For Facebook/Instagram campaigns'],
-                  ['elevenlabs','ElevenLabs API Key','elevenlabs-...','For AI voice calling'],
-                  ['twilio','Twilio Account SID','AC...','For SMS and phone services']
+                  ['elevenlabs','ElevenLabs API Key','elevenlabs-...','For voice calling'],
+                  ['twilio','Twilio Account SID','AC...','For SMS/phone services']
                 ].map(([key,label,ph,help])=>(
                   <div key={key}>
                     <label className="block font-medium mb-2">{label}</label>
-                    <input type="password" className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      placeholder={ph} value={apiKeys[key]} onChange={(e)=>setApiKeys(prev=>({...prev, [key]: e.target.value}))}/>
+                    <input type="password" className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500" placeholder={ph} value={apiKeys[key]} onChange={(e)=>setApiKeys(prev=>({...prev, [key]: e.target.value}))}/>
                     <p className="text-xs text-gray-500 mt-1">{help}</p>
                   </div>
                 ))}
@@ -1354,28 +1402,26 @@ const LeadFlowApp = () => {
                         <input type="text" className="w-full p-2 border rounded" value={routing[field]} onChange={(e)=>setRouting(prev=>({...prev, [field]: e.target.value || def}))}/>
                       </div>
                     ))}
-                    <p className="text-xs text-gray-600 mt-2">Workloads are isolated so calls never lag. Draft many variants cheaply with gpt-5-mini; polish winners with gpt-5.</p>
+                    <p className="text-xs text-gray-600 mt-2">Realtime worker for calls/SMS; batch worker for ads—kept isolated so calls never lag.</p>
                   </div>
 
                   <div className="bg-gray-50 p-4 rounded-xl">
-                    <h4 className="font-semibold mb-2">Workers</h4>
+                    <h4 className="font-semibold mb-2">Workers (limits)</h4>
                     <div className="mb-3">
-                      <div className="font-medium mb-1">Realtime Worker (calls/SMS)</div>
+                      <div className="font-medium mb-1">Realtime (calls/SMS)</div>
                       {['maxTokens','timeoutMs','rpm','tpm'].map(k=>(
                         <div key={k} className="grid grid-cols-2 gap-2 mb-2">
                           <label className="text-sm text-gray-600">{k}</label>
-                          <input type="number" className="p-2 border rounded" value={routing.realtimeWorker[k]}
-                                 onChange={(e)=>setRouting(prev=>({...prev, realtimeWorker:{...prev.realtimeWorker, [k]: parseInt(e.target.value)||0}}))}/>
+                          <input type="number" className="p-2 border rounded" value={routing.realtimeWorker[k]} onChange={(e)=>setRouting(prev=>({...prev, realtimeWorker:{...prev.realtimeWorker, [k]: parseInt(e.target.value)||0}}))}/>
                         </div>
                       ))}
                     </div>
                     <div>
-                      <div className="font-medium mb-1">Batch Worker (ads/text/image)</div>
+                      <div className="font-medium mb-1">Batch (ads copy/image)</div>
                       {['maxTokens','timeoutMs','rpm','tpm'].map(k=>(
                         <div key={k} className="grid grid-cols-2 gap-2 mb-2">
                           <label className="text-sm text-gray-600">{k}</label>
-                          <input type="number" className="p-2 border rounded" value={routing.batchWorker[k]}
-                                 onChange={(e)=>setRouting(prev=>({...prev, batchWorker:{...prev.batchWorker, [k]: parseInt(e.target.value)||0}}))}/>
+                          <input type="number" className="p-2 border rounded" value={routing.batchWorker[k]} onChange={(e)=>setRouting(prev=>({...prev, batchWorker:{...prev.batchWorker, [k]: parseInt(e.target.value)||0}}))}/>
                         </div>
                       ))}
                     </div>
@@ -1395,38 +1441,49 @@ const LeadFlowApp = () => {
                         <div className="text-sm font-medium mb-1">{key}</div>
                         <div className="grid grid-cols-3 gap-2 items-center">
                           <span className="text-xs text-gray-600 col-span-1">channel</span>
-                          <input type="text" className="p-2 border rounded col-span-2"
-                                 value={routing.metadata[key]?.channel || def}
-                                 onChange={(e)=>setRouting(prev=>({...prev, metadata:{...prev.metadata, [key]: { ...prev.metadata[key], channel: e.target.value }}}))}/>
+                          <input type="text" className="p-2 border rounded col-span-2" value={routing.metadata[key]?.channel || def} onChange={(e)=>setRouting(prev=>({...prev, metadata:{...prev.metadata, [key]: { ...prev.metadata[key], channel: e.target.value }}}))}/>
                         </div>
                       </div>
                     ))}
-                    <p className="text-xs text-gray-600">All requests are tagged: <code>{'{channel:"call"|"sms"|"ads-copy"|"ads-image"}'}</code></p>
+                    <p className="text-xs text-gray-600">Requests will be tagged like <code class="inline">{'{channel:"call"|"sms"|"ads-copy"|"ads-image"}'}</code></p>
                   </div>
                 </div>
               </div>
             </>
           )}
 
-          <div className="mt-6">
-            <button onClick={saveApi} className="px-6 py-3 bg-gradient-to-r from-blue-500 to-purple-600 text-white font-semibold rounded-xl hover:shadow-lg transition-all">💾 Save All Settings</button>
-          </div>
-        </div>
+          {tab==='account' && (
+            <div className="space-y-4">
+              <h3 className="text-lg lg:text-xl font-bold">Account</h3>
+              <div className="p-4 bg-gray-50 rounded-xl">
+                <div className="text-sm text-gray-700"><strong>Email:</strong> {me.email}</div>
+                <div className="text-sm text-gray-700"><strong>Role:</strong> {me.isAdmin ? 'Admin' : 'User'}</div>
+              </div>
+              <div className="flex gap-2">
+                <button onClick={changePassword} className="px-4 py-2 bg-gradient-to-r from-blue-500 to-purple-600 text-white rounded-xl">Change Password</button>
+                <button onClick={onLogout} className="px-4 py-2 bg-red-100 text-red-700 rounded-xl">Logout</button>
+              </div>
+            </div>
+          )}
 
-        <div className="bg-blue-50 border border-blue-200 rounded-xl p-6">
-          <h4 className="font-bold text-blue-800 mb-3">🔑 Where to get keys</h4>
-          <div className="space-y-2 text-sm text-blue-700">
-            <div><strong>OpenAI:</strong> platform.openai.com → API Keys</div>
-            <div><strong>Meta:</strong> developers.facebook.com → Meta for Developers</div>
-            <div><strong>ElevenLabs:</strong> elevenlabs.io → Profile → API Key</div>
-            <div><strong>Twilio:</strong> twilio.com → Console → Account SID</div>
-          </div>
+          {tab==='users' && me.isAdmin && (
+            <UsersAdmin me={me} onImpersonate={(email)=>{
+              saveSession({ email, isAdmin: loadUsers().find(u=>emailEq(u.email,email))?.isAdmin || false });
+              onImpersonate(email);
+            }}/>
+          )}
+
+          {(tab==='apis' || tab==='routing') && (
+            <div className="mt-6">
+              <button onClick={saveApi} className="px-6 py-3 bg-gradient-to-r from-blue-500 to-purple-600 text-white font-semibold rounded-xl hover:shadow-lg transition-all">💾 Save</button>
+            </div>
+          )}
         </div>
       </div>
     );
   };
 
-  /** ---------- Render Switch ---------- */
+  /* ---------- Render switch ---------- */
   const renderContent = () => {
     switch(activeTab) {
       case 'dashboard': return <Dashboard/>;
@@ -1439,6 +1496,7 @@ const LeadFlowApp = () => {
       case 'inbound': return <InboundCenter/>;
       case 'imports': return <Imports/>;
       case 'settings': return <Settings/>;
+      case 'admin-users': return <UsersAdmin me={me} onImpersonate={(email)=>{ saveSession({ email, isAdmin: loadUsers().find(u=>emailEq(u.email,email))?.isAdmin || false }); onImpersonate(email); }}/>;
       default: return <Dashboard/>;
     }
   };
@@ -1461,19 +1519,73 @@ const LeadFlowApp = () => {
               {activeTab==='inbound' && 'Inbound Center'}
               {activeTab==='imports' && 'Imports & Field Mapping'}
               {activeTab==='settings' && 'Settings & Configuration'}
+              {activeTab==='admin-users' && 'Users (Admin)'}
             </h1>
-            <p className="text-sm lg:text-base text-gray-600">Professional Lead Platform by J. Kollar</p>
+            <p className="text-sm lg:text-base text-gray-600">Multi-tenant workspace • Logged in as {me.email}</p>
           </div>
           {renderContent()}
         </div>
       </div>
     </div>
   );
-};
+}
 
-/** ---------- Mount ---------- */
+/* =========================
+   APP WRAPPER
+   ========================= */
+function AppWrapper(){
+  const [me, setMe] = useState(null);
+  useEffect(()=>{ (async ()=>{ await ensureAdmin(); const sess = loadSession(); if (sess) setMe(sess); })(); },[]);
+  if (!me) return <LoginView onLoggedIn={setMe}/>;
+  const logout = ()=>{ clearSession(); setMe(null); };
+  const impersonate = (email)=>{ const u = loadUsers().find(x=>emailEq(x.email,email)); if (!u) return; setMe({ email: u.email, isAdmin: !!u.isAdmin }); };
+  return <LeadFlowApp me={me} onLogout={logout} onImpersonate={impersonate}/>;
+}
+
+/* =========================
+   CSV PARSER (simple & safe)
+   ========================= */
+function parseCSV(text){
+  // basic CSV (handles quotes, commas). Not for every edge case, but good enough here.
+  const rows = [];
+  let i=0, field='', row=[], inQuotes=false;
+  const pushField=()=>{ row.push(field); field=''; };
+  const pushRow=(headers)=>{
+    if (headers) return rows.push(headers.reduce((o,h,idx)=> (o[h]=row[idx]??'',o), {}));
+    return rows.push(row.slice());
+  };
+  // first pass to build raw rows
+  const raw = [];
+  row=[];
+  while(i<text.length){
+    const c = text[i];
+    if (c === '"'){
+      if (inQuotes && text[i+1]==='"'){ field+='"'; i++; }
+      else inQuotes = !inQuotes;
+    } else if (c === ',' && !inQuotes){ pushField(); }
+    else if ((c === '\n' || c === '\r') && !inQuotes){
+      pushField();
+      if (row.length>1 || (row.length===1 && row[0]!=='')) raw.push(row);
+      row=[];
+    } else { field+=c; }
+    i++;
+  }
+  if (field.length>0 || row.length){ pushField(); if (row.length) raw.push(row); }
+  if (!raw.length) return [];
+  const headers = raw[0].map(h=>String(h||'').trim() || 'col_'+Math.random().toString(36).slice(2,7));
+  for (let r=1; r<raw.length; r++){
+    const obj = {};
+    for (let c=0; c<headers.length; c++){ obj[headers[c]] = raw[r][c] ?? ''; }
+    rows.push(obj);
+  }
+  return rows;
+}
+
+/* =========================
+   Mount
+   ========================= */
 const root = ReactDOM.createRoot(document.getElementById('root'));
-root.render(<LeadFlowApp/>);
+root.render(<AppWrapper/>);
 </script>
 </body>
 </html>
