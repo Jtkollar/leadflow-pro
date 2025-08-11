@@ -110,6 +110,7 @@ function seedWorkspace(){
     smsSettings: {
       provider: 'twilio',
       autoRespond: true,
+      // store delay in MINUTES; we’ll render labels nicely
       followUpDelay: 15,
       scripts: {
         day0: 'Hey {{name}}, it’s Josh. Got your request—2 quick questions for your quote. Got a minute?',
@@ -125,9 +126,9 @@ function seedWorkspace(){
     },
     data: {
       leads: [
-        { id: 1, name:'Alex Morgan', phone:'(555) 123-4567', email:'alex@example.com', status:'new', type:'life', location:'ID', time:'Today 10:15 AM' },
-        { id: 2, name:'Sam Taylor', phone:'(555) 987-6543', email:'sam@example.com', status:'scheduled', type:'term', location:'TX', time:'Today 2:30 PM' },
-        { id: 3, name:'Jordan Lee', phone:'', email:'', status:'contacted', type:'final-expense', location:'AL', time:'Yesterday 4:05 PM' }
+        { id: 1, name:'Alex Morgan', phone:'(555) 123-4567', email:'alex@example.com', status:'new', type:'Life', location:'ID', time:'Today 10:15 AM' },
+        { id: 2, name:'Sam Taylor', phone:'(555) 987-6543', email:'sam@example.com', status:'scheduled', type:'Term', location:'TX', time:'Today 2:30 PM' },
+        { id: 3, name:'Jordan Lee', phone:'', email:'', status:'contacted', type:'Final Expense', location:'AL', time:'Yesterday 4:05 PM' }
       ],
       campaigns: [
         { id:'c1', name:'Insurance/Life - ID, OR', market:'Insurance', type:'Life', budget:100, status:'active', leads:24, costPerLead:12.45 }
@@ -467,6 +468,14 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
     // eslint-disable-next-line
   },[]);
 
+  const followUpLabel = (mins)=>{
+    const n = Number(mins)||0;
+    if (n < 120) return `${n} minutes`;
+    if (n < 24*60) return `${Math.round(n/60)} hours`;
+    if (n % (7*24*60) === 0) return `${n/(7*24*60)} week`;
+    return `${Math.round(n/1440)} day(s)`;
+  };
+
   /* ---------- Nav ---------- */
   const MobileNav = () => (
     <div className="lg:hidden bg-white shadow-lg p-4">
@@ -602,7 +611,6 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
         setAdForm(prev=>({ ...prev, headline: data.headline || prev.headline, copy: data.copy || prev.copy, cta: data.cta || prev.cta }));
         alert('✨ AI refreshed your ad content.');
       }catch{
-        // fallback: pick a random template
         const tpl = currentTemplates[Math.floor(Math.random()*currentTemplates.length)];
         if (tpl) applyTemplate(tpl); else alert('No templates available for this selection.');
       }
@@ -645,8 +653,9 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
           variants: localVariants
         };
         await fetch('/api/launch-campaign', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) }).catch(()=>{});
-        setCampaigns(prev => [{ id:'c'+Date.now(), name: body.name, market: body.market, type: body.type, budget: body.budget, status:'active', leads:0, costPerLead:0 }, ...prev]);
-        saveNow({ campaigns: [{ id:'c'+Date.now(), name: body.name, market: body.market, type: body.type, budget: body.budget, status:'active', leads:0, costPerLead:0 }, ...campaigns] });
+        const newCamp = { id:'c'+Date.now(), name: body.name, market: body.market, type: body.type, budget: body.budget, status:'active', leads:0, costPerLead:0 };
+        setCampaigns(prev => [newCamp, ...prev]);
+        saveNow({ campaigns: [newCamp, ...campaigns] });
         alert('🚀 Campaign launched (simulated).');
       } catch { alert('❌ Launch failed.'); }
     };
@@ -778,7 +787,7 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
     );
   };
 
-  /* ---------- Leads (unchanged aside from persistence) ---------- */
+  /* ---------- Leads (with per-lead follow-up override) ---------- */
   const LeadManagement = () => {
     const [searchTerm, setSearchTerm] = useState('');
     const [filterType, setFilterType] = useState('');
@@ -786,15 +795,35 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
     const [showImportModal, setShowImportModal] = useState(false);
     const [showTestModal, setShowTestModal] = useState(false);
     const [showAddLead, setShowAddLead] = useState(false);
+    const [leadSettings, setLeadSettings] = useState({ open:false, lead:null });
+
     const [newLead, setNewLead] = useState({ name:'', phone:'', email:'', type:'Life', location:'', status:'new' });
+
+    const getLeadFollowUp = (lead) => {
+      const sys = smsSettings;
+      const custom = lead.followUp;
+      if (custom?.useCustom) {
+        return {
+          enabled: custom.enabled !== false,
+          followUpDelay: Number(custom.followUpDelay) || sys.followUpDelay,
+          scripts: { ...sys.scripts, ...(custom.scripts||{}) }
+        };
+      }
+      return { enabled: true, followUpDelay: sys.followUpDelay, scripts: sys.scripts };
+    };
 
     const initiateContact = async (lead, method) => {
       try {
+        const f = getLeadFollowUp(lead);
         await fetch('/api/ai-call', {
           method:'POST', headers:{'Content-Type':'application/json'},
-          body: JSON.stringify({ leadId: lead.id, phoneNumber: lead.phone, method, routing, metadata: method==='call'? routing.metadata.call : routing.metadata.sms })
+          body: JSON.stringify({
+            leadId: lead.id, phoneNumber: lead.phone, method,
+            routing, metadata: method==='call'? routing.metadata.call : routing.metadata.sms,
+            followUp: f
+          })
         }).catch(()=>{});
-        alert(`✅ ${method==='call'?'Call':'SMS'} initiated (simulated).`);
+        alert(`✅ ${method==='call'?'Call':'SMS'} initiated (simulated).\nFollow-up: ${f.enabled ? followUpLabel(f.followUpDelay) : 'OFF'}`);
       } catch { alert(`❌ ${method==='call'?'Call':'SMS'} failed.`); }
     };
     const deleteLead = async (leadId) => {
@@ -840,6 +869,15 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
       return matchesSearch && matchesType && matchesStatus;
     });
 
+    const openLeadSettings = (lead) => setLeadSettings({ open:true, lead });
+    const closeLeadSettings = () => setLeadSettings({ open:false, lead:null });
+
+    const saveLeadSettings = (leadId, config) => {
+      setLeads(prev => prev.map(l => l.id===leadId ? { ...l, followUp: config } : l));
+      alert('✅ Lead follow-up settings saved.');
+      closeLeadSettings();
+    };
+
     return (
       <div className="space-y-6 fade-in">
         <div className="bg-white rounded-2xl p-4 lg:p-6 shadow-lg">
@@ -884,6 +922,7 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
                   </div>
                   <div className="flex items-center gap-2">
                     <span className={`badge ${lead.status==='new'?'bg-blue-100 text-blue-800':lead.status==='contacted'?'bg-orange-100 text-orange-800':lead.status==='scheduled'?'bg-purple-100 text-purple-800':'bg-green-100 text-green-800'}`}>{lead.status?.charAt(0).toUpperCase()+lead.status?.slice(1)}</span>
+                    <button onClick={()=>openLeadSettings(lead)} className="px-2 py-1 text-sm bg-blue-100 text-blue-700 rounded hover:bg-blue-200">⚙️ Lead</button>
                     <button onClick={()=>{ if(confirm('Delete this lead?')) setLeads(prev=>prev.filter(l=>l.id!==lead.id)); }} className="px-2 py-1 text-sm bg-gray-100 text-gray-700 rounded hover:bg-gray-200">🗑️</button>
                   </div>
                 </div>
@@ -894,6 +933,14 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
                     <button onClick={()=>initiateContact(lead,'sms')} className="px-3 py-1 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-all text-sm">💬 AI SMS</button>
                     <button className="px-3 py-1 bg-purple-100 text-purple-700 rounded-lg hover:bg-purple-200 transition-all text-sm">📅 Schedule</button>
                   </div>
+                </div>
+                {/* summary of follow-up policy */}
+                <div className="mt-2 text-xs text-gray-500">
+                  Follow-up: {
+                    lead.followUp?.useCustom
+                      ? (lead.followUp.enabled === false ? 'OFF (custom)' : `Custom • ${followUpLabel(lead.followUp.followUpDelay || smsSettings.followUpDelay)}`)
+                      : `System • ${followUpLabel(smsSettings.followUpDelay)}`
+                  }
                 </div>
               </div>
             ))}
@@ -987,9 +1034,92 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
             </div>
           </div>
         )}
+
+        {/* Lead Settings (per-lead follow-up override) */}
+        {leadSettings.open && leadSettings.lead && (
+          <LeadSettingsModal
+            lead={leadSettings.lead}
+            sysSms={smsSettings}
+            onClose={closeLeadSettings}
+            onSave={saveLeadSettings}
+            followUpLabel={followUpLabel}
+          />
+        )}
       </div>
     );
   };
+
+  /* ---------- Lead Settings Modal Component ---------- */
+  function LeadSettingsModal({ lead, sysSms, onClose, onSave, followUpLabel }) {
+    const [cfg, setCfg] = useState(lead.followUp || { useCustom:false, enabled:true, followUpDelay: sysSms.followUpDelay, scripts: {} });
+
+    const DELAY_OPTIONS = [
+      { v: 5, label: '5 minutes' },
+      { v: 15, label: '15 minutes' },
+      { v: 30, label: '30 minutes' },
+      { v: 60, label: '1 hour' },
+      { v: 1440, label: '1 day' },
+      { v: 2880, label: '2 days' },
+      { v: 10080, label: 'Next week' }
+    ];
+
+    const effective = cfg.useCustom
+      ? (cfg.enabled === false ? 'OFF' : followUpLabel(cfg.followUpDelay || sysSms.followUpDelay))
+      : followUpLabel(sysSms.followUpDelay);
+
+    return (
+      <div className="fixed inset-0 bg-black bg-opacity-50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div className="bg-white rounded-2xl p-6 max-w-lg w-full">
+          <h3 className="text-xl font-bold mb-2">⚙️ Lead Settings — {lead.name}</h3>
+          <p className="text-sm text-gray-600 mb-4">Custom SMS follow-up for this lead (overrides system defaults only if enabled).</p>
+
+          <div className="space-y-4">
+            <label className="flex items-center justify-between p-3 bg-gray-50 rounded-xl">
+              <span className="font-medium">Override system SMS follow-up</span>
+              <div className={`toggle-switch ${cfg.useCustom ? 'active' : ''}`} onClick={()=>setCfg(prev=>({...prev, useCustom: !prev.useCustom}))}><div className="toggle-slider"></div></div>
+            </label>
+
+            <div className={`${cfg.useCustom ? '' : 'opacity-50 pointer-events-none'} space-y-4`}>
+              <label className="flex items-center justify-between p-3 bg-gray-50 rounded-xl">
+                <span className="font-medium">Follow-up enabled for this lead</span>
+                <div className={`toggle-switch ${cfg.enabled !== false ? 'active' : ''}`} onClick={()=>setCfg(prev=>({...prev, enabled: !(prev.enabled !== false)}))}><div className="toggle-slider"></div></div>
+              </label>
+
+              <div>
+                <label className="block font-medium mb-2">Follow-up delay</label>
+                <select className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500" value={cfg.followUpDelay ?? sysSms.followUpDelay} onChange={(e)=>setCfg(prev=>({...prev, followUpDelay: parseInt(e.target.value)}))}>
+                  {DELAY_OPTIONS.map(o=><option key={o.v} value={o.v}>{o.label}</option>)}
+                </select>
+              </div>
+
+              <div className="bg-gray-50 p-3 rounded-xl">
+                <h4 className="font-semibold mb-2 text-sm">Drip Scripts (override only those you want)</h4>
+                {Object.entries(sysSms.scripts).map(([key, sysVal])=>(
+                  <div key={key} className="mb-2">
+                    <label className="block text-xs font-medium mb-1 uppercase">{key}</label>
+                    <textarea
+                      className="w-full p-2 border rounded-xl focus:ring-2 focus:ring-blue-500 h-16 resize-none"
+                      placeholder={sysVal}
+                      value={cfg.scripts?.[key] || ''}
+                      onChange={(e)=>setCfg(prev=>({...prev, scripts:{...prev.scripts, [key]: e.target.value}}))}
+                    />
+                    <div className="text-xs text-gray-500 mt-1">System default: “{sysVal.slice(0,80)}{sysVal.length>80?'…':''}”</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="text-xs text-gray-600">Effective follow-up for this lead: <strong>{effective}</strong></div>
+
+            <div className="flex gap-3 pt-2">
+              <button onClick={onClose} className="flex-1 px-4 py-2 border border-gray-300 rounded-xl hover:bg-gray-50 transition-all">Cancel</button>
+              <button onClick={()=>onSave(lead.id, cfg)} className="flex-1 px-4 py-3 bg-gradient-to-r from-blue-500 to-purple-600 text-white font-semibold rounded-xl hover:shadow-lg transition-all">Save</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   /* ---------- Voice + SMS ---------- */
   const VoiceAI = () => {
@@ -1101,6 +1231,15 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
     );
   };
   function SMSConfig({ smsSettings, setSmsSettings }){
+    const DELAY_OPTIONS = [
+      { v: 5, label: '5 minutes' },
+      { v: 15, label: '15 minutes' },
+      { v: 30, label: '30 minutes' },
+      { v: 60, label: '1 hour' },
+      { v: 1440, label: '1 day' },
+      { v: 2880, label: '2 days' },
+      { v: 10080, label: 'Next week' }
+    ];
     return (
       <div className="bg-white rounded-2xl p-6 shadow-lg">
         <h3 className="text-xl font-bold mb-4">💬 SMS Configuration & Drip</h3>
@@ -1124,13 +1263,11 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
               </div>
             </div>
             <div>
-              <label className="block font-medium mb-2">Follow-Up Delay</label>
+              <label className="block font-medium mb-2">Default Follow-Up Delay</label>
               <select className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500" value={smsSettings.followUpDelay} onChange={(e)=>setSmsSettings(prev=>({...prev, followUpDelay: parseInt(e.target.value)}))}>
-                <option value="5">5 minutes</option>
-                <option value="15">15 minutes</option>
-                <option value="30">30 minutes</option>
-                <option value="60">1 hour</option>
+                {DELAY_OPTIONS.map(o=><option key={o.v} value={o.v}>{o.label}</option>)}
               </select>
+              <p className="text-xs text-gray-500 mt-1">Per-lead overrides can change this.</p>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
@@ -1320,11 +1457,11 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
                 <h4 className="font-semibold mb-2">Webhooks (configure at Twilio/Vonage)</h4>
                 <div className="text-sm">
                   <div className="flex items-center justify-between mb-2"><span>Inbound Call URL</span><button onClick={()=>copy(`${webhookBase}/webhooks/inbound/call`)} className="text-blue-600 text-sm">Copy</button></div>
-                  <code class="inline block mb-2">{webhookBase}/webhooks/inbound/call</code>
+                  <code className="inline block mb-2">{webhookBase}/webhooks/inbound/call</code>
                 </div>
                 <div className="text-sm">
                   <div className="flex items-center justify-between mb-2"><span>Inbound SMS URL</span><button onClick={()=>copy(`${webhookBase}/webhooks/inbound/sms`)} className="text-blue-600 text-sm">Copy</button></div>
-                  <code class="inline block">{webhookBase}/webhooks/inbound/sms</code>
+                  <code className="inline block">{webhookBase}/webhooks/inbound/sms</code>
                 </div>
               </div>
               <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl">
@@ -1592,7 +1729,7 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
                         </div>
                       </div>
                     ))}
-                    <p className="text-xs text-gray-600">Requests are tagged like <code class="inline">{'{channel:"call"|"sms"|"ads-copy"|"ads-image"}'}</code></p>
+                    <p className="text-xs text-gray-600">Requests are tagged like <code className="inline">{'{channel:"call"|"sms"|"ads-copy"|"ads-image"}'}</code></p>
                   </div>
                 </div>
               </div>
