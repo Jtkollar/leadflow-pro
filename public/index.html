@@ -11,7 +11,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   <style>
     body { font-family: 'Inter', sans-serif; }
-    .fade-in { animation: fadeIn .4s ease-in; }
+    .fade-in { animation: fadeIn .35s ease-in; }
     @keyframes fadeIn { from { opacity:0; transform: translateY(6px);} to { opacity:1; transform: translateY(0);} }
     .toggle-switch { position: relative; width: 48px; height: 24px; background: #ccc; border-radius: 12px; cursor: pointer; transition: background .2s; }
     .toggle-switch.active { background: #667eea; }
@@ -29,7 +29,7 @@
 const { useState, useEffect, useMemo } = React;
 
 /* =========================
-   PERSISTENCE
+   PERSISTENCE / AUTH
    ========================= */
 const STORAGE_USERS = 'lfp:users';
 const STORAGE_SESSION = 'lfp:session';
@@ -68,85 +68,7 @@ async function ensureAdmin(){
 }
 
 /* =========================
-   SEED WORKSPACE
-   ========================= */
-function seedWorkspace(){
-  return {
-    apiKeys: { openai:'', meta:'', elevenlabs:'', twilio:'' },
-    routing: {
-      callsModel: 'gpt-5-mini',
-      callsEscalationModel: 'gpt-5',
-      smsModel: 'gpt-5-mini',
-      adsDraftModel: 'gpt-5-mini',
-      adsPolishModel: 'gpt-5',
-      adsImageModel: 'gpt-image-3.5',
-      realtimeWorker: { maxTokens: 2000, timeoutMs: 8000, rpm: 120, tpm: 120000 },
-      batchWorker:    { maxTokens: 6000, timeoutMs: 30000, rpm: 60,  tpm: 300000 },
-      metadata: {
-        call:     { channel: 'call' },
-        sms:      { channel: 'sms' },
-        adsCopy:  { channel: 'ads-copy' },
-        adsImage: { channel: 'ads-image' },
-      }
-    },
-    voiceSettings: {
-      provider: 'elevenlabs',
-      voice: 'Alloy',
-      style: 'professional',
-      speed: 'normal',
-      callAttempts: 2,
-      callInterval: 30,
-      scripts: {
-        generic: 'Hi, this is LeadFlow Pro following up on your request. Do you have a minute?',
-        life: 'Hi, reaching out about your life insurance request. Do you have a minute now?',
-        term: 'Hi, your term quote is ready—can I walk you through options?',
-        finalExpense: 'Hi, following up on your final expense inquiry. Quick questions?',
-        medicare: 'Hi there, calling about your Medicare coverage questions. Is now good?'
-      },
-      businessHours: { start:'09:00', end:'17:00' },
-      workingDays: ['monday','tuesday','wednesday','thursday','friday'],
-      timezone: 'America/Boise'
-    },
-    smsSettings: {
-      provider: 'twilio',
-      autoRespond: true,
-      // store delay in MINUTES; we’ll render labels nicely
-      followUpDelay: 15,
-      scripts: {
-        day0: 'Hey {{name}}, it’s Josh. Got your request—2 quick questions for your quote. Got a minute?',
-        day1: 'Been trying to reach you about your request. Want me to text a ballpark quote?',
-        day3: 'Still here when you are—want coverage options that fit your budget?',
-        day5: 'Final ping for now. Want me to send a 60-sec summary?'
-      },
-      scriptVariants: {
-        noAnswer: 'Missed you, {{name}}. Try again in 15 minutes or later today?',
-        voicemailDrop: 'Left you a short voicemail. Text works great if easier—what time can I call?'
-      },
-      businessHours: { start:'09:00', end:'17:00' }
-    },
-    data: {
-      leads: [
-        { id: 1, name:'Alex Morgan', phone:'(555) 123-4567', email:'alex@example.com', status:'new', type:'Life', location:'ID', time:'Today 10:15 AM' },
-        { id: 2, name:'Sam Taylor', phone:'(555) 987-6543', email:'sam@example.com', status:'scheduled', type:'Term', location:'TX', time:'Today 2:30 PM' },
-        { id: 3, name:'Jordan Lee', phone:'', email:'', status:'contacted', type:'Final Expense', location:'AL', time:'Yesterday 4:05 PM' }
-      ],
-      campaigns: [
-        { id:'c1', name:'Insurance/Life - ID, OR', market:'Insurance', type:'Life', budget:100, status:'active', leads:24, costPerLead:12.45 }
-      ],
-      objections: [],
-      analytics: {
-        overview: { totalLeads: 3, totalCampaigns: 1, conversionRate: 34, avgCostPerLead: 14.12 },
-        performance: { callAnswerRate: 41, smsResponseRate: 52, schedulingRate: 23, revenuePerLead: 186.4 }
-      },
-      inbound: [],
-      imports: [],
-      adLab: { variants: [], rotate: false }
-    }
-  };
-}
-
-/* =========================
-   CATALOGS
+   CATALOGS / CONSTANTS
    ========================= */
 const VOICE_CATALOG = {
   elevenlabs: ['Alloy','Callum','Rachel','Adam','Domi'],
@@ -155,9 +77,18 @@ const VOICE_CATALOG = {
   google:     ['en-US-Neural2-J','en-US-Standard-B','en-US-Wavenet-D']
 };
 
-// Capitalized markets, each with its own subs
+const US_TZ = [
+  { id: 'America/New_York', label: 'US/Eastern' },
+  { id: 'America/Chicago', label: 'US/Central' },
+  { id: 'America/Denver', label: 'US/Mountain' },
+  { id: 'America/Los_Angeles', label: 'US/Pacific' },
+  { id: 'America/Anchorage', label: 'US/Alaska' },
+  { id: 'Pacific/Honolulu', label: 'US/Hawaii' }
+];
+
+// Markets with capitalized names + subs (added Debt Free under Insurance)
 const MARKET_OPTIONS = {
-  "Insurance":    ['Life','Term','Final Expense','Medicare','Business Liability','Health'],
+  "Insurance":    ['Life','Term','Final Expense','Medicare','Business Liability','Health','Debt Free'],
   "Real Estate":  ['Buyer Leads','Seller Leads','Open House','Investors','Rentals'],
   "Solar":        ['Residential','Commercial'],
   "Home Services":['Roofing','HVAC','Plumbing','Landscaping','Windows'],
@@ -165,7 +96,18 @@ const MARKET_OPTIONS = {
   "Other":        ['Generic','Event','SaaS']
 };
 
-// high-conversion prompt examples by market/sub (headline/copy/cta)
+// Statuses: include extended pipeline
+const STATUS_LABELS = [
+  'New','Contacted','Qualified','Scheduled',
+  'App Submitted','Pending','Approved','Paid','Declined'
+];
+const STATUS_ADVANCED = new Set(['App Submitted','Pending','Approved','Paid','Declined']);
+
+// dashboard APV counts use leads with apv>0 (often Approved/Paid)
+
+/* =========================
+   PROMPT EXAMPLES (unchanged)
+   ========================= */
 const PROMPT_TEMPLATES = {
   "Insurance": {
     "Life": [
@@ -186,79 +128,137 @@ const PROMPT_TEMPLATES = {
     ],
     "Health":[
       { h:"Lower Your Health Premium—Same Doctors", c:"Check ACA and private options fast. Many qualify for $0 plans. Find out in 60 seconds.", cta:"apply-now" }
+    ],
+    "Debt Free":[
+      { h:"Erase High-APR Debt Faster", c:"Free plan for {{CITY}} families: consolidate + protect. See how much interest you can save.", cta:"learn-more" }
     ]
   },
   "Real Estate": {
-    "Buyer Leads": [
-      { h:"New Listings in {{CITY}}—Before They Hit Zillow", c:"Free daily list of homes under {{PRICE}}. Tap to get instant alerts straight to your phone.", cta:"learn-more" }
-    ],
-    "Seller Leads": [
-      { h:"See What Your {{CITY}} Home Could Sell For", c:"Get your no-obligation price in 60 secs. We use real comps + AI trend data.", cta:"learn-more" }
-    ],
-    "Open House": [
-      { h:"Open House This Weekend—VIP Early Access", c:"Skip the line, get agent notes + bonus photos. RSVP to snag a private slot.", cta:"apply-now" }
-    ],
-    "Investors":[
-      { h:"Off-Market Deals in {{CITY}}", c:"Weekly cash-flowing properties with ARV & rent comps. Join the private list.", cta:"learn-more" }
-    ],
-    "Rentals":[
-      { h:"Hot Rentals, No Junk", c:"Hand-picked condos/houses under {{PRICE}} in {{CITY}}. Text me your must-haves.", cta:"call-now" }
-    ]
+    "Buyer Leads": [{ h:"New Listings in {{CITY}}—Before They Hit Zillow", c:"Free daily list of homes under {{PRICE}}. Tap for instant alerts.", cta:"learn-more" }],
+    "Seller Leads": [{ h:"See What Your {{CITY}} Home Could Sell For", c:"No-obligation price in 60 secs. Real comps + AI trends.", cta:"learn-more" }],
+    "Open House":  [{ h:"Open House This Weekend—VIP Early Access", c:"Skip the line, get agent notes + bonus photos. RSVP.", cta:"apply-now" }],
+    "Investors":   [{ h:"Off-Market Deals in {{CITY}}", c:"Weekly cash-flowing properties with ARV & rent comps.", cta:"learn-more" }],
+    "Rentals":     [{ h:"Hot Rentals, No Junk", c:"Hand-picked under {{PRICE}} in {{CITY}}. Text your must-haves.", cta:"call-now" }]
   },
   "Solar": {
-    "Residential":[
-      { h:"Slash Your Power Bill—Home Solar in {{CITY}}", c:"See if your roof qualifies for incentives. $0 down options with 25-yr warranty.", cta:"learn-more" }
-    ],
-    "Commercial":[
-      { h:"Lower Operating Costs with Commercial Solar", c:"ROI often under 5 yrs. Incentives available. Book a 10-min savings check.", cta:"apply-now" }
-    ]
+    "Residential":[{ h:"Slash Your Power Bill—Home Solar in {{CITY}}", c:"Check incentives. $0 down options, 25-yr warranty.", cta:"learn-more" }],
+    "Commercial":[{ h:"Lower Operating Costs with Commercial Solar", c:"ROI often under 5 yrs. Get a 10-min savings check.", cta:"apply-now" }]
   },
   "Home Services": {
-    "Roofing":[
-      { h:"Storm Damage? Free Roof Check Today", c:"Local crew in {{CITY}}—photos, quote, insurance help. Slots fill fast after storms.", cta:"call-now" }
-    ],
-    "HVAC":[
-      { h:"A/C Not Keeping Up?", c:"Same-day service in {{CITY}}. Transparent pricing, 5-star techs. Book now.", cta:"call-now" }
-    ],
-    "Plumbing":[
-      { h:"Emergency Plumber—We’re 20 Minutes Away", c:"No trip fee today. Text a pic for instant estimate.", cta:"call-now" }
-    ],
-    "Landscaping":[
-      { h:"Curb Appeal, Done for You", c:"Weekly plans that fit your budget. Free design consult this week.", cta:"get-quote" }
-    ],
-    "Windows":[
-      { h:"Energy Bill Too High?", c:"High-efficiency window bundles in {{CITY}} with seasonal discounts.", cta:"learn-more" }
-    ]
+    "Roofing":[{ h:"Storm Damage? Free Roof Check Today", c:"Local crew—photos, quote, insurance help. Limited slots.", cta:"call-now" }],
+    "HVAC":[{ h:"A/C Not Keeping Up?", c:"Same-day service. Transparent pricing, 5-star techs.", cta:"call-now" }],
+    "Plumbing":[{ h:"Emergency Plumber—We’re 20 Minutes Away", c:"No trip fee today. Text a pic for instant estimate.", cta:"call-now" }],
+    "Landscaping":[{ h:"Curb Appeal, Done for You", c:"Weekly plans that fit your budget. Free design consult.", cta:"get-quote" }],
+    "Windows":[{ h:"Energy Bill Too High?", c:"High-efficiency windows with seasonal discounts.", cta:"learn-more" }]
   },
   "Legal": {
-    "Injury":[
-      { h:"Injured? Don’t Settle for Less", c:"Free case check. Pay nothing unless you win. Talk to a local pro today.", cta:"call-now" }
-    ],
-    "Disability":[
-      { h:"Denied SSDI? Appeal Help", c:"We handle filings and deadlines. Free eligibility review.", cta:"learn-more" }
-    ],
-    "Estate":[
-      { h:"Easy Wills & Trusts (Flat Fee)", c:"Attorney-drafted estate plans done in days, not months.", cta:"apply-now" }
-    ],
-    "Criminal Defense":[
-      { h:"Charged? Get a Plan by Tonight", c:"Urgent consults 24/7. Confidential and judgment-free.", cta:"call-now" }
-    ]
+    "Injury":[{ h:"Injured? Don’t Settle for Less", c:"Free case check. Pay nothing unless you win.", cta:"call-now" }],
+    "Disability":[{ h:"Denied SSDI? Appeal Help", c:"We handle filings and deadlines. Free review.", cta:"learn-more" }],
+    "Estate":[{ h:"Easy Wills & Trusts (Flat Fee)", c:"Attorney-drafted in days, not months.", cta:"apply-now" }],
+    "Criminal Defense":[{ h:"Charged? Get a Plan by Tonight", c:"Urgent consults 24/7. Confidential.", cta:"call-now" }]
   },
   "Other": {
-    "Generic":[
-      { h:"Get the Exact Thing You Need—Fast", c:"Tell us your goal; we’ll tailor the plan and do the heavy lifting.", cta:"learn-more" }
-    ],
-    "Event":[
-      { h:"Seats Are Going—Grab Yours", c:"Early registration bonus ends soon. Reserve your spot in seconds.", cta:"apply-now" }
-    ],
-    "SaaS":[
-      { h:"Automate the Boring Stuff", c:"Teams cut busywork 40% with our app. Try it free.", cta:"learn-more" }
-    ]
+    "Generic":[{ h:"Get the Exact Thing You Need—Fast", c:"Tell us your goal; we’ll tailor the plan.", cta:"learn-more" }],
+    "Event":[{ h:"Seats Are Going—Grab Yours", c:"Early registration bonus ends soon.", cta:"apply-now" }],
+    "SaaS":[{ h:"Automate the Boring Stuff", c:"Teams cut busywork 40% with our app.", cta:"learn-more" }]
   }
 };
 
 /* =========================
-   AUTH
+   DEFAULT WORKSPACE
+   ========================= */
+function seedWorkspace(){
+  return {
+    apiKeys: { openai:'', meta:'', elevenlabs:'', twilio:'', smsFrom:'', voiceFrom:'' },
+    routing: {
+      callsModel: 'gpt-5-mini',
+      callsEscalationModel: 'gpt-5',
+      smsModel: 'gpt-5-mini',
+      adsDraftModel: 'gpt-5-mini',
+      adsPolishModel: 'gpt-5',
+      adsImageModel: 'gpt-image-3.5',
+      realtimeWorker: { maxTokens: 2000, timeoutMs: 8000, rpm: 120, tpm: 120000 },
+      batchWorker:    { maxTokens: 6000, timeoutMs: 30000, rpm: 60,  tpm: 300000 },
+      metadata: {
+        call:     { channel: 'call' },
+        sms:      { channel: 'sms' },
+        adsCopy:  { channel: 'ads-copy' },
+        adsImage: { channel: 'ads-image' },
+      }
+    },
+    automation: {
+      autoStartOnMeta: true,
+      immediateRetryOnNoAnswer: true,
+      immediateRetryOnVoicemail: false
+    },
+    voiceSettings: {
+      provider: 'elevenlabs',
+      voice: 'Alloy',
+      style: 'professional',
+      speed: 'normal',
+      callAttempts: 2,
+      callInterval: 30, // minutes; 1440 enabled in UI
+      immediateCallbackOnNoAnswer: false,
+      immediateCallbackOnVoicemail: false,
+      voicemailBehavior: 'leave_message', // 'hangup'|'leave_message'
+      voicemailScript: 'Sorry I missed you—this is LeadFlow Pro following up. I’ll text details, and you can call or text back anytime.',
+      scripts: {
+        generic: 'Hi, this is LeadFlow Pro about your request. Do you have a minute?',
+        life: 'Hi, reaching out about your life insurance request. Do you have a minute now?',
+        term: 'Hi, your term quote is ready—can I walk you through options?',
+        finalExpense: 'Hi, following up on your final expense inquiry. Quick questions?',
+        medicare: 'Hi there, calling about your Medicare coverage questions. Is now good?'
+      },
+      businessHours: { start:'09:00', end:'17:00' },
+      workingDays: ['monday','tuesday','wednesday','thursday','friday'],
+      timezone: 'America/Denver' // Mountain default
+    },
+    smsSettings: {
+      provider: 'twilio',
+      autoRespond: true,
+      followUpDelay: 15, // minutes; UI includes 1-2 days & next week
+      scripts: {
+        day0: 'Hey {{name}}, it’s Josh. Got your request—2 quick questions for your quote. Got a minute?',
+        day1: 'Been trying to reach you about your request. Want me to text a ballpark quote?',
+        day3: 'Still here when you are—want coverage options that fit your budget?',
+        day5: 'Final ping for now. Want me to send a 60-sec summary?'
+      },
+      scriptVariants: {
+        noAnswer: 'Missed you, {{name}}. Try again shortly or later today?',
+        voicemailDrop: 'Left a voicemail. Text works great if easier—what time can I call?'
+      },
+      businessHours: { start:'09:00', end:'17:00' }
+    },
+    data: {
+      leads: [
+        { id: 1, market:'Insurance', type:'Life', source:'Manual', name:'Alex Morgan', phone:'(555) 123-4567', email:'alex@example.com', status:'New', location:'ID', time:'Today 10:15 AM', notes:'Wants quick quote', isClient:false, callLogs:[] },
+        { id: 2, market:'Insurance', type:'Term', source:'Manual', name:'Sam Taylor', phone:'(555) 987-6543', email:'sam@example.com', status:'Scheduled', location:'TX', time:'Today 2:30 PM', isClient:false, callLogs:[] },
+        { id: 3, market:'Insurance', type:'Final Expense', source:'Manual', name:'Jordan Lee', phone:'', email:'', status:'Contacted', location:'AL', time:'Yesterday 4:05 PM', isClient:false, callLogs:[] }
+      ],
+      campaigns: [
+        { id:'c1', name:'Insurance/Life - ID, OR', market:'Insurance', type:'Life', budget:100, status:'active', leads:24, costPerLead:12.45 }
+      ],
+      objections: [],
+      analytics: {
+        overview: { totalLeads: 3, totalCampaigns: 1, conversionRate: 34, avgCostPerLead: 14.12 },
+        performance: { callAnswerRate: 41, smsResponseRate: 52, schedulingRate: 23, revenuePerLead: 186.4 }
+      },
+      inbound: [],
+      imports: [],
+      adLab: { variants: [], rotate: false }
+    }
+  };
+}
+
+/* =========================
+   HELPERS
+   ========================= */
+function startOfWeek(d){ const x = new Date(d); const day = (x.getDay()+6)%7; x.setHours(0,0,0,0); x.setDate(x.getDate()-day); return x; }
+function startOfMonth(d){ const x = new Date(d); x.setDate(1); x.setHours(0,0,0,0); return x; }
+function startOfYear(d){ const x = new Date(d); x.setMonth(0,1); x.setHours(0,0,0,0); return x; }
+
+/* =========================
+   LOGIN
    ========================= */
 function LoginView({onLoggedIn}){
   const [email, setEmail] = useState('');
@@ -277,7 +277,6 @@ function LoginView({onLoggedIn}){
       if (u.locked) throw new Error('Account locked');
       const hash = await sha256(password);
       if (hash !== u.passHash) throw new Error('Invalid email or password');
-      // update last login
       const copy = [...users];
       copy[idx] = { ...u, lastLogin: new Date().toISOString() };
       saveUsers(copy);
@@ -315,6 +314,9 @@ function LoginView({onLoggedIn}){
   );
 }
 
+/* =========================
+   USERS ADMIN
+   ========================= */
 function UsersAdmin({ me, onImpersonate }){
   const [users, setUsers] = useState(loadUsers());
   const [form, setForm] = useState({ email:'', password:'', isAdmin:false });
@@ -396,7 +398,7 @@ function UsersAdmin({ me, onImpersonate }){
 }
 
 /* =========================
-   MAIN APP
+   APP
    ========================= */
 function LeadFlowApp({ me, onLogout, onImpersonate }){
   const ws0 = loadWorkspace(me.email) || seedWorkspace();
@@ -406,6 +408,7 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
 
   const [apiKeys, setApiKeys] = useState(ws0.apiKeys);
   const [routing, setRouting] = useState(ws0.routing);
+  const [automation, setAutomation] = useState(ws0.automation || { autoStartOnMeta:true, immediateRetryOnNoAnswer:true, immediateRetryOnVoicemail:false });
   const [voiceSettings, setVoiceSettings] = useState(ws0.voiceSettings);
   const [smsSettings, setSmsSettings] = useState(ws0.smsSettings);
 
@@ -419,7 +422,7 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
 
   const saveNow = (next) => {
     saveWorkspace(me.email, {
-      apiKeys, routing, voiceSettings, smsSettings,
+      apiKeys, routing, automation, voiceSettings, smsSettings,
       data: {
         leads: next?.leads ?? leads,
         campaigns: next?.campaigns ?? campaigns,
@@ -432,27 +435,42 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
     });
   };
   const setLeads = (fnOrArr) => { const v = typeof fnOrArr==='function'? fnOrArr(leads):fnOrArr; _setLeads(v); saveNow({leads:v}); };
-  const setAdLabPersist = (updater) => {
-    const v = typeof updater==='function' ? updater(adLab) : updater;
-    setAdLab(v); saveNow({ adLab: v });
+  const setAdLabPersist = (updater) => { const v = typeof updater==='function' ? updater(adLab) : updater; setAdLab(v); saveNow({ adLab: v }); };
+
+  /* ---------- Stats & APV ---------- */
+  const computeAPVStats = (list)=>{
+    const now = new Date();
+    const w0 = startOfWeek(now), m0 = startOfMonth(now), y0 = startOfYear(now);
+    let week=0, month=0, year=0;
+    list.forEach(l=>{
+      const apv = Number(l.apv||0);
+      if (!apv) return;
+      const dt = l.apvDate ? new Date(l.apvDate) : new Date();
+      if (dt >= w0) week += apv;
+      if (dt >= m0) month += apv;
+      if (dt >= y0) year += apv;
+    });
+    return { week: Math.round(week*100)/100, month: Math.round(month*100)/100, year: Math.round(year*100)/100 };
   };
+
+  const apvStats = computeAPVStats(leads);
 
   const [stats, setStats] = useState({
     totalLeads: analyticsData?.overview?.totalLeads ?? (leads?.length || 0),
-    scheduledToday: (leads||[]).filter(l=>l.status==='scheduled').length,
+    scheduledToday: (leads||[]).filter(l=>l.status==='Scheduled').length,
     adSpend: 2450,
     conversionRate: Math.round(analyticsData?.overview?.conversionRate ?? 34)
   });
   useEffect(()=>{
     setStats({
       totalLeads: leads.length,
-      scheduledToday: leads.filter(l=>l.status==='scheduled').length,
+      scheduledToday: leads.filter(l=>l.status==='Scheduled').length,
       adSpend: 2450,
       conversionRate: Math.round(analyticsData?.overview?.conversionRate ?? 34)
     });
   }, [leads, analyticsData]);
 
-  // non-blocking API fetch (if backend exists)
+  /* ---------- Optional backend fetch (safe no-throw) ---------- */
   useEffect(()=>{
     Promise.allSettled([
       fetch('/api/leads').then(r=>r.json()),
@@ -467,14 +485,6 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
     }).catch(()=>{});
     // eslint-disable-next-line
   },[]);
-
-  const followUpLabel = (mins)=>{
-    const n = Number(mins)||0;
-    if (n < 120) return `${n} minutes`;
-    if (n < 24*60) return `${Math.round(n/60)} hours`;
-    if (n % (7*24*60) === 0) return `${n/(7*24*60)} week`;
-    return `${Math.round(n/1440)} day(s)`;
-  };
 
   /* ---------- Nav ---------- */
   const MobileNav = () => (
@@ -534,7 +544,7 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
           { id:'analytics', icon:'📊', label:'Analytics' },
           { id:'inbound', icon:'📞', label:'Inbound Center' },
           { id:'imports', icon:'📂', label:'Imports & Mapping' },
-          { id:'settings', icon:'⚙️', label:'Settings & APIs' },
+          { id:'settings', icon:'⚙️', label:'Settings & Configuration' },
           ...(me.isAdmin ? [{ id:'admin-users', icon:'🛡️', label:'Users (Admin)' }] : []),
         ].map(({id,icon,label})=>(
           <button key={id} onClick={()=>setActiveTab(id)}
@@ -549,7 +559,7 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
     </div>
   );
 
-  /* ---------- Dashboard ---------- */
+  /* ---------- Dashboard (with Quick Actions + APV widgets) ---------- */
   const Dashboard = () => (
     <div className="space-y-6 fade-in">
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-6">
@@ -566,10 +576,68 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
           </div>
         ))}
       </div>
+
+      {/* APV Totals */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="bg-white rounded-2xl p-4 shadow-lg text-center">
+          <div className="text-xs text-gray-500">APV This Week</div>
+          <div className="text-2xl font-bold">${apvStats.week.toLocaleString()}</div>
+        </div>
+        <div className="bg-white rounded-2xl p-4 shadow-lg text-center">
+          <div className="text-xs text-gray-500">APV This Month</div>
+          <div className="text-2xl font-bold">${apvStats.month.toLocaleString()}</div>
+        </div>
+        <div className="bg-white rounded-2xl p-4 shadow-lg text-center">
+          <div className="text-xs text-gray-500">APV This Year</div>
+          <div className="text-2xl font-bold">${apvStats.year.toLocaleString()}</div>
+        </div>
+      </div>
+
+      {/* Quick Actions (restored) */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="bg-white rounded-2xl p-4 lg:p-6 shadow-lg">
+          <h3 className="text-lg lg:text-xl font-bold mb-4">Recent Leads</h3>
+          <div className="space-y-3">
+            {leads.slice(0, 3).map(lead => (
+              <button key={lead.id} onClick={()=>openLeadEditor(lead)} className="w-full text-left p-3 lg:p-4 border border-gray-200 rounded-xl hover:border-blue-300">
+                <div className="flex justify-between items-start mb-2">
+                  <div className="font-semibold text-sm lg:text-base">{lead.name}</div>
+                  <span className={`px-2 lg:px-3 py-1 rounded-full text-xs font-medium ${
+                    lead.status === 'New' ? 'bg-blue-100 text-blue-800' :
+                    lead.status === 'Contacted' ? 'bg-orange-100 text-orange-800' :
+                    lead.status === 'Scheduled' ? 'bg-purple-100 text-purple-800' :
+                    lead.status === 'Paid' ? 'bg-green-100 text-green-800' :
+                    'bg-gray-100 text-gray-800'
+                  }`}>{lead.status}</span>
+                </div>
+                <div className="text-xs lg:text-sm text-gray-600">
+                  {lead.market}/{lead.type} • {lead.location||'—'} • {lead.time||'—'}
+                </div>
+              </button>
+            ))}
+            {leads.length===0 && <div className="text-gray-500">No leads yet.</div>}
+          </div>
+        </div>
+
+        <div className="bg-white rounded-2xl p-4 lg:p-6 shadow-lg">
+          <h3 className="text-lg lg:text-xl font-bold mb-4">Quick Actions</h3>
+          <div className="space-y-3">
+            <button onClick={()=>setActiveTab('ad-creator')} className="w-full p-3 lg:p-4 bg-gradient-to-r from-blue-500 to-purple-600 text-white rounded-xl font-semibold hover:shadow-lg transition-all">
+              🎯 Create New Ad Campaign
+            </button>
+            <button onClick={()=>setActiveTab('leads')} className="w-full p-3 lg:p-4 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-xl font-semibold hover:shadow-lg transition-all">
+              👥 Manage Leads
+            </button>
+            <button onClick={()=>setActiveTab('voice-ai')} className="w-full p-3 lg:p-4 bg-gradient-to-r from-orange-500 to-red-600 text-white rounded-xl font-semibold hover:shadow-lg transition-all">
+              🎙️ Test Voice AI System
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 
-  /* ---------- Ad Creator (Market/Sub only) + prompts + variants ---------- */
+  /* ---------- Ad Creator (market/sub) ---------- */
   const AdCreator = () => {
     const [adForm, setAdForm] = useState({
       market: 'Insurance',
@@ -589,7 +657,6 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
     useEffect(()=>{ setAdForm(prev=>({...prev, subType:''})); }, [adForm.market]);
 
     const currentTemplates = (PROMPT_TEMPLATES[adForm.market] || {})[adForm.subType] || [];
-
     const applyTemplate = (tpl)=>{
       setAdForm(prev=>({
         ...prev,
@@ -601,18 +668,14 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
 
     const suggestAI = async () => {
       try{
-        const payload = {
-          market: adForm.market, subType: adForm.subType,
-          targeting: { locations: adForm.targetLocations },
-          analytics: analyticsData, routing, metadata: routing.metadata.adsCopy
-        };
+        const payload = { market: adForm.market, subType: adForm.subType, targeting: { locations: adForm.targetLocations }, analytics: analyticsData, routing, metadata: routing.metadata.adsCopy };
         const res = await fetch('/api/generate-ad', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
         const data = await res.json();
         setAdForm(prev=>({ ...prev, headline: data.headline || prev.headline, copy: data.copy || prev.copy, cta: data.cta || prev.cta }));
         alert('✨ AI refreshed your ad content.');
       }catch{
         const tpl = currentTemplates[Math.floor(Math.random()*currentTemplates.length)];
-        if (tpl) applyTemplate(tpl); else alert('No templates available for this selection.');
+        if (tpl) applyTemplate(tpl); else alert('No templates for this selection.');
       }
     };
 
@@ -628,17 +691,17 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
       setLocalVariants(next);
       setAdLabPersist({ ...adLab, variants: next, rotate });
     };
-    const simulateTraffic = (views=100)=>{
+    const simulateTraffic = (views=200)=>{
       if (localVariants.length===0) return alert('Add at least one variant.');
-      const next = localVariants.map((v,i)=>{
+      const next = localVariants.map(v=>{
         const share = Math.floor(views / localVariants.length);
-        const ctr = 0.02 + Math.random()*0.03; // 2–5% CTR sim
+        const ctr = 0.02 + Math.random()*0.03;
         return { ...v, impressions: v.impressions + share, clicks: v.clicks + Math.round(share*ctr) };
       });
       setLocalVariants(next);
       setAdLabPersist({ ...adLab, variants: next, rotate });
     };
-    const bestVariant = localVariants.reduce((b,v)=> ((v.clicks/(v.impressions||1)) > (b.clicks/(b.impressions||1)) ? v : b), localVariants[0] || {clicks:0,impressions:1});
+    const bestVariant = localVariants.reduce((b,v)=> ((v.clicks/(v.impressions||1)) > (b?.clicks/(b?.impressions||1) || 0) ? v : b), null);
 
     const launchCampaign = async () => {
       if (!adForm.headline || !adForm.copy || !adForm.targetLocations || !adForm.subType) { alert('Fill headline, copy, locations, and sub-type'); return; }
@@ -649,13 +712,11 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
           budget: parseInt(adForm.dailyBudget) || 100,
           adContent: { headline: adForm.headline, copy: adForm.copy, cta: adForm.cta },
           targeting: { locations: adForm.targetLocations.split(',').map(s=>s.trim()).filter(Boolean), ageMin: parseInt(adForm.minAge)||25, ageMax: parseInt(adForm.maxAge)||65 },
-          routing, metadata: routing.metadata.adsCopy,
-          variants: localVariants
+          routing, metadata: routing.metadata.adsCopy, variants: localVariants
         };
         await fetch('/api/launch-campaign', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) }).catch(()=>{});
         const newCamp = { id:'c'+Date.now(), name: body.name, market: body.market, type: body.type, budget: body.budget, status:'active', leads:0, costPerLead:0 };
-        setCampaigns(prev => [newCamp, ...prev]);
-        saveNow({ campaigns: [newCamp, ...campaigns] });
+        setCampaigns(prev => [newCamp, ...prev]); saveNow({ campaigns: [newCamp, ...campaigns] });
         alert('🚀 Campaign launched (simulated).');
       } catch { alert('❌ Launch failed.'); }
     };
@@ -669,7 +730,7 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block font-medium mb-2 text-sm lg:text-base">Market</label>
-                  <select className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500" value={adForm.market} onChange={(e)=>setAdForm(prev=>({...prev, market:e.target.value}))}>
+                  <select className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500" value={adForm.market} onChange={(e)=>setAdForm(prev=>({...prev, market:e.target.value, subType:''}))}>
                     {Object.keys(MARKET_OPTIONS).map(m=><option key={m} value={m}>{m}</option>)}
                   </select>
                 </div>
@@ -754,7 +815,7 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
             <h3 className="text-lg lg:text-xl font-bold">Ad Variants & Rotation</h3>
             <div className="flex items-center gap-3">
               <span className="text-sm">Rotate</span>
-              <div className={`toggle-switch ${rotate ? 'active' : ''}`} onClick={()=>{ const nv = !rotate; setRotate(nv); setAdLabPersist({ ...adLab, rotate: nv, variants: localVariants }); }}>
+              <div className={`toggle-switch ${adLab.rotate ? 'active' : ''}`} onClick={()=>{ const nv = !adLab.rotate; setRotate(nv); setAdLabPersist({ ...adLab, rotate: nv }); }}>
                 <div className="toggle-slider"></div>
               </div>
             </div>
@@ -777,9 +838,9 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
             ))}
             {localVariants.length===0 && <div className="text-gray-500">No variants yet. Click “Add Variant”.</div>}
           </div>
-          {localVariants.length>0 && (
+          {bestVariant && (
             <div className="mt-4 text-sm text-gray-700">
-              Current best: <span className="font-semibold">{bestVariant?.headline || '—'}</span>
+              Current best: <span className="font-semibold">{bestVariant.headline}</span>
             </div>
           )}
         </div>
@@ -787,58 +848,26 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
     );
   };
 
-  /* ---------- Leads (with per-lead follow-up override) ---------- */
+  /* ---------- Leads (click to edit + advanced statuses + notes + recordings) ---------- */
   const LeadManagement = () => {
     const [searchTerm, setSearchTerm] = useState('');
+    const [filterMarket, setFilterMarket] = useState('');
     const [filterType, setFilterType] = useState('');
     const [filterStatus, setFilterStatus] = useState('');
     const [showImportModal, setShowImportModal] = useState(false);
     const [showTestModal, setShowTestModal] = useState(false);
     const [showAddLead, setShowAddLead] = useState(false);
-    const [leadSettings, setLeadSettings] = useState({ open:false, lead:null });
 
-    const [newLead, setNewLead] = useState({ name:'', phone:'', email:'', type:'Life', location:'', status:'new' });
+    const [newLead, setNewLead] = useState({ market:'Insurance', type:'Life', source:'Manual', name:'', phone:'', email:'', location:'', status:'New', notes:'' });
 
-    const getLeadFollowUp = (lead) => {
-      const sys = smsSettings;
-      const custom = lead.followUp;
-      if (custom?.useCustom) {
-        return {
-          enabled: custom.enabled !== false,
-          followUpDelay: Number(custom.followUpDelay) || sys.followUpDelay,
-          scripts: { ...sys.scripts, ...(custom.scripts||{}) }
-        };
-      }
-      return { enabled: true, followUpDelay: sys.followUpDelay, scripts: sys.scripts };
-    };
-
-    const initiateContact = async (lead, method) => {
-      try {
-        const f = getLeadFollowUp(lead);
-        await fetch('/api/ai-call', {
-          method:'POST', headers:{'Content-Type':'application/json'},
-          body: JSON.stringify({
-            leadId: lead.id, phoneNumber: lead.phone, method,
-            routing, metadata: method==='call'? routing.metadata.call : routing.metadata.sms,
-            followUp: f
-          })
-        }).catch(()=>{});
-        alert(`✅ ${method==='call'?'Call':'SMS'} initiated (simulated).\nFollow-up: ${f.enabled ? followUpLabel(f.followUpDelay) : 'OFF'}`);
-      } catch { alert(`❌ ${method==='call'?'Call':'SMS'} failed.`); }
-    };
-    const deleteLead = async (leadId) => {
-      if (!confirm('Delete this lead?')) return;
-      try{ await fetch(`/api/leads/${leadId}`, { method:'DELETE' }).catch(()=>{}); }catch{}
-      setLeads(prev => prev.filter(l=>l.id!==leadId));
-    };
-    const saveNewLead = async () => {
-      if (!newLead.name || !newLead.phone) { alert('Name and phone are required'); return; }
-      const created = { ...newLead, id: Date.now(), time: new Date().toLocaleString() };
-      try{ await fetch('/api/leads', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(created) }).catch(()=>{}); } catch {}
-      setLeads(prev => [created, ...prev]);
-      setShowAddLead(false);
-      setNewLead({ name:'', phone:'', email:'', type:'Life', location:'', status:'new' });
-    };
+    const filteredLeads = leads.filter(lead => {
+      const term = searchTerm.toLowerCase();
+      const matchesSearch = (lead.name||'').toLowerCase().includes(term) || (lead.phone||'').includes(searchTerm) || (lead.email||'').toLowerCase().includes(term);
+      const matchesMarket = !filterMarket || lead.market===filterMarket;
+      const matchesType = !filterType || (lead.type||'').toLowerCase() === filterType.toLowerCase();
+      const matchesStatus = !filterStatus || lead.status===filterStatus;
+      return matchesSearch && matchesMarket && matchesType && matchesStatus;
+    });
 
     const handleFileUpload = async (event, type) => {
       const file = event.target.files[0]; if (!file) return;
@@ -849,33 +878,35 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
         const next = [imp, ...imports];
         setImports(next); saveNow({ imports: next });
         alert(`✅ CSV loaded (${rows.length} preview rows). Go to Imports to map.`);
-        setShowImportModal(false);
-        setActiveTab('imports');
+        setShowImportModal(false); setActiveTab('imports');
       } else {
         alert('🔍 PDF scanning simulated (connect OCR later).');
         const imp = { id: Date.now(), filename: file.name, createdAt: new Date().toISOString(), rows: [], mapped: {}, dropPlaceholders: true };
         const next = [imp, ...imports];
         setImports(next); saveNow({ imports: next });
-        setShowImportModal(false);
-        setActiveTab('imports');
+        setShowImportModal(false); setActiveTab('imports');
       }
     };
 
-    const filteredLeads = leads.filter(lead => {
-      const term = searchTerm.toLowerCase();
-      const matchesSearch = (lead.name||'').toLowerCase().includes(term) || (lead.phone||'').includes(searchTerm) || (lead.email||'').toLowerCase().includes(term);
-      const matchesType = !filterType || (lead.type||'').toLowerCase().includes(filterType.toLowerCase());
-      const matchesStatus = !filterStatus || lead.status===filterStatus;
-      return matchesSearch && matchesType && matchesStatus;
-    });
+    const saveNewLead = async () => {
+      if (!newLead.name || !newLead.phone) { alert('Name and phone are required'); return; }
+      const created = { ...newLead, id: Date.now(), time: new Date().toLocaleString(), callLogs: [], isClient: false };
+      try{ await fetch('/api/leads', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(created) }).catch(()=>{}); } catch {}
+      setLeads(prev => [created, ...prev]);
+      setShowAddLead(false);
+      setNewLead({ market:'Insurance', type:'Life', source:'Manual', name:'', phone:'', email:'', location:'', status:'New', notes:'' });
 
-    const openLeadSettings = (lead) => setLeadSettings({ open:true, lead });
-    const closeLeadSettings = () => setLeadSettings({ open:false, lead:null });
+      // auto-start outreach if Meta and automation enabled
+      if (created.source === 'Meta' && automation.autoStartOnMeta) {
+        alert('⚡ Auto-start outreach: calling now (sim).');
+        try{ await fetch('/api/ai-call', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ leadId: created.id, phoneNumber: created.phone, method:'call', routing, metadata: routing.metadata.call }) }).catch(()=>{});}catch{}
+      }
+    };
 
-    const saveLeadSettings = (leadId, config) => {
-      setLeads(prev => prev.map(l => l.id===leadId ? { ...l, followUp: config } : l));
-      alert('✅ Lead follow-up settings saved.');
-      closeLeadSettings();
+    const deleteLead = async (leadId) => {
+      if (!confirm('Delete this lead?')) return;
+      try{ await fetch(`/api/leads/${leadId}`, { method:'DELETE' }).catch(()=>{}); }catch{}
+      setLeads(prev => prev.filter(l=>l.id!==leadId));
     };
 
     return (
@@ -897,18 +928,19 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-            <input type="text" className="p-3 border rounded-xl focus:ring-2 focus:ring-blue-500" placeholder="Search leads..." value={searchTerm} onChange={(e)=>setSearchTerm(e.target.value)}/>
-            <select className="p-3 border rounded-xl focus:ring-2 focus:ring-blue-500" value={filterType} onChange={(e)=>setFilterType(e.target.value)}>
-              <option value="">All Categories</option>
-              {['Life','Term','Final Expense','Medicare','Other'].map(t=><option key={t} value={t}>{t}</option>)}
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+            <select className="p-3 border rounded-xl focus:ring-2 focus:ring-blue-500" value={filterMarket} onChange={(e)=>setFilterMarket(e.target.value)}>
+              <option value="">All Markets</option>
+              {Object.keys(MARKET_OPTIONS).map(m=><option key={m} value={m}>{m}</option>)}
             </select>
+            <select className="p-3 border rounded-xl focus:ring-2 focus:ring-blue-500" value={filterType} onChange={(e)=>setFilterType(e.target.value)}>
+              <option value="">All Sub-Types</option>
+              {Object.values(MARKET_OPTIONS).flat().map(t=><option key={t} value={t}>{t}</option>)}
+            </select>
+            <input type="text" className="p-3 border rounded-xl focus:ring-2 focus:ring-blue-500" placeholder="Search leads…" value={searchTerm} onChange={(e)=>setSearchTerm(e.target.value)}/>
             <select className="p-3 border rounded-xl focus:ring-2 focus:ring-blue-500" value={filterStatus} onChange={(e)=>setFilterStatus(e.target.value)}>
               <option value="">All Status</option>
-              <option value="new">New</option>
-              <option value="contacted">Contacted</option>
-              <option value="qualified">Qualified</option>
-              <option value="scheduled">Scheduled</option>
+              {STATUS_LABELS.map(s=><option key={s} value={s}>{s}</option>)}
             </select>
           </div>
 
@@ -917,31 +949,31 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
               <div key={lead.id} className="p-4 border border-gray-200 rounded-xl hover:border-blue-300 transition-all">
                 <div className="flex flex-col sm:flex-row justify-between items-start gap-3 mb-3">
                   <div>
-                    <div className="font-semibold text-lg">{lead.name}</div>
+                    <button onClick={()=>openLeadEditor(lead)} className="font-semibold text-lg text-left hover:underline">{lead.name}</button>
                     <div className="text-sm text-gray-600">{lead.phone || '—'} • {lead.email || '—'}</div>
                   </div>
                   <div className="flex items-center gap-2">
-                    <span className={`badge ${lead.status==='new'?'bg-blue-100 text-blue-800':lead.status==='contacted'?'bg-orange-100 text-orange-800':lead.status==='scheduled'?'bg-purple-100 text-purple-800':'bg-green-100 text-green-800'}`}>{lead.status?.charAt(0).toUpperCase()+lead.status?.slice(1)}</span>
-                    <button onClick={()=>openLeadSettings(lead)} className="px-2 py-1 text-sm bg-blue-100 text-blue-700 rounded hover:bg-blue-200">⚙️ Lead</button>
-                    <button onClick={()=>{ if(confirm('Delete this lead?')) setLeads(prev=>prev.filter(l=>l.id!==lead.id)); }} className="px-2 py-1 text-sm bg-gray-100 text-gray-700 rounded hover:bg-gray-200">🗑️</button>
+                    <span className={`badge ${
+                      lead.status==='New'?'bg-blue-100 text-blue-800':
+                      lead.status==='Contacted'?'bg-orange-100 text-orange-800':
+                      lead.status==='Scheduled'?'bg-purple-100 text-purple-800':
+                      lead.status==='Paid'?'bg-green-100 text-green-800':
+                      'bg-gray-100 text-gray-800'
+                    }`}>{lead.status}</span>
+                    {lead.isClient && <span className="badge bg-green-50 text-green-700 border border-green-200">Client</span>}
+                    <button onClick={()=>openLeadEditor(lead)} className="px-2 py-1 text-sm bg-blue-100 text-blue-700 rounded hover:bg-blue-200">✏️ Edit</button>
+                    <button onClick={()=>{ if(confirm('Delete this lead?')) deleteLead(lead.id); }} className="px-2 py-1 text-sm bg-gray-100 text-gray-700 rounded hover:bg-gray-200">🗑️</button>
                   </div>
                 </div>
                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-                  <div className="text-sm text-gray-600">{lead.type} • {lead.location || '—'} • {lead.time || '—'}</div>
+                  <div className="text-sm text-gray-600">{lead.market}/{lead.type} • {lead.location || '—'} • {lead.time || '—'}</div>
                   <div className="flex flex-wrap gap-2">
                     <button onClick={()=>initiateContact(lead,'call')} className="px-3 py-1 bg-green-100 text-green-700 rounded-lg hover:bg-green-200 transition-all text-sm">📞 AI Call</button>
                     <button onClick={()=>initiateContact(lead,'sms')} className="px-3 py-1 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-all text-sm">💬 AI SMS</button>
                     <button className="px-3 py-1 bg-purple-100 text-purple-700 rounded-lg hover:bg-purple-200 transition-all text-sm">📅 Schedule</button>
                   </div>
                 </div>
-                {/* summary of follow-up policy */}
-                <div className="mt-2 text-xs text-gray-500">
-                  Follow-up: {
-                    lead.followUp?.useCustom
-                      ? (lead.followUp.enabled === false ? 'OFF (custom)' : `Custom • ${followUpLabel(lead.followUp.followUpDelay || smsSettings.followUpDelay)}`)
-                      : `System • ${followUpLabel(smsSettings.followUpDelay)}`
-                  }
-                </div>
+                {lead.apv ? <div className="mt-2 text-xs text-gray-700">APV: <strong>${Number(lead.apv).toLocaleString()}</strong> {lead.carrier? `• Carrier: ${lead.carrier}`:''}</div> : null}
               </div>
             ))}
             {filteredLeads.length===0 && <div className="text-center py-8 text-gray-500">No leads found</div>}
@@ -957,14 +989,14 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
                 <div className="p-4 border-2 border-dashed border-gray-300 rounded-xl text-center">
                   <div className="text-2xl mb-2">📄</div>
                   <h4 className="font-semibold mb-2">Upload PDF</h4>
-                  <p className="text-sm text-gray-600 mb-3">Front-end sim only. For OCR, connect backend later.</p>
+                  <p className="text-sm text-gray-600 mb-3">Front-end sim. Connect OCR later.</p>
                   <input type="file" accept=".pdf" onChange={(e)=>handleFileUpload(e,'pdf')} className="hidden" id="pdf-upload"/>
                   <label htmlFor="pdf-upload" className="px-4 py-2 bg-red-100 text-red-700 rounded-lg cursor-pointer hover:bg-red-200 transition-all">Choose PDF File</label>
                 </div>
                 <div className="p-4 border-2 border-dashed border-gray-300 rounded-xl text-center">
                   <div className="text-2xl mb-2">📊</div>
-                  <h4 className="font-semibold mb-2">Upload CSV (client-side)</h4>
-                  <p className="text-sm text-gray-600 mb-3">We preview the first 200 rows to keep it fast.</p>
+                  <h4 className="font-semibold mb-2">Upload CSV</h4>
+                  <p className="text-sm text-gray-600 mb-3">Preview first 200 rows.</p>
                   <input type="file" accept=".csv" onChange={(e)=>handleFileUpload(e,'csv')} className="hidden" id="csv-upload"/>
                   <label htmlFor="csv-upload" className="px-4 py-2 bg-green-100 text-green-700 rounded-lg cursor-pointer hover:bg-green-200 transition-all">Choose CSV File</label>
                 </div>
@@ -1001,120 +1033,259 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
 
         {/* Add Lead Modal */}
         {showAddLead && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-            <div className="bg-white rounded-2xl p-6 max-w-md w-full">
-              <h3 className="text-xl font-bold mb-4">➕ Add New Lead</h3>
-              <div className="space-y-3">
-                {['name','phone','email','location'].map(f=>(
-                  <div key={f}>
-                    <label className="block text-sm font-medium mb-1 capitalize">{f}</label>
-                    <input type="text" className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500" value={newLead[f]} onChange={(e)=>setNewLead(prev=>({...prev,[f]:e.target.value}))}/>
-                  </div>
-                ))}
-                <div>
-                  <label className="block text-sm font-medium mb-1">Type</label>
-                  <select className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500" value={newLead.type} onChange={(e)=>setNewLead(prev=>({...prev,type:e.target.value}))}>
-                    {['Life','Term','Final Expense','Medicare','Other'].map(t=><option key={t} value={t}>{t}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-1">Status</label>
-                  <select className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500" value={newLead.status} onChange={(e)=>setNewLead(prev=>({...prev,status:e.target.value}))}>
-                    <option value="new">New</option>
-                    <option value="contacted">Contacted</option>
-                    <option value="qualified">Qualified</option>
-                    <option value="scheduled">Scheduled</option>
-                  </select>
-                </div>
-              </div>
-              <div className="flex gap-3 mt-6">
-                <button onClick={()=>setShowAddLead(false)} className="flex-1 px-4 py-2 border border-gray-300 rounded-xl hover:bg-gray-50 transition-all">Cancel</button>
-                <button onClick={saveNewLead} className="flex-1 px-4 py-3 bg-gradient-to-r from-green-500 to-green-600 text-white font-semibold rounded-xl hover:shadow-lg transition-all">Save Lead</button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Lead Settings (per-lead follow-up override) */}
-        {leadSettings.open && leadSettings.lead && (
-          <LeadSettingsModal
-            lead={leadSettings.lead}
-            sysSms={smsSettings}
-            onClose={closeLeadSettings}
-            onSave={saveLeadSettings}
-            followUpLabel={followUpLabel}
+          <LeadEditorModal
+            initialLead={{ ...newLead, id: 'new' }}
+            onClose={()=>setShowAddLead(false)}
+            onSave={(lead)=>{
+              const isNew = lead.id==='new';
+              if (isNew) {
+                const created = { ...lead, id: Date.now(), time: new Date().toLocaleString(), callLogs: lead.callLogs || [], isClient: lead.status==='Paid' };
+                setLeads(prev => [created, ...prev]);
+                setShowAddLead(false);
+                // Auto outreach if source Meta
+                if (created.source==='Meta' && automation.autoStartOnMeta) {
+                  alert('⚡ Auto-start outreach: calling now (sim).');
+                }
+              } else {
+                setLeads(prev => prev.map(l => l.id===lead.id ? lead : l));
+              }
+            }}
           />
         )}
       </div>
     );
   };
 
-  /* ---------- Lead Settings Modal Component ---------- */
-  function LeadSettingsModal({ lead, sysSms, onClose, onSave, followUpLabel }) {
-    const [cfg, setCfg] = useState(lead.followUp || { useCustom:false, enabled:true, followUpDelay: sysSms.followUpDelay, scripts: {} });
+  /* ---------- Lead Editor Modal (full editor) ---------- */
+  function LeadEditorModal({ initialLead, onClose, onSave }) {
+    const [lead, setLead] = useState(() => ({
+      id: initialLead.id,
+      market: initialLead.market || 'Insurance',
+      type: initialLead.type || '',
+      source: initialLead.source || 'Manual',
+      name: initialLead.name || '',
+      phone: initialLead.phone || '',
+      email: initialLead.email || '',
+      location: initialLead.location || '',
+      status: initialLead.status || 'New',
+      notes: initialLead.notes || '',
+      apv: initialLead.apv || '',
+      apvDate: initialLead.apvDate || null,
+      carrier: initialLead.carrier || '',
+      isClient: !!initialLead.isClient,
+      debt: initialLead.debt || { creditCards:[], mortgages:[], cars:[], others:[] },
+      callLogs: initialLead.callLogs || [],
+      time: initialLead.time || new Date().toLocaleString()
+    }));
+    const [tab, setTab] = useState('profile');
 
-    const DELAY_OPTIONS = [
-      { v: 5, label: '5 minutes' },
-      { v: 15, label: '15 minutes' },
-      { v: 30, label: '30 minutes' },
-      { v: 60, label: '1 hour' },
-      { v: 1440, label: '1 day' },
-      { v: 2880, label: '2 days' },
-      { v: 10080, label: 'Next week' }
-    ];
+    const isInsurance = lead.market === 'Insurance';
+    const showAPVSection = isInsurance && STATUS_ADVANCED.has(lead.status);
 
-    const effective = cfg.useCustom
-      ? (cfg.enabled === false ? 'OFF' : followUpLabel(cfg.followUpDelay || sysSms.followUpDelay))
-      : followUpLabel(sysSms.followUpDelay);
+    const addDebtRow = (key)=> setLead(prev=>({ ...prev, debt: { ...prev.debt, [key]: [ ...(prev.debt[key]||[]), { amount:'', apr:'', label:'' } ] } }));
+    const updateDebtRow = (key, idx, field, value)=> {
+      setLead(prev=>{
+        const arr = [...(prev.debt[key]||[])];
+        arr[idx] = { ...arr[idx], [field]: value };
+        return { ...prev, debt: { ...prev.debt, [key]: arr } };
+      });
+    };
+    const removeDebtRow = (key, idx)=> setLead(prev=>({ ...prev, debt: { ...prev.debt, [key]: (prev.debt[key]||[]).filter((_,i)=>i!==idx) } }));
+
+    const addCallLog = ()=> setLead(prev=>({ ...prev, callLogs: [{ id: Date.now(), date: new Date().toLocaleString(), direction:'outbound', result:'no_answer', recordingUrl:'', transcript:'' }, ...(prev.callLogs||[]) ] }));
+    const updateCallLog = (id, field, value)=> setLead(prev=>({ ...prev, callLogs: prev.callLogs.map(c => c.id===id ? { ...c, [field]: value } : c) }));
+    const onUploadRecording = (id, file)=>{
+      if (!file) return;
+      const url = URL.createObjectURL(file);
+      updateCallLog(id, 'recordingUrl', url);
+    };
+
+    const saveLead = ()=>{
+      // Paid => becomes a Client
+      const isClient = lead.status === 'Paid';
+      const apvDate = showAPVSection && lead.apv && !lead.apvDate ? new Date().toISOString() : lead.apvDate;
+      onSave({ ...lead, isClient, apvDate });
+      onClose();
+    };
 
     return (
       <div className="fixed inset-0 bg-black bg-opacity-50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-        <div className="bg-white rounded-2xl p-6 max-w-lg w-full">
-          <h3 className="text-xl font-bold mb-2">⚙️ Lead Settings — {lead.name}</h3>
-          <p className="text-sm text-gray-600 mb-4">Custom SMS follow-up for this lead (overrides system defaults only if enabled).</p>
+        <div className="bg-white rounded-2xl p-6 max-w-4xl w-full">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-xl font-bold">Lead — {lead.name || 'New'}</h3>
+            <button onClick={onClose} className="px-3 py-1 rounded bg-gray-100">Close</button>
+          </div>
 
-          <div className="space-y-4">
-            <label className="flex items-center justify-between p-3 bg-gray-50 rounded-xl">
-              <span className="font-medium">Override system SMS follow-up</span>
-              <div className={`toggle-switch ${cfg.useCustom ? 'active' : ''}`} onClick={()=>setCfg(prev=>({...prev, useCustom: !prev.useCustom}))}><div className="toggle-slider"></div></div>
-            </label>
+          <div className="flex gap-2 flex-wrap mb-4">
+            {['profile','status','debt','notes','calls'].map(t=>(
+              <button key={t} onClick={()=>setTab(t)} className={`px-3 py-2 rounded ${tab===t ? 'bg-blue-600 text-white':'bg-gray-100'}`}>
+                {t==='profile'?'Profile':t==='status'?'Status & APV':t==='debt'?'Debt Worksheet':t==='notes'?'Notes':'Calls'}
+              </button>
+            ))}
+          </div>
 
-            <div className={`${cfg.useCustom ? '' : 'opacity-50 pointer-events-none'} space-y-4`}>
-              <label className="flex items-center justify-between p-3 bg-gray-50 rounded-xl">
-                <span className="font-medium">Follow-up enabled for this lead</span>
-                <div className={`toggle-switch ${cfg.enabled !== false ? 'active' : ''}`} onClick={()=>setCfg(prev=>({...prev, enabled: !(prev.enabled !== false)}))}><div className="toggle-slider"></div></div>
-              </label>
-
+          {/* PROFILE */}
+          {tab==='profile' && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="block font-medium mb-2">Follow-up delay</label>
-                <select className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500" value={cfg.followUpDelay ?? sysSms.followUpDelay} onChange={(e)=>setCfg(prev=>({...prev, followUpDelay: parseInt(e.target.value)}))}>
-                  {DELAY_OPTIONS.map(o=><option key={o.v} value={o.v}>{o.label}</option>)}
+                <label className="block text-sm font-medium mb-1">Market</label>
+                <select className="w-full p-3 border rounded-xl" value={lead.market} onChange={(e)=>setLead(prev=>({...prev, market:e.target.value, type:''}))}>
+                  {Object.keys(MARKET_OPTIONS).map(m=><option key={m} value={m}>{m}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Sub-Type</label>
+                <select className="w-full p-3 border rounded-xl" value={lead.type} onChange={(e)=>setLead(prev=>({...prev, type:e.target.value}))}>
+                  <option value="">Choose…</option>
+                  {(MARKET_OPTIONS[lead.market]||[]).map(s=><option key={s} value={s}>{s}</option>)}
                 </select>
               </div>
 
-              <div className="bg-gray-50 p-3 rounded-xl">
-                <h4 className="font-semibold mb-2 text-sm">Drip Scripts (override only those you want)</h4>
-                {Object.entries(sysSms.scripts).map(([key, sysVal])=>(
-                  <div key={key} className="mb-2">
-                    <label className="block text-xs font-medium mb-1 uppercase">{key}</label>
-                    <textarea
-                      className="w-full p-2 border rounded-xl focus:ring-2 focus:ring-blue-500 h-16 resize-none"
-                      placeholder={sysVal}
-                      value={cfg.scripts?.[key] || ''}
-                      onChange={(e)=>setCfg(prev=>({...prev, scripts:{...prev.scripts, [key]: e.target.value}}))}
-                    />
-                    <div className="text-xs text-gray-500 mt-1">System default: “{sysVal.slice(0,80)}{sysVal.length>80?'…':''}”</div>
-                  </div>
-                ))}
+              <div>
+                <label className="block text-sm font-medium mb-1">Source</label>
+                <select className="w-full p-3 border rounded-xl" value={lead.source} onChange={(e)=>setLead(prev=>({...prev, source:e.target.value}))}>
+                  {['Manual','Meta','Website','Other'].map(s=><option key={s} value={s}>{s}</option>)}
+                </select>
               </div>
-            </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Status</label>
+                <select className="w-full p-3 border rounded-xl" value={lead.status} onChange={(e)=>setLead(prev=>({...prev, status:e.target.value}))}>
+                  {STATUS_LABELS.map(s=><option key={s} value={s}>{s}</option>)}
+                </select>
+              </div>
 
-            <div className="text-xs text-gray-600">Effective follow-up for this lead: <strong>{effective}</strong></div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Name</label>
+                <input className="w-full p-3 border rounded-xl" value={lead.name} onChange={(e)=>setLead(prev=>({...prev, name:e.target.value}))}/>
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Phone</label>
+                <input className="w-full p-3 border rounded-xl" value={lead.phone} onChange={(e)=>setLead(prev=>({...prev, phone:e.target.value}))}/>
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Email</label>
+                <input className="w-full p-3 border rounded-xl" value={lead.email} onChange={(e)=>setLead(prev=>({...prev, email:e.target.value}))}/>
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Location</label>
+                <input className="w-full p-3 border rounded-xl" value={lead.location} onChange={(e)=>setLead(prev=>({...prev, location:e.target.value}))}/>
+              </div>
 
-            <div className="flex gap-3 pt-2">
-              <button onClick={onClose} className="flex-1 px-4 py-2 border border-gray-300 rounded-xl hover:bg-gray-50 transition-all">Cancel</button>
-              <button onClick={()=>onSave(lead.id, cfg)} className="flex-1 px-4 py-3 bg-gradient-to-r from-blue-500 to-purple-600 text-white font-semibold rounded-xl hover:shadow-lg transition-all">Save</button>
+              {/* Conditional APV/Carrier quick note */}
+              {showAPVSection && (
+                <div className="md:col-span-2 bg-blue-50 border border-blue-200 p-3 rounded-xl text-sm">
+                  Status enables APV + Carrier fields in “Status & APV” tab.
+                </div>
+              )}
             </div>
+          )}
+
+          {/* STATUS + APV */}
+          {tab==='status' && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-sm font-medium mb-1">Status</label>
+                  <select className="w-full p-3 border rounded-xl" value={lead.status} onChange={(e)=>setLead(prev=>({...prev, status:e.target.value}))}>
+                    {STATUS_LABELS.map(s=><option key={s} value={s}>{s}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Carrier (Insurance)</label>
+                  <input className="w-full p-3 border rounded-xl" value={lead.carrier || ''} onChange={(e)=>setLead(prev=>({...prev, carrier:e.target.value}))} disabled={!showAPVSection}/>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">APV ($)</label>
+                  <input type="number" className="w-full p-3 border rounded-xl" value={lead.apv || ''} onChange={(e)=>setLead(prev=>({...prev, apv:e.target.value}))} disabled={!showAPVSection}/>
+                </div>
+              </div>
+              <div className="text-xs text-gray-600">Tip: When status changes to <strong>Paid</strong>, this lead is marked as a <strong>Client</strong>.</div>
+            </div>
+          )}
+
+          {/* DEBT WORKSHEET (only for Insurance/Debt Free) */}
+          {tab==='debt' && lead.market==='Insurance' && lead.type==='Debt Free' && (
+            <div className="space-y-4">
+              {[
+                ['creditCards','Credit Cards'],
+                ['mortgages','Mortgage'],
+                ['cars','Car Loans'],
+                ['others','Other Debts']
+              ].map(([key,label])=>(
+                <div key={key} className="bg-gray-50 p-4 rounded-xl">
+                  <div className="flex items-center justify-between mb-2">
+                    <h4 className="font-semibold">{label}</h4>
+                    <button onClick={()=>addDebtRow(key)} className="px-2 py-1 bg-white border rounded">➕ Add</button>
+                  </div>
+                  <div className="space-y-2">
+                    {(lead.debt[key]||[]).map((row,idx)=>(
+                      <div key={idx} className="grid grid-cols-1 md:grid-cols-4 gap-2">
+                        {key==='others' && (
+                          <input placeholder="Label (e.g., Personal Loan)" className="p-2 border rounded" value={row.label||''} onChange={(e)=>updateDebtRow(key, idx, 'label', e.target.value)}/>
+                        )}
+                        <input placeholder="Amount" type="number" className="p-2 border rounded" value={row.amount||''} onChange={(e)=>updateDebtRow(key, idx, 'amount', e.target.value)}/>
+                        <input placeholder="APR %" type="number" className="p-2 border rounded" value={row.apr||''} onChange={(e)=>updateDebtRow(key, idx, 'apr', e.target.value)}/>
+                        <button onClick={()=>removeDebtRow(key, idx)} className="px-2 py-1 bg-gray-100 rounded">Remove</button>
+                      </div>
+                    ))}
+                    {(lead.debt[key]||[]).length===0 && <div className="text-sm text-gray-500">No entries. Click Add.</div>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+          {tab==='debt' && !(lead.market==='Insurance' && lead.type==='Debt Free') && (
+            <div className="text-gray-500">Debt worksheet is available when sub-type is <strong>Debt Free</strong> under Insurance.</div>
+          )}
+
+          {/* NOTES */}
+          {tab==='notes' && (
+            <div>
+              <label className="block text-sm font-medium mb-1">Notes</label>
+              <textarea className="w-full p-3 border rounded-xl h-40" value={lead.notes} onChange={(e)=>setLead(prev=>({...prev, notes:e.target.value}))}/>
+            </div>
+          )}
+
+          {/* CALLS */}
+          {tab==='calls' && (
+            <div className="space-y-3">
+              <div className="flex justify-between items-center">
+                <h4 className="font-semibold">Call Logs</h4>
+                <button onClick={addCallLog} className="px-3 py-2 bg-gray-100 rounded">➕ Add Log</button>
+              </div>
+              {lead.callLogs.map(log=>(
+                <div key={log.id} className="p-3 border rounded-xl">
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
+                    <input className="p-2 border rounded" value={log.date} onChange={(e)=>updateCallLog(log.id,'date',e.target.value)}/>
+                    <select className="p-2 border rounded" value={log.direction} onChange={(e)=>updateCallLog(log.id,'direction',e.target.value)}>
+                      <option value="outbound">Outbound</option>
+                      <option value="inbound">Inbound</option>
+                    </select>
+                    <select className="p-2 border rounded" value={log.result} onChange={(e)=>updateCallLog(log.id,'result',e.target.value)}>
+                      <option value="answered">Answered</option>
+                      <option value="no_answer">No Answer</option>
+                      <option value="voicemail">Voicemail</option>
+                      <option value="call_back">Call Back</option>
+                    </select>
+                    <label className="p-2 border rounded flex items-center justify-between">
+                      <span>Recording</span>
+                      <input type="file" accept="audio/*" onChange={(e)=>onUploadRecording(log.id, e.target.files[0])}/>
+                    </label>
+                  </div>
+                  {log.recordingUrl && <audio controls src={log.recordingUrl} className="mt-2 w-full"></audio>}
+                  <div className="mt-2">
+                    <label className="block text-sm font-medium mb-1">Transcript</label>
+                    <textarea className="w-full p-2 border rounded h-24" value={log.transcript} onChange={(e)=>updateCallLog(log.id,'transcript',e.target.value)}/>
+                  </div>
+                </div>
+              ))}
+              {lead.callLogs.length===0 && <div className="text-sm text-gray-500">No call logs.</div>}
+            </div>
+          )}
+
+          <div className="flex gap-3 mt-6">
+            <button onClick={saveLead} className="flex-1 px-4 py-3 bg-gradient-to-r from-green-500 to-green-600 text-white font-semibold rounded-xl hover:shadow-lg">Save</button>
+            <button onClick={onClose} className="flex-1 px-4 py-2 border border-gray-300 rounded-xl hover:bg-gray-50">Cancel</button>
           </div>
         </div>
       </div>
@@ -1168,59 +1339,70 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
                 </select>
               </div>
               <div>
-                <label className="block font-medium mb-2">Call Attempts: {local.callAttempts}</label>
-                <input type="range" min="1" max="5" value={local.callAttempts} onChange={(e)=>setLocal(prev=>({...prev, callAttempts: parseInt(e.target.value)}))} className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"/>
-                <div className="flex justify-between text-xs text-gray-500 mt-1"><span>1</span><span>3</span><span>5</span></div>
+                <label className="block font-medium mb-2">Time Between Calls</label>
+                <select className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500" value={local.callInterval} onChange={(e)=>setLocal(prev=>({...prev, callInterval: parseInt(e.target.value)}))}>
+                  <option value="15">15 minutes</option>
+                  <option value="30">30 minutes</option>
+                  <option value="60">1 hour</option>
+                  <option value="120">2 hours</option>
+                  <option value="240">4 hours</option>
+                  <option value="1440">1 day</option>
+                </select>
               </div>
             </div>
 
             <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <label className="flex items-center justify-between p-3 bg-gray-50 rounded-xl">
+                  <span className="font-medium text-sm">Immediate callback on no answer</span>
+                  <div className={`toggle-switch ${local.immediateCallbackOnNoAnswer ? 'active' : ''}`} onClick={()=>setLocal(prev=>({...prev, immediateCallbackOnNoAnswer: !prev.immediateCallbackOnNoAnswer}))}><div className="toggle-slider"></div></div>
+                </label>
+                <label className="flex items-center justify-between p-3 bg-gray-50 rounded-xl">
+                  <span className="font-medium text-sm">Immediate callback after voicemail</span>
+                  <div className={`toggle-switch ${local.immediateCallbackOnVoicemail ? 'active' : ''}`} onClick={()=>setLocal(prev=>({...prev, immediateCallbackOnVoicemail: !prev.immediateCallbackOnVoicemail}))}><div className="toggle-slider"></div></div>
+                </label>
+              </div>
+
+              <div>
+                <label className="block font-medium mb-2">Voicemail Behavior</label>
+                <select className="w-full p-3 border rounded-xl" value={local.voicemailBehavior} onChange={(e)=>setLocal(prev=>({...prev, voicemailBehavior:e.target.value}))}>
+                  <option value="hangup">Detect beep → hang up</option>
+                  <option value="leave_message">Detect beep → leave message</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block font-medium mb-2">Voicemail Script</label>
+                <textarea className="w-full p-3 border rounded-xl h-24" value={local.voicemailScript} onChange={(e)=>setLocal(prev=>({...prev, voicemailScript:e.target.value}))}/>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-medium mb-2">Time Zone</label>
+                  <select className="w-full p-3 border rounded-xl" value={local.timezone} onChange={(e)=>setLocal(prev=>({...prev, timezone:e.target.value}))}>
+                    {US_TZ.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block font-medium mb-2">Call Attempts</label>
+                  <input type="range" min="1" max="5" value={local.callAttempts} onChange={(e)=>setLocal(prev=>({...prev, callAttempts: parseInt(e.target.value)}))} className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"/>
+                </div>
+              </div>
+
               <div>
                 <label className="block font-medium mb-2">Script Template (Generic)</label>
-                <textarea className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500 h-24 resize-none" value={local.scripts.generic} onChange={(e)=>setLocal(prev=>({...prev, scripts:{...prev.scripts, generic:e.target.value}}))}/>
+                <textarea className="w-full p-3 border rounded-xl h-24" value={local.scripts.generic} onChange={(e)=>setLocal(prev=>({...prev, scripts:{...prev.scripts, generic:e.target.value}}))}/>
               </div>
               {['life','term','finalExpense','medicare'].map(key=>{
                 const label = key==='finalExpense' ? 'Final Expense' : key[0].toUpperCase()+key.slice(1);
-                const k = key;
                 return (
                   <div key={key}>
                     <label className="block font-medium mb-2">Script Template ({label})</label>
-                    <textarea className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500 h-20 resize-none" value={local.scripts[k] || ''} onChange={(e)=>setLocal(prev=>({...prev, scripts:{...prev.scripts, [k]: e.target.value}}))}/>
+                    <textarea className="w-full p-3 border rounded-xl h-20" value={local.scripts[key] || ''} onChange={(e)=>setLocal(prev=>({...prev, scripts:{...prev.scripts, [key]: e.target.value}}))}/>
                   </div>
                 );
               })}
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-medium mb-2">Time Between Calls</label>
-                  <select className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500" value={local.callInterval} onChange={(e)=>setLocal(prev=>({...prev, callInterval: parseInt(e.target.value)}))}>
-                    <option value="15">15 minutes</option>
-                    <option value="30">30 minutes</option>
-                    <option value="60">1 hour</option>
-                    <option value="120">2 hours</option>
-                    <option value="240">4 hours</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block font-medium mb-2">Time Zone</label>
-                  <select className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500" value={local.timezone} onChange={(e)=>setLocal(prev=>({...prev, timezone:e.target.value}))}>
-                    <option value="America/Boise">America/Boise</option>
-                    <option value="America/Denver">America/Denver</option>
-                    <option value="America/Chicago">America/Chicago</option>
-                    <option value="America/New_York">America/New_York</option>
-                    <option value="America/Los_Angeles">America/Los_Angeles</option>
-                  </select>
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-medium mb-2">Business Start</label>
-                  <input type="time" className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500" value={local.businessHours.start} onChange={(e)=>setLocal(prev=>({...prev, businessHours:{...prev.businessHours, start:e.target.value}}))}/>
-                </div>
-                <div>
-                  <label className="block font-medium mb-2">Business End</label>
-                  <input type="time" className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500" value={local.businessHours.end} onChange={(e)=>setLocal(prev=>({...prev, businessHours:{...prev.businessHours, end:e.target.value}}))}/>
-                </div>
-              </div>
+
               <button onClick={saveVoiceSettings} className="w-full p-3 bg-gradient-to-r from-blue-500 to-purple-600 text-white font-semibold rounded-xl hover:shadow-lg transition-all">💾 Save Voice Settings</button>
             </div>
           </div>
@@ -1230,6 +1412,7 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
       </div>
     );
   };
+
   function SMSConfig({ smsSettings, setSmsSettings }){
     const DELAY_OPTIONS = [
       { v: 5, label: '5 minutes' },
@@ -1353,7 +1536,7 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
     );
   };
 
-  /* ---------- Campaigns (now deletable) ---------- */
+  /* ---------- Campaigns (deletable) ---------- */
   const CampaignManager = () => {
     const deleteCampaign = (id)=>{
       if (!confirm('Delete this campaign?')) return;
@@ -1399,18 +1582,12 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
             <div className="text-center p-4 bg-purple-50 rounded-xl"><div className="text-2xl font-bold text-purple-600">{a.performance.schedulingRate}%</div><div className="text-sm text-purple-800">Scheduling Rate</div></div>
             <div className="text-center p-4 bg-orange-50 rounded-xl"><div className="text-2xl font-bold text-orange-600">${a.performance.revenuePerLead}</div><div className="text-sm text-orange-800">Revenue / Lead</div></div>
           </div>
-          {a.overview.totalLeads===0 && (
-            <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-6 text-center">
-              <h3 className="font-bold text-yellow-800 mb-2">📈 No Data Yet</h3>
-              <p className="text-yellow-700">Import leads or launch campaigns to see analytics.</p>
-            </div>
-          )}
         </div>
       </div>
     );
   };
 
-  /* ---------- Inbound Center ---------- */
+  /* ---------- Inbound Center (unchanged core) ---------- */
   const InboundCenter = () => {
     const [autoMatchUnknown, setAutoMatchUnknown] = useState(true);
     const [testing, setTesting] = useState(false);
@@ -1498,7 +1675,7 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
   const Imports = () => {
     const [selectedImport, setSelectedImport] = useState(imports[0] || null);
     const [importsFilterPlaceholders, setImportsFilterPlaceholders] = useState(true);
-    const [currentMapping, setCurrentMapping] = useState({ name:'', phone:'', email:'', type:'', location:'', time:'', custom1:'', custom2:'' });
+    const [currentMapping, setCurrentMapping] = useState({ name:'', phone:'', email:'', type:'', market:'', location:'', time:'', source:'', custom1:'', custom2:'' });
 
     useEffect(()=>{ if (!selectedImport && imports.length) setSelectedImport(imports[0]); }, [imports, selectedImport]);
 
@@ -1526,10 +1703,14 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
         name: row[currentMapping.name] || 'Unknown',
         phone: row[currentMapping.phone] || '',
         email: row[currentMapping.email] || '',
+        market: row[currentMapping.market] || 'Insurance',
         type: (row[currentMapping.type] || 'Other'),
+        source: row[currentMapping.source] || 'Import',
         location: row[currentMapping.location] || '',
         time: row[currentMapping.time] || new Date().toLocaleString(),
-        status: 'new'
+        status: 'New',
+        isClient:false,
+        callLogs:[]
       }));
       setLeads(prev => [...newLeads, ...prev]);
       alert(`✅ Imported ${newLeads.length} leads.`);
@@ -1590,10 +1771,10 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
                   </div>
                   <div className="text-xs text-gray-500">Showing up to 200 rows (preview).</div>
 
-                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                     {[
                       ['name','Name'], ['phone','Phone'], ['email','Email'],
-                      ['type','Type'], ['location','City'], ['time','Time'],
+                      ['market','Market'], ['type','Sub-Type'], ['location','City'], ['time','Time'], ['source','Source'],
                       ['custom1','Custom 1'], ['custom2','Custom 2']
                     ].map(([field,label])=>(
                       <div key={field}>
@@ -1622,7 +1803,7 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
   /* ---------- Settings ---------- */
   const Settings = () => {
     const [tab, setTab] = useState('apis');
-    const saveApi = () => { saveNow(); alert('✅ Settings saved.'); };
+    const saveAll = () => { saveNow(); alert('✅ Settings saved.'); };
     const changePassword = async ()=>{
       const oldp = prompt('Enter current password:'); if (!oldp) return;
       const newp = prompt('Enter new password:'); if (!newp) return;
@@ -1642,6 +1823,7 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
           <div className="flex gap-2 mb-4 flex-wrap">
             <button onClick={()=>setTab('apis')} className={`px-3 py-2 rounded ${tab==='apis'?'bg-blue-600 text-white':'bg-gray-100'}`}>API Keys</button>
             <button onClick={()=>setTab('routing')} className={`px-3 py-2 rounded ${tab==='routing'?'bg-blue-600 text-white':'bg-gray-100'}`}>AI Routing & Workers</button>
+            <button onClick={()=>setTab('automation')} className={`px-3 py-2 rounded ${tab==='automation'?'bg-blue-600 text-white':'bg-gray-100'}`}>Automation</button>
             <button onClick={()=>setTab('account')} className={`px-3 py-2 rounded ${tab==='account'?'bg-blue-600 text-white':'bg-gray-100'}`}>Account</button>
             {me.isAdmin && <button onClick={()=>setTab('users')} className={`px-3 py-2 rounded ${tab==='users'?'bg-blue-600 text-white':'bg-gray-100'}`}>Users (Admin)</button>}
           </div>
@@ -1654,7 +1836,7 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
                   ['openai','OpenAI API Key','sk-...','For ad gen & voice'],
                   ['meta','Meta Access Token','EA...','For Facebook/Instagram campaigns'],
                   ['elevenlabs','ElevenLabs API Key','elevenlabs-...','For voice calling'],
-                  ['twilio','Twilio Account SID','AC...','For SMS/phone services']
+                  ['twilio','Twilio Account SID','AC...','For SMS/phone services'],
                 ].map(([key,label,ph,help])=>(
                   <div key={key}>
                     <label className="block font-medium mb-2">{label}</label>
@@ -1662,6 +1844,31 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
                     <p className="text-xs text-gray-500 mt-1">{help}</p>
                   </div>
                 ))}
+                <div>
+                  <label className="block font-medium mb-2">Default Voice Provider (links to Voice tab)</label>
+                  <select className="w-full p-3 border rounded-xl" value={voiceSettings.provider} onChange={(e)=>{ setVoiceSettings(prev=>({...prev, provider:e.target.value, voice:''})); }}>
+                    <option value="elevenlabs">ElevenLabs</option>
+                    <option value="openai">OpenAI Voice</option>
+                    <option value="azure">Azure Speech</option>
+                    <option value="google">Google Cloud Speech</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block font-medium mb-2">Default SMS Provider (links to SMS section)</label>
+                  <select className="w-full p-3 border rounded-xl" value={smsSettings.provider} onChange={(e)=>{ setSmsSettings(prev=>({...prev, provider:e.target.value})); }}>
+                    <option value="twilio">Twilio</option>
+                    <option value="messagebird">MessageBird</option>
+                    <option value="vonage">Vonage</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block font-medium mb-2">From Number (SMS)</label>
+                  <input className="w-full p-3 border rounded-xl" placeholder="+1 555 111 0000" value={apiKeys.smsFrom} onChange={(e)=>setApiKeys(prev=>({...prev, smsFrom:e.target.value}))}/>
+                </div>
+                <div>
+                  <label className="block font-medium mb-2">From Number (Voice)</label>
+                  <input className="w-full p-3 border rounded-xl" placeholder="+1 555 222 0000" value={apiKeys.voiceFrom} onChange={(e)=>setApiKeys(prev=>({...prev, voiceFrom:e.target.value}))}/>
+                </div>
               </div>
             </>
           )}
@@ -1736,6 +1943,25 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
             </>
           )}
 
+          {tab==='automation' && (
+            <div className="space-y-4">
+              <h3 className="text-lg lg:text-xl font-bold">Automation</h3>
+              <label className="flex items-center justify-between p-3 bg-gray-50 rounded-xl">
+                <span>Auto-start outreach when a Meta lead arrives</span>
+                <div className={`toggle-switch ${automation.autoStartOnMeta ? 'active' : ''}`} onClick={()=>setAutomation(prev=>({...prev, autoStartOnMeta: !prev.autoStartOnMeta}))}><div className="toggle-slider"></div></div>
+              </label>
+              <label className="flex items-center justify-between p-3 bg-gray-50 rounded-xl">
+                <span>Immediate retry on No Answer</span>
+                <div className={`toggle-switch ${automation.immediateRetryOnNoAnswer ? 'active' : ''}`} onClick={()=>setAutomation(prev=>({...prev, immediateRetryOnNoAnswer: !prev.immediateRetryOnNoAnswer}))}><div className="toggle-slider"></div></div>
+              </label>
+              <label className="flex items-center justify-between p-3 bg-gray-50 rounded-xl">
+                <span>Immediate retry after Voicemail</span>
+                <div className={`toggle-switch ${automation.immediateRetryOnVoicemail ? 'active' : ''}`} onClick={()=>setAutomation(prev=>({...prev, immediateRetryOnVoicemail: !prev.immediateRetryOnVoicemail}))}><div className="toggle-slider"></div></div>
+              </label>
+              <div className="text-xs text-gray-600">These work with Voice AI “immediate callback” settings.</div>
+            </div>
+          )}
+
           {tab==='account' && (
             <div className="space-y-4">
               <h3 className="text-lg lg:text-xl font-bold">Account</h3>
@@ -1757,15 +1983,50 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
             }}/>
           )}
 
-          {(tab==='apis' || tab==='routing') && (
+          {(tab==='apis' || tab==='routing' || tab==='automation') && (
             <div className="mt-6">
-              <button onClick={saveApi} className="px-6 py-3 bg-gradient-to-r from-blue-500 to-purple-600 text-white font-semibold rounded-xl hover:shadow-lg transition-all">💾 Save</button>
+              <button onClick={saveAll} className="px-6 py-3 bg-gradient-to-r from-blue-500 to-purple-600 text-white font-semibold rounded-xl hover:shadow-lg transition-all">💾 Save</button>
             </div>
           )}
         </div>
       </div>
     );
   };
+
+  /* ---------- Utility actions used above ---------- */
+  const getLeadFollowUp = (lead) => {
+    // placeholder for future per-lead overrides (already exists in a previous version)
+    return { enabled: true, followUpDelay: smsSettings.followUpDelay, scripts: smsSettings.scripts };
+  };
+  const followUpLabel = (mins)=>{
+    const n = Number(mins)||0;
+    if (n < 120) return `${n} minutes`;
+    if (n < 24*60) return `${Math.round(n/60)} hours`;
+    if (n % (7*24*60) === 0) return `${n/(7*24*60)} week`;
+    return `${Math.round(n/1440)} day(s)`;
+  };
+  const initiateContact = async (lead, method) => {
+    try {
+      const f = getLeadFollowUp(lead);
+      await fetch('/api/ai-call', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({
+          leadId: lead.id, phoneNumber: lead.phone, method,
+          routing, metadata: method==='call'? routing.metadata.call : routing.metadata.sms,
+          followUp: f
+        })
+      }).catch(()=>{});
+      alert(`✅ ${method==='call'?'Call':'SMS'} initiated (sim).\nFollow-up: ${f.enabled ? followUpLabel(f.followUpDelay) : 'OFF'}`);
+    } catch { alert(`❌ ${method==='call'?'Call':'SMS'} failed.`); }
+  };
+
+  /* ---------- Mount helpers ---------- */
+  function openLeadEditor(lead){
+    const onClose = ()=>{ setEditor(null); };
+    const onSave = (updated)=>{ setLeads(prev => prev.map(l => l.id===updated.id ? updated : l)); };
+    setEditor(<LeadEditorModal initialLead={lead} onClose={onClose} onSave={onSave}/>);
+  }
+  const [editor, setEditor] = useState(null);
 
   /* ---------- Render ---------- */
   const renderContent = () => {
@@ -1810,6 +2071,7 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
           {renderContent()}
         </div>
       </div>
+      {editor}
     </div>
   );
 }
