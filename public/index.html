@@ -26,7 +26,7 @@
 <div id="root"></div>
 
 <script type="text/babel">
-const { useState, useEffect, useMemo, useRef } = React;
+const { useState, useEffect, useMemo } = React;
 
 /* =========================
    PERSISTENCE / AUTH
@@ -103,8 +103,7 @@ const STATUS_LABELS = [
 ];
 const STATUS_ADVANCED = new Set(['App Submitted','Pending','Approved','Paid','Declined']);
 
-// Open-lead statuses for dashboard
-const OPEN_STATUSES = new Set(['New','Contacted','Qualified']);
+// dashboard APV counts use leads with apv>0 (often Approved/Paid)
 
 /* =========================
    PROMPT EXAMPLES (unchanged)
@@ -169,8 +168,6 @@ const PROMPT_TEMPLATES = {
    DEFAULT WORKSPACE
    ========================= */
 function seedWorkspace(){
-  const now = new Date();
-  const tenDaysAgo = new Date(now.getTime() - 10*24*60*60*1000).toISOString();
   return {
     apiKeys: { openai:'', meta:'', elevenlabs:'', twilio:'', smsFrom:'', voiceFrom:'' },
     routing: {
@@ -234,12 +231,12 @@ function seedWorkspace(){
     },
     data: {
       leads: [
-        { id: 1, market:'Insurance', type:'Life', source:'Manual', name:'Alex Morgan', phone:'(555) 123-4567', email:'alex@example.com', status:'New', location:'ID', time:'Today 10:15 AM', notes:'Wants quick quote', isClient:false, callLogs:[], createdAt: new Date().toISOString() },
-        { id: 2, market:'Insurance', type:'Term', source:'Manual', name:'Sam Taylor', phone:'(555) 987-6543', email:'sam@example.com', status:'Scheduled', location:'TX', time:'Today 2:30 PM', isClient:false, callLogs:[], createdAt: new Date().toISOString(), scheduledAt: new Date().toISOString() },
-        { id: 3, market:'Insurance', type:'Final Expense', source:'Manual', name:'Jordan Lee', phone:'', email:'', status:'Contacted', location:'AL', time:'Yesterday 4:05 PM', isClient:false, callLogs:[], createdAt: new Date().toISOString() }
+        { id: 1, market:'Insurance', type:'Life', source:'Manual', name:'Alex Morgan', phone:'(555) 123-4567', email:'alex@example.com', status:'New', location:'ID', time:'Today 10:15 AM', notes:'Wants quick quote', isClient:false, callLogs:[] },
+        { id: 2, market:'Insurance', type:'Term', source:'Manual', name:'Sam Taylor', phone:'(555) 987-6543', email:'sam@example.com', status:'Scheduled', location:'TX', time:'Today 2:30 PM', isClient:false, callLogs:[] },
+        { id: 3, market:'Insurance', type:'Final Expense', source:'Manual', name:'Jordan Lee', phone:'', email:'', status:'Contacted', location:'AL', time:'Yesterday 4:05 PM', isClient:false, callLogs:[] }
       ],
       campaigns: [
-        { id:'c1', name:'Insurance/Life - ID, OR', market:'Insurance', type:'Life', budget:100, status:'active', leads:24, costPerLead:12.45, startAt: tenDaysAgo }
+        { id:'c1', name:'Insurance/Life - ID, OR', market:'Insurance', type:'Life', budget:100, status:'active', leads:24, costPerLead:12.45 }
       ],
       objections: [],
       analytics: {
@@ -256,11 +253,31 @@ function seedWorkspace(){
 /* =========================
    HELPERS
    ========================= */
-function startOfDay(d){ const x = new Date(d); x.setHours(0,0,0,0); return x; }
 function startOfWeek(d){ const x = new Date(d); const day = (x.getDay()+6)%7; x.setHours(0,0,0,0); x.setDate(x.getDate()-day); return x; }
 function startOfMonth(d){ const x = new Date(d); x.setDate(1); x.setHours(0,0,0,0); return x; }
 function startOfYear(d){ const x = new Date(d); x.setMonth(0,1); x.setHours(0,0,0,0); return x; }
-function fmtMoney(n){ return `$${Number(n||0).toLocaleString(undefined,{maximumFractionDigits:2})}`; }
+
+/* ======= ADDED: deep-merge defaults so old localStorage never breaks UI ======= */
+function mergeDefaults(base, incoming) {
+  if (incoming == null) return JSON.parse(JSON.stringify(base));
+  if (Array.isArray(base)) return Array.isArray(incoming) ? incoming : base;
+  if (typeof base !== 'object' || base === null) return incoming ?? base;
+
+  const out = { ...base };
+  for (const k of Object.keys(base)) {
+    const b = base[k];
+    const i = incoming[k];
+    if (b && typeof b === 'object' && !Array.isArray(b)) {
+      out[k] = mergeDefaults(b, i ?? {});
+    } else {
+      out[k] = (i === undefined ? b : i);
+    }
+  }
+  for (const k of Object.keys(incoming)) {
+    if (out[k] === undefined) out[k] = incoming[k];
+  }
+  return out;
+}
 
 /* =========================
    LOGIN
@@ -406,7 +423,8 @@ function UsersAdmin({ me, onImpersonate }){
    APP
    ========================= */
 function LeadFlowApp({ me, onLogout, onImpersonate }){
-  const ws0 = loadWorkspace(me.email) || seedWorkspace();
+  /* ======= UPDATED: merge stored workspace with current defaults ======= */
+  const ws0 = mergeDefaults(seedWorkspace(), loadWorkspace(me.email));
 
   const [activeTab, setActiveTab] = useState('dashboard');
   const [showMobileMenu, setShowMobileMenu] = useState(false);
@@ -425,21 +443,6 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
   const [imports, setImports] = useState(ws0.data.imports || []);
   const [adLab, setAdLab] = useState(ws0.data.adLab || { variants:[], rotate:false });
 
-  // ---- Normalize leads (fill createdAt/scheduledAt/paidAt if missing) ----
-  useEffect(()=>{
-    const nowISO = new Date().toISOString();
-    const fixed = (leads||[]).map(l=>{
-      const out = { ...l };
-      if (!out.createdAt) out.createdAt = nowISO;
-      if (out.status==='Scheduled' && !out.scheduledAt) out.scheduledAt = nowISO;
-      if (out.status==='Paid' && !out.paidAt) out.paidAt = out.apvDate || nowISO;
-      return out;
-    });
-    _setLeads(fixed);
-    saveNow({ leads: fixed });
-    // eslint-disable-next-line
-  },[]);
-
   const saveNow = (next) => {
     saveWorkspace(me.email, {
       apiKeys, routing, automation, voiceSettings, smsSettings,
@@ -457,54 +460,38 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
   const setLeads = (fnOrArr) => { const v = typeof fnOrArr==='function'? fnOrArr(leads):fnOrArr; _setLeads(v); saveNow({leads:v}); };
   const setAdLabPersist = (updater) => { const v = typeof updater==='function' ? updater(adLab) : updater; setAdLab(v); saveNow({ adLab: v }); };
 
-  /* ---------- Stats helpers ---------- */
-  const now = new Date();
-  const day0 = startOfDay(now);
-  const w0 = startOfWeek(now);
-  const m0 = startOfMonth(now);
-  const y0 = startOfYear(now);
-
-  // APV totals (unchanged)
+  /* ---------- Stats & APV ---------- */
   const computeAPVStats = (list)=>{
+    const now = new Date();
+    const w0 = startOfWeek(now), m0 = startOfMonth(now), y0 = startOfYear(now);
     let week=0, month=0, year=0;
     list.forEach(l=>{
       const apv = Number(l.apv||0);
       if (!apv) return;
-      const dt = l.paidAt ? new Date(l.paidAt) : (l.apvDate ? new Date(l.apvDate) : new Date());
+      const dt = l.apvDate ? new Date(l.apvDate) : new Date();
       if (dt >= w0) week += apv;
       if (dt >= m0) month += apv;
       if (dt >= y0) year += apv;
     });
     return { week: Math.round(week*100)/100, month: Math.round(month*100)/100, year: Math.round(year*100)/100 };
   };
+
   const apvStats = computeAPVStats(leads);
 
-  const countOpenLeads = ()=> leads.filter(l=>OPEN_STATUSES.has(l.status)).length;
-
-  const countPaidInPeriod = (start)=> leads.filter(l=> l.status==='Paid' && new Date(l.paidAt || l.apvDate || l.time || l.createdAt) >= start).length;
-
-  const countScheduledInPeriod = (start)=> leads.filter(l=> (l.status==='Scheduled' || l.scheduledAt) && new Date(l.scheduledAt || l.time || l.createdAt) >= start).length;
-
-  const conversionRate = (start)=>{
-    const created = leads.filter(l=> new Date(l.createdAt || l.time) >= start).length;
-    const paid = countPaidInPeriod(start);
-    if (!created) return 0;
-    return Math.round((paid / created) * 100);
-  };
-
-  const adSpendInPeriod = (start)=>{
-    const end = now;
-    let total = 0;
-    campaigns.forEach(c=>{
-      const startAt = new Date(c.startAt || c.createdAt || now.toISOString());
-      const effectiveStart = startAt > start ? startAt : start;
-      const effectiveEnd = end;
-      const ms = Math.max(0, effectiveEnd - effectiveStart);
-      const days = ms / (24*60*60*1000); // fractional days
-      total += (Number(c.budget)||0) * days;
+  const [stats, setStats] = useState({
+    totalLeads: analyticsData?.overview?.totalLeads ?? (leads?.length || 0),
+    scheduledToday: (leads||[]).filter(l=>l.status==='Scheduled').length,
+    adSpend: 2450,
+    conversionRate: Math.round(analyticsData?.overview?.conversionRate ?? 34)
+  });
+  useEffect(()=>{
+    setStats({
+      totalLeads: leads.length,
+      scheduledToday: leads.filter(l=>l.status==='Scheduled').length,
+      adSpend: 2450,
+      conversionRate: Math.round(analyticsData?.overview?.conversionRate ?? 34)
     });
-    return Math.round(total * 100) / 100;
-  };
+  }, [leads, analyticsData]);
 
   /* ---------- Optional backend fetch (safe no-throw) ---------- */
   useEffect(()=>{
@@ -514,14 +501,7 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
       fetch('/api/objections').then(r=>r.json()),
       fetch('/api/analytics').then(r=>r.json())
     ]).then(([leadsRes, campRes, objRes, anaRes])=>{
-      if (leadsRes.status==='fulfilled' && Array.isArray(leadsRes.value)) setLeads(leadsRes.value.map(l=>{
-        // normalize fetched
-        const out = { ...l };
-        if (!out.createdAt) out.createdAt = new Date().toISOString();
-        if (out.status==='Scheduled' && !out.scheduledAt) out.scheduledAt = new Date().toISOString();
-        if (out.status==='Paid' && !out.paidAt) out.paidAt = out.apvDate || new Date().toISOString();
-        return out;
-      }));
+      if (leadsRes.status==='fulfilled' && Array.isArray(leadsRes.value)) setLeads(leadsRes.value);
       if (campRes.status==='fulfilled' && Array.isArray(campRes.value)) { setCampaigns(campRes.value); saveNow({campaigns: campRes.value}); }
       if (objRes.status==='fulfilled' && Array.isArray(objRes.value)) { setObjections(objRes.value); saveNow({objections: objRes.value}); }
       if (anaRes.status==='fulfilled' && anaRes.value) { setAnalyticsData(anaRes.value); saveNow({analytics: anaRes.value}); }
@@ -602,127 +582,85 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
     </div>
   );
 
-  /* ---------- Dashboard (updated per spec) ---------- */
-  const GradientCard = ({label, value, icon, from, to}) => (
-    <div className={`bg-gradient-to-br ${from} ${to} text-white p-4 lg:p-6 rounded-2xl shadow-lg text-center`}>
-      <div className="text-2xl mb-2">{icon}</div>
-      <div className="text-2xl lg:text-3xl font-bold mb-1">{value}</div>
-      <div className="text-xs lg:text-sm opacity-90">{label}</div>
-    </div>
-  );
-
-  const Dashboard = () => {
-    const openLeads = countOpenLeads();
-    const paidWeek = countPaidInPeriod(w0);
-    const paidMonth = countPaidInPeriod(m0);
-
-    const schedToday = countScheduledInPeriod(day0);
-    const schedWeek  = countScheduledInPeriod(w0);
-    const schedMonth = countScheduledInPeriod(m0);
-
-    const spendWeek  = adSpendInPeriod(w0);
-    const spendMonth = adSpendInPeriod(m0);
-    const spendYear  = adSpendInPeriod(y0);
-
-    const convWeek  = conversionRate(w0);
-    const convMonth = conversionRate(m0);
-    const convYear  = conversionRate(y0);
-
-    return (
-      <div className="space-y-6 fade-in">
-        {/* Four columns, stacked metrics */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-6">
-          {/* Column 1: Leads (Open & Paid) */}
-          <div className="space-y-4">
-            <GradientCard label="Total Open Leads" value={openLeads} icon="👥" from="from-blue-500" to="to-blue-600"/>
-            <GradientCard label="Total Leads Paid This Week" value={paidWeek} icon="💸" from="from-indigo-500" to="to-indigo-600"/>
-            <GradientCard label="Total Leads Paid This Month" value={paidMonth} icon="💸" from="from-indigo-400" to="to-indigo-500"/>
+  /* ---------- Dashboard (with Quick Actions + APV widgets) ---------- */
+  const Dashboard = () => (
+    <div className="space-y-6 fade-in">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-6">
+        {[
+          { label:'Total Leads', value:stats.totalLeads, icon:'👥', color:'from-blue-500 to-blue-600' },
+          { label:'Scheduled Today', value:stats.scheduledToday, icon:'📅', color:'from-green-500 to-green-600' },
+          { label:'Ad Spend', value:`$${new Intl.NumberFormat().format(stats.adSpend)}`, icon:'💰', color:'from-purple-500 to-purple-600' },
+          { label:'Conversion Rate', value:`${stats.conversionRate}%`, icon:'📈', color:'from-orange-500 to-orange-600' }
+        ].map(({label,value,icon,color})=>(
+          <div key={label} className={`bg-gradient-to-br ${color} text-white p-4 lg:p-6 rounded-2xl shadow-lg text-center`}>
+            <div className="text-2xl mb-2">{icon}</div>
+            <div className="text-2xl lg:text-3xl font-bold mb-1">{value}</div>
+            <div className="text-xs lg:text-sm opacity-90">{label}</div>
           </div>
+        ))}
+      </div>
 
-          {/* Column 2: Scheduled */}
-          <div className="space-y-4">
-            <GradientCard label="Scheduled Today" value={schedToday} icon="📅" from="from-purple-500" to="to-purple-600"/>
-            <GradientCard label="Scheduled This Week" value={schedWeek} icon="🗓️" from="from-purple-400" to="to-purple-500"/>
-            <GradientCard label="Scheduled This Month" value={schedMonth} icon="🗓️" from="from-purple-300" to="to-purple-400"/>
-          </div>
+      {/* APV Totals */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="bg-white rounded-2xl p-4 shadow-lg text-center">
+          <div className="text-xs text-gray-500">APV This Week</div>
+          <div className="text-2xl font-bold">${apvStats.week.toLocaleString()}</div>
+        </div>
+        <div className="bg-white rounded-2xl p-4 shadow-lg text-center">
+          <div className="text-xs text-gray-500">APV This Month</div>
+          <div className="text-2xl font-bold">${apvStats.month.toLocaleString()}</div>
+        </div>
+        <div className="bg-white rounded-2xl p-4 shadow-lg text-center">
+          <div className="text-xs text-gray-500">APV This Year</div>
+          <div className="text-2xl font-bold">${apvStats.year.toLocaleString()}</div>
+        </div>
+      </div>
 
-          {/* Column 3: Ad Spend */}
-          <div className="space-y-4">
-            <GradientCard label="Ad Spend This Week" value={fmtMoney(spendWeek)} icon="💰" from="from-emerald-500" to="to-emerald-600"/>
-            <GradientCard label="Ad Spend This Month" value={fmtMoney(spendMonth)} icon="💵" from="from-emerald-400" to="to-emerald-500"/>
-            <GradientCard label="Ad Spend This Year" value={fmtMoney(spendYear)} icon="🏦" from="from-emerald-300" to="to-emerald-400"/>
-          </div>
-
-          {/* Column 4: Conversion */}
-          <div className="space-y-4">
-            <GradientCard label="Conversion Rate This Week" value={`${convWeek}%`} icon="📈" from="from-orange-500" to="to-orange-600"/>
-            <GradientCard label="Conversion Rate This Month" value={`${convMonth}%`} icon="📊" from="from-orange-400" to="to-orange-500"/>
-            <GradientCard label="Conversion Rate This Year" value={`${convYear}%`} icon="📊" from="from-orange-300" to="to-orange-400"/>
+      {/* Quick Actions (restored) */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="bg-white rounded-2xl p-4 lg:p-6 shadow-lg">
+          <h3 className="text-lg lg:text-xl font-bold mb-4">Recent Leads</h3>
+          <div className="space-y-3">
+            {leads.slice(0, 3).map(lead => (
+              <button key={lead.id} onClick={()=>openLeadEditor(lead)} className="w-full text-left p-3 lg:p-4 border border-gray-200 rounded-xl hover:border-blue-300">
+                <div className="flex justify-between items-start mb-2">
+                  <div className="font-semibold text-sm lg:text-base">{lead.name}</div>
+                  <span className={`px-2 lg:px-3 py-1 rounded-full text-xs font-medium ${
+                    lead.status === 'New' ? 'bg-blue-100 text-blue-800' :
+                    lead.status === 'Contacted' ? 'bg-orange-100 text-orange-800' :
+                    lead.status === 'Scheduled' ? 'bg-purple-100 text-purple-800' :
+                    lead.status === 'Paid' ? 'bg-green-100 text-green-800' :
+                    'bg-gray-100 text-gray-800'
+                  }`}>{lead.status}</span>
+                </div>
+                <div className="text-xs lg:text-sm text-gray-600">
+                  {lead.market}/{lead.type} • {lead.location||'—'} • {lead.time||'—'}
+                </div>
+              </button>
+            ))}
+            {leads.length===0 && <div className="text-gray-500">No leads yet.</div>}
           </div>
         </div>
 
-        {/* APV Totals (kept) */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <div className="bg-white rounded-2xl p-4 shadow-lg text-center">
-            <div className="text-xs text-gray-500">APV This Week</div>
-            <div className="text-2xl font-bold">${apvStats.week.toLocaleString()}</div>
-          </div>
-          <div className="bg-white rounded-2xl p-4 shadow-lg text-center">
-            <div className="text-xs text-gray-500">APV This Month</div>
-            <div className="text-2xl font-bold">${apvStats.month.toLocaleString()}</div>
-          </div>
-          <div className="bg-white rounded-2xl p-4 shadow-lg text-center">
-            <div className="text-xs text-gray-500">APV This Year</div>
-            <div className="text-2xl font-bold">${apvStats.year.toLocaleString()}</div>
-          </div>
-        </div>
-
-        {/* Quick Actions (unchanged) */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <div className="bg-white rounded-2xl p-4 lg:p-6 shadow-lg">
-            <h3 className="text-lg lg:text-xl font-bold mb-4">Recent Leads</h3>
-            <div className="space-y-3">
-              {leads.slice(0, 3).map(lead => (
-                <button key={lead.id} onClick={()=>openLeadEditor(lead)} className="w-full text-left p-3 lg:p-4 border border-gray-200 rounded-xl hover:border-blue-300">
-                  <div className="flex justify-between items-start mb-2">
-                    <div className="font-semibold text-sm lg:text-base">{lead.name}</div>
-                    <span className={`px-2 lg:px-3 py-1 rounded-full text-xs font-medium ${
-                      lead.status === 'New' ? 'bg-blue-100 text-blue-800' :
-                      lead.status === 'Contacted' ? 'bg-orange-100 text-orange-800' :
-                      lead.status === 'Scheduled' ? 'bg-purple-100 text-purple-800' :
-                      lead.status === 'Paid' ? 'bg-green-100 text-green-800' :
-                      'bg-gray-100 text-gray-800'
-                    }`}>{lead.status}</span>
-                  </div>
-                  <div className="text-xs lg:text-sm text-gray-600">
-                    {lead.market}/{lead.type} • {lead.location||'—'} • {lead.time||'—'}
-                  </div>
-                </button>
-              ))}
-              {leads.length===0 && <div className="text-gray-500">No leads yet.</div>}
-            </div>
-          </div>
-
-          <div className="bg-white rounded-2xl p-4 lg:p-6 shadow-lg">
-            <h3 className="text-lg lg:text-xl font-bold mb-4">Quick Actions</h3>
-            <div className="space-y-3">
-              <button onClick={()=>setActiveTab('ad-creator')} className="w-full p-3 lg:p-4 bg-gradient-to-r from-blue-500 to-purple-600 text-white rounded-xl font-semibold hover:shadow-lg transition-all">
-                🎯 Create New Ad Campaign
-              </button>
-              <button onClick={()=>setActiveTab('leads')} className="w-full p-3 lg:p-4 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-xl font-semibold hover:shadow-lg transition-all">
-                👥 Manage Leads
-              </button>
-              <button onClick={()=>setActiveTab('voice-ai')} className="w-full p-3 lg:p-4 bg-gradient-to-r from-orange-500 to-red-600 text-white rounded-xl font-semibold hover:shadow-lg transition-all">
-                🎙️ Test Voice AI System
-              </button>
-            </div>
+        <div className="bg-white rounded-2xl p-4 lg:p-6 shadow-lg">
+          <h3 className="text-lg lg:text-xl font-bold mb-4">Quick Actions</h3>
+          <div className="space-y-3">
+            <button onClick={()=>setActiveTab('ad-creator')} className="w-full p-3 lg:p-4 bg-gradient-to-r from-blue-500 to-purple-600 text-white rounded-xl font-semibold hover:shadow-lg transition-all">
+              🎯 Create New Ad Campaign
+            </button>
+            <button onClick={()=>setActiveTab('leads')} className="w-full p-3 lg:p-4 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-xl font-semibold hover:shadow-lg transition-all">
+              👥 Manage Leads
+            </button>
+            <button onClick={()=>setActiveTab('voice-ai')} className="w-full p-3 lg:p-4 bg-gradient-to-r from-orange-500 to-red-600 text-white rounded-xl font-semibold hover:shadow-lg transition-all">
+              🎙️ Test Voice AI System
+            </button>
           </div>
         </div>
       </div>
-    );
-  };
+    </div>
+  );
 
-  /* ---------- Ad Creator (unchanged from earlier) ---------- */
+   /* ---------- Ad Creator (market/sub) ---------- */
   const AdCreator = () => {
     const [adForm, setAdForm] = useState({
       market: 'Insurance',
@@ -800,7 +738,7 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
           routing, metadata: routing.metadata.adsCopy, variants: localVariants
         };
         await fetch('/api/launch-campaign', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) }).catch(()=>{});
-        const newCamp = { id:'c'+Date.now(), name: body.name, market: body.market, type: body.type, budget: body.budget, status:'active', leads:0, costPerLead:0, startAt: new Date().toISOString() };
+        const newCamp = { id:'c'+Date.now(), name: body.name, market: body.market, type: body.type, budget: body.budget, status:'active', leads:0, costPerLead:0 };
         setCampaigns(prev => [newCamp, ...prev]); saveNow({ campaigns: [newCamp, ...campaigns] });
         alert('🚀 Campaign launched (simulated).');
       } catch { alert('❌ Launch failed.'); }
@@ -933,7 +871,7 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
     );
   };
 
-  /* ---------- Leads (click to edit + timestamps) ---------- */
+  /* ---------- Leads (click to edit + advanced statuses + notes + recordings) ---------- */
   const LeadManagement = () => {
     const [searchTerm, setSearchTerm] = useState('');
     const [filterMarket, setFilterMarket] = useState('');
@@ -975,8 +913,7 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
 
     const saveNewLead = async () => {
       if (!newLead.name || !newLead.phone) { alert('Name and phone are required'); return; }
-      const nowISO = new Date().toISOString();
-      const created = { ...newLead, id: Date.now(), time: new Date().toLocaleString(), callLogs: [], isClient: false, createdAt: nowISO };
+      const created = { ...newLead, id: Date.now(), time: new Date().toLocaleString(), callLogs: [], isClient: false };
       try{ await fetch('/api/leads', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(created) }).catch(()=>{}); } catch {}
       setLeads(prev => [created, ...prev]);
       setShowAddLead(false);
@@ -1125,7 +1062,7 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
             onSave={(lead)=>{
               const isNew = lead.id==='new';
               if (isNew) {
-                const created = { ...lead, id: Date.now(), time: new Date().toLocaleString(), callLogs: lead.callLogs || [], isClient: lead.status==='Paid', createdAt: new Date().toISOString(), scheduledAt: lead.status==='Scheduled' ? new Date().toISOString() : null, paidAt: lead.status==='Paid' ? new Date().toISOString() : null };
+                const created = { ...lead, id: Date.now(), time: new Date().toLocaleString(), callLogs: lead.callLogs || [], isClient: lead.status==='Paid' };
                 setLeads(prev => [created, ...prev]);
                 setShowAddLead(false);
                 // Auto outreach if source Meta
@@ -1142,7 +1079,7 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
     );
   };
 
-  /* ---------- Lead Editor Modal (with scheduledAt/paidAt tracking) ---------- */
+  /* ---------- Lead Editor Modal (full editor) ---------- */
   function LeadEditorModal({ initialLead, onClose, onSave }) {
     const [lead, setLead] = useState(() => ({
       id: initialLead.id,
@@ -1161,13 +1098,8 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
       isClient: !!initialLead.isClient,
       debt: initialLead.debt || { creditCards:[], mortgages:[], cars:[], others:[] },
       callLogs: initialLead.callLogs || [],
-      time: initialLead.time || new Date().toLocaleString(),
-      createdAt: initialLead.createdAt || new Date().toISOString(),
-      scheduledAt: initialLead.scheduledAt || null,
-      paidAt: initialLead.paidAt || null
+      time: initialLead.time || new Date().toLocaleString()
     }));
-    const originalStatusRef = useRef(initialLead.status);
-
     const [tab, setTab] = useState('profile');
 
     const isInsurance = lead.market === 'Insurance';
@@ -1192,24 +1124,10 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
     };
 
     const saveLead = ()=>{
-      // detect status changes for timestamps
-      const originalStatus = originalStatusRef.current;
-      let scheduledAt = lead.scheduledAt;
-      let paidAt = lead.paidAt;
-
-      if (lead.status==='Scheduled' && !scheduledAt) scheduledAt = new Date().toISOString();
-      if (lead.status==='Paid' && !paidAt) paidAt = new Date().toISOString();
-
-      if (originalStatus !== lead.status){
-        if (lead.status==='Scheduled' && !scheduledAt) scheduledAt = new Date().toISOString();
-        if (lead.status==='Paid' && !paidAt) paidAt = new Date().toISOString();
-      }
-
       // Paid => becomes a Client
       const isClient = lead.status === 'Paid';
       const apvDate = showAPVSection && lead.apv && !lead.apvDate ? new Date().toISOString() : lead.apvDate;
-
-      onSave({ ...lead, isClient, apvDate, scheduledAt, paidAt });
+      onSave({ ...lead, isClient, apvDate });
       onClose();
     };
 
@@ -1397,7 +1315,7 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
     );
   }
 
-  /* ---------- Voice + SMS ---------- */
+    /* ---------- Voice + SMS ---------- */
   const VoiceAI = () => {
     const [local, setLocal] = useState(voiceSettings);
     useEffect(()=>{ setLocal(voiceSettings); }, [voiceSettings]);
@@ -1665,7 +1583,6 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
                 </div>
               </div>
               <div className="mt-2 text-sm">{c.leads} leads • ${c.costPerLead} CPL</div>
-              {c.startAt && <div className="mt-1 text-xs text-gray-500">Started: {new Date(c.startAt).toLocaleString()}</div>}
             </div>
           ))}
           {campaigns.length===0 && <div className="text-gray-500">No campaigns yet.</div>}
@@ -1804,7 +1721,6 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
     };
     const importToLeads = () => {
       if (!selectedImport) return;
-      const nowISO = new Date().toISOString();
       const newLeads = filteredRows.map((row)=>({
         id: Date.now() + Math.floor(Math.random()*100000),
         name: row[currentMapping.name] || 'Unknown',
@@ -1817,8 +1733,7 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
         time: row[currentMapping.time] || new Date().toLocaleString(),
         status: 'New',
         isClient:false,
-        callLogs:[],
-        createdAt: nowISO
+        callLogs:[]
       }));
       setLeads(prev => [...newLeads, ...prev]);
       alert(`✅ Imported ${newLeads.length} leads.`);
@@ -2101,8 +2016,9 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
     );
   };
 
-  /* ---------- Utility actions ---------- */
+  /* ---------- Utility actions used above ---------- */
   const getLeadFollowUp = (lead) => {
+    // placeholder for future per-lead overrides (already exists in a previous version)
     return { enabled: true, followUpDelay: smsSettings.followUpDelay, scripts: smsSettings.scripts };
   };
   const followUpLabel = (mins)=>{
@@ -2233,6 +2149,5 @@ function parseCSV(text){
    ========================= */
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(<AppWrapper/>);
-</script>
-</body>
-</html>
+
+
