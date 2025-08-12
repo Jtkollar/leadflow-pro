@@ -3,517 +3,187 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>LeadFlow Pro — Complete Build</title>
+  <title>LeadFlow Pro — Multi-Tenant</title>
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   <style>
-    #lfp-error {
-      position: fixed; inset: 8px; z-index: 999999;
-      background: #fff5f5; color:#7f1d1d; border:1px solid #fecaca;
-      border-radius: 10px; font-family: system-ui, -apple-system, Segoe UI, Inter, sans-serif;
-      padding: 12px; display:none; overflow:auto;
-    }
-    #lfp-error pre { white-space: pre-wrap; word-break: break-word; }
-  </style>
-  <script>
-    (function(){
-      function show(msg, detail){
-        var el = document.getElementById('lfp-error');
-        if (!el) { el = document.createElement('div'); el.id='lfp-error'; document.body.appendChild(el); }
-        el.innerHTML =
-          '<div style="font-weight:700;margin-bottom:6px">Something broke in the UI</div>' +
-          '<div style="font-size:12px;margin-bottom:6px">'+(msg||'Unknown error')+'</div>' +
-          (detail? '<pre>'+detail+'</pre>' : '') +
-          (msg==='Script error.' ? '<div style="margin-top:6px;font-size:12px;color:#7f1d1d;">This usually means a cross-origin error from a CDN or browser extension. I added CORS flags, but if you still see this, hard refresh or try an incognito window.</div>' : '');
-        el.style.display='block';
-      }
-      window.__lfp_showError = show;
-      window.addEventListener('error', function(e){
-        show(String(e.message||e.error||'Script error'), (e.error && e.error.stack) ? e.error.stack : '');
-      });
-      window.addEventListener('unhandledrejection', function(e){
-        show('Unhandled Promise rejection', String(e.reason||''));
-      });
-    })();
-  </script>
-  <script>
-    (function(){
-      try {
-        const q = new URLSearchParams(location.search);
-        if (q.get('reset') === '1') {
-          Object.keys(localStorage).forEach(k => { if (k.startsWith('lfp:')) localStorage.removeItem(k); });
-          sessionStorage.clear?.();
-          alert('✅ LeadFlow storage cleared. Reloading…');
-          location.replace(location.origin + location.pathname);
-        }
-      } catch(e){}
-    })();
-  </script>
-  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin="anonymous"></script>
-  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin="anonymous"></script>
-  <script src="https://unpkg.com/@babel/standalone/babel.min.js" crossorigin="anonymous"></script>
-  <script src="https://cdn.tailwindcss.com" crossorigin="anonymous"></script>
-  <script>
-    (function(){
-      function check(){
-        if (!(window.React && window.ReactDOM && window.Babel)) {
-          window.__lfp_showError && window.__lfp_showError(
-            'Core libraries failed to load',
-            'One of React / ReactDOM / Babel did not load from the CDN.\n' +
-            '- Check network/CSP/ad blockers\n' +
-            '- Try hard refresh (Ctrl/Cmd+Shift+R) or Incognito\n' +
-            '- The app will not mount until those scripts load.'
-          );
-        }
-      }
-      setTimeout(check, 0);
-    })();
-  </script>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
-  <style>
-    body { 
-      font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; 
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      margin: 0;
-      padding: 0;
-    }
-    .fade-in { 
-      animation: fadeIn 0.5s ease-in-out; 
-    }
-    @keyframes fadeIn { 
-      from { opacity: 0; transform: translateY(20px); } 
-      to { opacity: 1; transform: translateY(0); } 
-    }
-    .slide-in { 
-      animation: slideIn 0.3s ease-out; 
-    }
-    @keyframes slideIn { 
-      from { opacity: 0; transform: translateX(-20px); } 
-      to { opacity: 1; transform: translateX(0); } 
-    }
-    .toggle-switch { 
-      position: relative; width: 56px; height: 28px; 
-      background: linear-gradient(135deg, #e5e7eb 0%, #d1d5db 100%); 
-      border-radius: 14px; cursor: pointer; 
-      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-      box-shadow: inset 0 2px 4px rgba(0,0,0,0.1);
-    }
-    .toggle-switch.active { 
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      box-shadow: inset 0 2px 4px rgba(0,0,0,0.2), 0 0 0 2px rgba(102, 126, 234, 0.2);
-    }
-    .toggle-slider { 
-      position: absolute; top: 2px; left: 2px; width: 24px; height: 24px; 
-      background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%); 
-      border-radius: 50%; 
-      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-      box-shadow: 0 2px 6px rgba(0,0,0,0.15), 0 1px 2px rgba(0,0,0,0.1);
-    }
-    .toggle-switch.active .toggle-slider { 
-      transform: translateX(28px);
-      box-shadow: 0 4px 12px rgba(0,0,0,0.2), 0 2px 4px rgba(0,0,0,0.1);
-    }
-    .badge { 
-      padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 600;
-      text-transform: uppercase; letter-spacing: 0.5px;
-      display: inline-flex; align-items: center; gap: 4px;
-    }
-    .card { 
-      background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%); 
-      border-radius: 20px; 
-      box-shadow: 0 20px 40px rgba(0,0,0,0.08), 0 8px 16px rgba(0,0,0,0.04);
-      border: 1px solid rgba(255,255,255,0.2);
-      backdrop-filter: blur(10px);
-      position: relative;
-      overflow: hidden;
-    }
-    .card::before {
-      content: '';
-      position: absolute;
-      top: 0;
-      left: 0;
-      right: 0;
-      height: 1px;
-      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.8), transparent);
-    }
-    .glass-effect {
-      background: rgba(255, 255, 255, 0.95);
-      backdrop-filter: blur(20px);
-      border: 1px solid rgba(255, 255, 255, 0.3);
-    }
-    .btn-primary {
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      color: white;
-      border: none;
-      border-radius: 12px;
-      padding: 12px 24px;
-      font-weight: 600;
-      cursor: pointer;
-      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-      box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
-      position: relative;
-      overflow: hidden;
-    }
-    .btn-primary::before {
-      content: '';
-      position: absolute;
-      top: 0;
-      left: -100%;
-      width: 100%;
-      height: 100%;
-      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
-      transition: left 0.5s;
-    }
-    .btn-primary:hover::before {
-      left: 100%;
-    }
-    .btn-primary:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 8px 24px rgba(102, 126, 234, 0.4);
-    }
-    .btn-secondary {
-      background: linear-gradient(135deg, #6b7280 0%, #4b5563 100%);
-      color: white;
-      border: none;
-      border-radius: 12px;
-      padding: 12px 24px;
-      font-weight: 600;
-      cursor: pointer;
-      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-      box-shadow: 0 4px 12px rgba(107, 114, 128, 0.3);
-    }
-    .btn-secondary:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 8px 24px rgba(107, 114, 128, 0.4);
-    }
-    .btn-danger {
-      background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
-      color: white;
-      border: none;
-      border-radius: 12px;
-      padding: 12px 24px;
-      font-weight: 600;
-      cursor: pointer;
-      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-      box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
-    }
-    .btn-danger:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 8px 24px rgba(239, 68, 68, 0.4);
-    }
-    .input-field {
-      background: rgba(255, 255, 255, 0.9);
-      border: 2px solid rgba(255, 255, 255, 0.3);
-      border-radius: 12px;
-      padding: 14px 18px;
-      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-      backdrop-filter: blur(10px);
-    }
-    .input-field:focus {
-      outline: none;
-      border-color: #667eea;
-      background: rgba(255, 255, 255, 1);
-      box-shadow: 0 0 0 4px rgba(102, 126, 234, 0.1);
-      transform: translateY(-1px);
-    }
-    .sidebar-gradient {
-      background: linear-gradient(180deg, #667eea 0%, #764ba2 100%);
-    }
-    .stat-card {
-      background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%);
-      border-radius: 18px;
-      padding: 24px;
-      box-shadow: 0 10px 30px rgba(0,0,0,0.05), 0 4px 12px rgba(0,0,0,0.03);
-      border: 1px solid rgba(255,255,255,0.5);
-      position: relative;
-      overflow: hidden;
-      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    }
-    .stat-card::before {
-      content: '';
-      position: absolute;
-      top: 0;
-      left: 0;
-      right: 0;
-      height: 3px;
-      background: linear-gradient(90deg, #667eea, #764ba2);
-    }
-    .stat-card:hover {
-      transform: translateY(-4px);
-      box-shadow: 0 20px 40px rgba(0,0,0,0.08), 0 8px 16px rgba(0,0,0,0.04);
-    }
-    .shortcut-btn {
-      border-radius: 16px;
-      padding: 20px;
-      color: white;
-      font-weight: 600;
-      cursor: pointer;
-      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-      text-align: center;
-      position: relative;
-      overflow: hidden;
-    }
-    .shortcut-btn::before {
-      content: '';
-      position: absolute;
-      top: 0;
-      left: -100%;
-      width: 100%;
-      height: 100%;
-      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
-      transition: left 0.5s;
-    }
-    .shortcut-btn:hover::before {
-      left: 100%;
-    }
-    .shortcut-btn:hover {
-      transform: translateY(-3px) scale(1.02);
-    }
-    .table-header {
-      background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
-      border-bottom: 2px solid rgba(102, 126, 234, 0.1);
-    }
-    .table-row:hover {
-      background: linear-gradient(135deg, rgba(102, 126, 234, 0.02) 0%, rgba(118, 75, 162, 0.02) 100%);
-    }
-    .modal-overlay {
-      background: rgba(0, 0, 0, 0.6);
-      backdrop-filter: blur(8px);
-    }
-    .modal-content {
-      background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%);
-      border-radius: 24px;
-      box-shadow: 0 25px 50px rgba(0,0,0,0.15);
-      border: 1px solid rgba(255,255,255,0.3);
-    }
-    .nav-item {
-      border-radius: 12px;
-      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-      position: relative;
-      overflow: hidden;
-    }
-    .nav-item.active {
-      background: linear-gradient(135deg, rgba(255,255,255,0.2) 0%, rgba(255,255,255,0.1) 100%);
-      color: white;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-    }
-    .nav-item:hover:not(.active) {
-      background: rgba(255,255,255,0.1);
-      transform: translateX(4px);
-    }
-    .gradient-text {
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      background-clip: text;
-    }
-    .loading-spinner {
-      border: 3px solid rgba(102, 126, 234, 0.3);
-      border-top: 3px solid #667eea;
-      border-radius: 50%;
-      animation: spin 1s linear infinite;
-    }
-    @keyframes spin {
-      0% { transform: rotate(0deg); }
-      100% { transform: rotate(360deg); }
-    }
-    .floating-element {
-      animation: float 3s ease-in-out infinite;
-    }
-    @keyframes float {
-      0%, 100% { transform: translateY(0px); }
-      50% { transform: translateY(-10px); }
-    }
-    .status-new { background: linear-gradient(135deg, #f3f4f6 0%, #e5e7eb 100%); color: #374151; }
-    .status-contacted { background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%); color: #1d4ed8; }
-    .status-qualified { background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%); color: #92400e; }
-    .status-paid { background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%); color: #065f46; }
-    .status-declined { background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%); color: #991b1b; }
-    .glow-effect {
-      box-shadow: 0 0 20px rgba(102, 126, 234, 0.3);
-    }
-    .glass-card {
-      background: rgba(255, 255, 255, 0.25);
-      backdrop-filter: blur(20px);
-      border: 1px solid rgba(255, 255, 255, 0.3);
-      border-radius: 20px;
-    }
+    body { font-family: 'Inter', sans-serif; }
+    .fade-in { animation: fadeIn .35s ease-in; }
+    @keyframes fadeIn { from { opacity:0; transform: translateY(6px);} to { opacity:1; transform: translateY(0);} }
+    .toggle-switch { position: relative; width: 48px; height: 24px; background: #ccc; border-radius: 12px; cursor: pointer; transition: background .2s; }
+    .toggle-switch.active { background: #667eea; }
+    .toggle-slider { position:absolute; top:2px; left:2px; width:20px; height:20px; background:#fff; border-radius:50%; transition: transform .2s; }
+    .toggle-switch.active .toggle-slider { transform: translateX(24px); }
+    .badge { padding: 2px 8px; border-radius: 999px; font-size: 12px; }
+    .card { background: white; border-radius: 16px; box-shadow: 0 10px 20px rgba(0,0,0,.06); }
+    code.inline { background:#f9fafb; padding:2px 6px; border-radius:6px; border:1px solid #e5e7eb; }
   </style>
 </head>
-<body class="min-h-screen">
-<div id="lfp-error"></div>
+<body>
 <div id="root"></div>
 
-<script type="text/babel" data-presets="env,react">
-class ErrorBoundary extends React.Component {
-  constructor(props) {
-    super(props);
-    this.state = { hasError: false, error: null, errorInfo: null };
-  }
-  componentDidCatch(error, errorInfo) {
-    this.setState({ hasError: true, error, errorInfo });
-  }
-  render() {
-    if (this.state.hasError) {
-      return (
-        <div className="min-h-screen p-6 bg-gradient-to-br from-red-50 to-red-100 text-red-900 flex items-center justify-center">
-          <div className="card max-w-3xl mx-auto p-8">
-            <h1 className="text-2xl font-bold mb-4 gradient-text">Something broke in the UI</h1>
-            <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-4">
-              <pre className="text-sm overflow-auto">{String(this.state.error)}</pre>
-            </div>
-            {this.state.errorInfo && (
-              <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-4">
-                <pre className="text-sm overflow-auto">{this.state.errorInfo.componentStack}</pre>
-              </div>
-            )}
-            <button
-              onClick={() => {
-                try {
-                  Object.keys(localStorage).forEach(k => {
-                    if (k.startsWith('lfp:')) localStorage.removeItem(k);
-                  });
-                } catch(e) {}
-                location.reload();
-              }}
-              className="btn-primary"
-            >
-              Reset App Storage
-            </button>
-          </div>
-        </div>
-      );
-    }
-    return this.props.children;
+<script type="text/babel">
+const { useState, useEffect, useMemo } = React;
+
+/* =========================
+   PERSISTENCE / AUTH
+   ========================= */
+const STORAGE_USERS = 'lfp:users';
+const STORAGE_SESSION = 'lfp:session';
+const WORKSPACE_PREFIX = 'lfp:workspace:'; // + email
+
+const ADMIN_EMAIL = 'Joshua.kollar@me.com';
+const ADMIN_PLAIN = 'Allglorytogod12!';
+
+async function sha256(text){
+  try{
+    const enc = new TextEncoder();
+    const buf = await crypto.subtle.digest('SHA-256', enc.encode(text));
+    return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
+  } catch { return btoa(unescape(encodeURIComponent(text))); }
+}
+function emailEq(a,b){ return (a||'').trim().toLowerCase() === (b||'').trim().toLowerCase(); }
+
+function loadUsers(){ try { return JSON.parse(localStorage.getItem(STORAGE_USERS)) || []; } catch { return []; } }
+function saveUsers(users){ localStorage.setItem(STORAGE_USERS, JSON.stringify(users)); }
+function loadSession(){ try { return JSON.parse(localStorage.getItem(STORAGE_SESSION)); } catch { return null; } }
+function saveSession(sess){ localStorage.setItem(STORAGE_SESSION, JSON.stringify(sess)); }
+function clearSession(){ localStorage.removeItem(STORAGE_SESSION); }
+function wsKey(email){ return WORKSPACE_PREFIX + (email||'').trim().toLowerCase(); }
+function loadWorkspace(email){ try{ return JSON.parse(localStorage.getItem(wsKey(email))) || null; } catch { return null; } }
+function saveWorkspace(email, data){ localStorage.setItem(wsKey(email), JSON.stringify(data)); }
+
+async function ensureAdmin(){
+  let users = loadUsers();
+  const hasAdmin = users.some(u => emailEq(u.email, ADMIN_EMAIL));
+  if (!hasAdmin){
+    const hash = await sha256(ADMIN_PLAIN);
+    users.push({ email: ADMIN_EMAIL, passHash: hash, isAdmin: true, locked: false, createdAt: new Date().toISOString(), lastLogin: null });
+    saveUsers(users);
+    if (!loadWorkspace(ADMIN_EMAIL)){ saveWorkspace(ADMIN_EMAIL, seedWorkspace()); }
   }
 }
 
-const { useState, useEffect } = React;
-
-const storage = {
-  get(key) {
-    try {
-      return localStorage.getItem(key);
-    } catch(e) {
-      return null;
-    }
-  },
-  set(key, value) {
-    try {
-      localStorage.setItem(key, value);
-    } catch(e) {}
-  },
-  remove(key) {
-    try {
-      localStorage.removeItem(key);
-    } catch(e) {}
-  }
-};
-
-const safeParse = (json, fallback) => {
-  try {
-    return JSON.parse(json);
-  } catch {
-    return fallback;
-  }
-};
-
-const STORAGE_USERS = "lfp:users";
-const STORAGE_SESSION = "lfp:session";
-const WORKSPACE_PREFIX = "lfp:workspace:";
-
-function wsKey(email) {
-  return WORKSPACE_PREFIX + (email || "").trim().toLowerCase();
-}
-
-const loadUsers = () => safeParse(storage.get(STORAGE_USERS), []);
-const saveUsers = (users) => storage.set(STORAGE_USERS, JSON.stringify(users || []));
-const loadSession = () => safeParse(storage.get(STORAGE_SESSION), null);
-const saveSession = (session) => storage.set(STORAGE_SESSION, JSON.stringify(session || null));
-const clearSession = () => storage.remove(STORAGE_SESSION);
-const loadWorkspace = (email) => safeParse(storage.get(wsKey(email)), null);
-const saveWorkspace = (email, data) => storage.set(wsKey(email), JSON.stringify(data || null));
-
-async function sha256(text) {
-  try {
-    const encoder = new TextEncoder();
-    const buffer = await crypto.subtle.digest("SHA-256", encoder.encode(text));
-    return Array.from(new Uint8Array(buffer))
-      .map(b => b.toString(16).padStart(2, "0"))
-      .join("");
-  } catch {
-    return btoa(unescape(encodeURIComponent(text)));
-  }
-}
-
-const emailEq = (a, b) => (a || "").trim().toLowerCase() === (b || "").trim().toLowerCase();
-
+/* =========================
+   CATALOGS / CONSTANTS
+   ========================= */
 const VOICE_CATALOG = {
-  elevenlabs: ["Alloy", "Callum", "Rachel", "Adam", "Domi"],
-  openai: ["Alloy", "Verse", "Sol", "Breeze"],
-  azure: ["en-US-GuyNeural", "en-US-JennyNeural", "en-US-ChristopherNeural"],
-  google: ["en-US-Neural2-J", "en-US-Standard-B", "en-US-Wavenet-D"]
+  elevenlabs: ['Alloy','Callum','Rachel','Adam','Domi'],
+  openai:     ['Alloy','Verse','Sol','Breeze'],
+  azure:      ['en-US-GuyNeural','en-US-JennyNeural','en-US-ChristopherNeural'],
+  google:     ['en-US-Neural2-J','en-US-Standard-B','en-US-Wavenet-D']
 };
 
-const MARKET_OPTIONS = {
-  "Insurance": ["Life", "Term", "Final Expense", "Medicare", "Business Liability", "Health", "Debt Free"],
-  "Real Estate": ["Buyer Leads", "Seller Leads", "Open House", "Investors", "Rentals"],
-  "Solar": ["Residential", "Commercial"],
-  "Home Services": ["Roofing", "HVAC", "Plumbing", "Landscaping", "Windows"],
-  "Legal": ["Injury", "Disability", "Estate", "Criminal Defense"],
-  "Other": ["Generic", "Event", "SaaS"]
-};
-
-const STATUS_LABELS = ["New", "Contacted", "Qualified", "Scheduled", "App Submitted", "Pending", "Approved", "Paid", "Declined"];
-const STATUS_ADVANCED = new Set(["App Submitted", "Pending", "Approved", "Paid", "Declined"]);
-
-const US_TIMEZONES = [
-  { value: "America/New_York", label: "Eastern (ET)" },
-  { value: "America/Chicago", label: "Central (CT)" },
-  { value: "America/Denver", label: "Mountain (MT)" },
-  { value: "America/Los_Angeles", label: "Pacific (PT)" },
-  { value: "America/Anchorage", label: "Alaska (AKT)" },
-  { value: "Pacific/Honolulu", label: "Hawaii (HST)" }
+const US_TZ = [
+  { id: 'America/New_York', label: 'US/Eastern' },
+  { id: 'America/Chicago', label: 'US/Central' },
+  { id: 'America/Denver', label: 'US/Mountain' },
+  { id: 'America/Los_Angeles', label: 'US/Pacific' },
+  { id: 'America/Anchorage', label: 'US/Alaska' },
+  { id: 'Pacific/Honolulu', label: 'US/Hawaii' }
 ];
 
-function seedWorkspace() {
+// Markets with capitalized names + subs (added Debt Free under Insurance)
+const MARKET_OPTIONS = {
+  "Insurance":    ['Life','Term','Final Expense','Medicare','Business Liability','Health','Debt Free'],
+  "Real Estate":  ['Buyer Leads','Seller Leads','Open House','Investors','Rentals'],
+  "Solar":        ['Residential','Commercial'],
+  "Home Services":['Roofing','HVAC','Plumbing','Landscaping','Windows'],
+  "Legal":        ['Injury','Disability','Estate','Criminal Defense'],
+  "Other":        ['Generic','Event','SaaS']
+};
+
+// Statuses: include extended pipeline
+const STATUS_LABELS = [
+  'New','Contacted','Qualified','Scheduled',
+  'App Submitted','Pending','Approved','Paid','Declined'
+];
+const STATUS_ADVANCED = new Set(['App Submitted','Pending','Approved','Paid','Declined']);
+
+// dashboard APV counts use leads with apv>0 (often Approved/Paid)
+
+/* =========================
+   PROMPT EXAMPLES (unchanged)
+   ========================= */
+const PROMPT_TEMPLATES = {
+  "Insurance": {
+    "Life": [
+      { h:"Protect Your Family—Rates Most People Miss", c:"Quick 60-sec quote for {{CITY}} families. Lock in coverage before rates move again. No exam options available.", cta:"get-quote" },
+      { h:"$250k Life Coverage from {{LOW_PRICE}}/mo*", c:"Compare top carriers in {{STATE}}. Licensed agent, no pushy sales. Reply YES for 2-question pre-qual.", cta:"learn-more" }
+    ],
+    "Term": [
+      { h:"Term Life, No Guesswork", c:"Pick 10/20/30 year terms that fit your budget. See your best rate in under a minute.", cta:"get-quote" }
+    ],
+    "Final Expense": [
+      { h:"Help Cover Final Costs—Fixed Rates", c:"Plans for 50–85 in {{STATE}}. No medical exam. See your options now—peace of mind for loved ones.", cta:"get-quote" }
+    ],
+    "Medicare": [
+      { h:"Medicare Savings You Might Be Missing", c:"Local help in {{CITY}}. Check extra benefits in minutes. No obligation, just clarity.", cta:"learn-more" }
+    ],
+    "Business Liability":[
+      { h:"Protect Your Business From The Unknown", c:"Instant COIs, flexible monthly plans. See what similar {{INDUSTRY}} pay in {{STATE}}.", cta:"get-quote" }
+    ],
+    "Health":[
+      { h:"Lower Your Health Premium—Same Doctors", c:"Check ACA and private options fast. Many qualify for $0 plans. Find out in 60 seconds.", cta:"apply-now" }
+    ],
+    "Debt Free":[
+      { h:"Erase High-APR Debt Faster", c:"Free plan for {{CITY}} families: consolidate + protect. See how much interest you can save.", cta:"learn-more" }
+    ]
+  },
+  "Real Estate": {
+    "Buyer Leads": [{ h:"New Listings in {{CITY}}—Before They Hit Zillow", c:"Free daily list of homes under {{PRICE}}. Tap for instant alerts.", cta:"learn-more" }],
+    "Seller Leads": [{ h:"See What Your {{CITY}} Home Could Sell For", c:"No-obligation price in 60 secs. Real comps + AI trends.", cta:"learn-more" }],
+    "Open House":  [{ h:"Open House This Weekend—VIP Early Access", c:"Skip the line, get agent notes + bonus photos. RSVP.", cta:"apply-now" }],
+    "Investors":   [{ h:"Off-Market Deals in {{CITY}}", c:"Weekly cash-flowing properties with ARV & rent comps.", cta:"learn-more" }],
+    "Rentals":     [{ h:"Hot Rentals, No Junk", c:"Hand-picked under {{PRICE}} in {{CITY}}. Text your must-haves.", cta:"call-now" }]
+  },
+  "Solar": {
+    "Residential":[{ h:"Slash Your Power Bill—Home Solar in {{CITY}}", c:"Check incentives. $0 down options, 25-yr warranty.", cta:"learn-more" }],
+    "Commercial":[{ h:"Lower Operating Costs with Commercial Solar", c:"ROI often under 5 yrs. Get a 10-min savings check.", cta:"apply-now" }]
+  },
+  "Home Services": {
+    "Roofing":[{ h:"Storm Damage? Free Roof Check Today", c:"Local crew—photos, quote, insurance help. Limited slots.", cta:"call-now" }],
+    "HVAC":[{ h:"A/C Not Keeping Up?", c:"Same-day service. Transparent pricing, 5-star techs.", cta:"call-now" }],
+    "Plumbing":[{ h:"Emergency Plumber—We’re 20 Minutes Away", c:"No trip fee today. Text a pic for instant estimate.", cta:"call-now" }],
+    "Landscaping":[{ h:"Curb Appeal, Done for You", c:"Weekly plans that fit your budget. Free design consult.", cta:"get-quote" }],
+    "Windows":[{ h:"Energy Bill Too High?", c:"High-efficiency windows with seasonal discounts.", cta:"learn-more" }]
+  },
+  "Legal": {
+    "Injury":[{ h:"Injured? Don’t Settle for Less", c:"Free case check. Pay nothing unless you win.", cta:"call-now" }],
+    "Disability":[{ h:"Denied SSDI? Appeal Help", c:"We handle filings and deadlines. Free review.", cta:"learn-more" }],
+    "Estate":[{ h:"Easy Wills & Trusts (Flat Fee)", c:"Attorney-drafted in days, not months.", cta:"apply-now" }],
+    "Criminal Defense":[{ h:"Charged? Get a Plan by Tonight", c:"Urgent consults 24/7. Confidential.", cta:"call-now" }]
+  },
+  "Other": {
+    "Generic":[{ h:"Get the Exact Thing You Need—Fast", c:"Tell us your goal; we’ll tailor the plan.", cta:"learn-more" }],
+    "Event":[{ h:"Seats Are Going—Grab Yours", c:"Early registration bonus ends soon.", cta:"apply-now" }],
+    "SaaS":[{ h:"Automate the Boring Stuff", c:"Teams cut busywork 40% with our app.", cta:"learn-more" }]
+  }
+};
+
+/* =========================
+   DEFAULT WORKSPACE
+   ========================= */
+function seedWorkspace(){
   return {
-    apiSelection: {
-      voiceProvider: "elevenlabs",
-      smsProvider: "twilio"
-    },
-    credentials: {
-      openai: { apiKey: "" },
-      elevenlabs: { apiKey: "" },
-      azure: { subscriptionKey: "", region: "" },
-      google: { jsonKey: "" },
-      twilio: { accountSid: "", authToken: "", fromNumber: "" },
-      messagebird: { accessKey: "", originator: "" },
-      vonage: { apiKey: "", apiSecret: "", fromNumber: "" },
-      meta: { accessToken: "", adAccountId: "", pageId: "", pixelId: "" }
-    },
+    apiKeys: { openai:'', meta:'', elevenlabs:'', twilio:'', smsFrom:'', voiceFrom:'' },
     routing: {
-      callsModel: "gpt-5-mini",
-      callsEscalationModel: "gpt-5",
-      smsModel: "gpt-5-mini",
-      adsDraftModel: "gpt-5-mini",
-      adsPolishModel: "gpt-5",
-      adsImageModel: "gpt-image-3.5",
-      realtimeWorker: {
-        maxTokens: 2000,
-        timeoutMs: 8000,
-        rpm: 120,
-        tpm: 120000
-      },
-      batchWorker: {
-        maxTokens: 6000,
-        timeoutMs: 30000,
-        rpm: 60,
-        tpm: 300000
-      },
+      callsModel: 'gpt-5-mini',
+      callsEscalationModel: 'gpt-5',
+      smsModel: 'gpt-5-mini',
+      adsDraftModel: 'gpt-5-mini',
+      adsPolishModel: 'gpt-5',
+      adsImageModel: 'gpt-image-3.5',
+      realtimeWorker: { maxTokens: 2000, timeoutMs: 8000, rpm: 120, tpm: 120000 },
+      batchWorker:    { maxTokens: 6000, timeoutMs: 30000, rpm: 60,  tpm: 300000 },
       metadata: {
-        call: { channel: "call" },
-        sms: { channel: "sms" },
-        adsCopy: { channel: "ads-copy" },
-        adsImage: { channel: "ads-image" }
+        call:     { channel: 'call' },
+        sms:      { channel: 'sms' },
+        adsCopy:  { channel: 'ads-copy' },
+        adsImage: { channel: 'ads-image' },
       }
     },
     automation: {
@@ -522,1285 +192,1940 @@ function seedWorkspace() {
       immediateRetryOnVoicemail: false
     },
     voiceSettings: {
-      provider: "elevenlabs",
-      voice: "Alloy",
-      style: "professional",
-      speed: "normal",
+      provider: 'elevenlabs',
+      voice: 'Alloy',
+      style: 'professional',
+      speed: 'normal',
       callAttempts: 2,
-      immediateAttempts: 1,
-      callInterval: 30,
+      callInterval: 30, // minutes; 1440 enabled in UI
       immediateCallbackOnNoAnswer: false,
       immediateCallbackOnVoicemail: false,
-      voicemailBehavior: "leave_message",
-      voicemailScript: "Sorry I missed you—this is LeadFlow Pro. I'll text details as well.",
+      voicemailBehavior: 'leave_message', // 'hangup'|'leave_message'
+      voicemailScript: 'Sorry I missed you—this is LeadFlow Pro following up. I’ll text details, and you can call or text back anytime.',
       scripts: {
-        generic: "Hi, this is LeadFlow Pro about your request. Do you have a minute?"
+        generic: 'Hi, this is LeadFlow Pro about your request. Do you have a minute?',
+        life: 'Hi, reaching out about your life insurance request. Do you have a minute now?',
+        term: 'Hi, your term quote is ready—can I walk you through options?',
+        finalExpense: 'Hi, following up on your final expense inquiry. Quick questions?',
+        medicare: 'Hi there, calling about your Medicare coverage questions. Is now good?'
       },
-      businessHours: { start: "09:00", end: "17:00" },
-      workingDays: ["monday", "tuesday", "wednesday", "thursday", "friday"],
-      timezone: "America/Denver"
+      businessHours: { start:'09:00', end:'17:00' },
+      workingDays: ['monday','tuesday','wednesday','thursday','friday'],
+      timezone: 'America/Denver' // Mountain default
     },
     smsSettings: {
-      provider: "twilio",
+      provider: 'twilio',
       autoRespond: true,
-      followUpDelay: 15,
+      followUpDelay: 15, // minutes; UI includes 1-2 days & next week
       scripts: {
-        day0: "Hey {{name}}, it's Josh — got your request. 2 quick questions?",
-        day1: "Been trying to reach you — want a ballpark quote?",
-        day3: "Still here when you are.",
-        day5: "Final ping for now — want a 60-sec summary?"
+        day0: 'Hey {{name}}, it’s Josh. Got your request—2 quick questions for your quote. Got a minute?',
+        day1: 'Been trying to reach you about your request. Want me to text a ballpark quote?',
+        day3: 'Still here when you are—want coverage options that fit your budget?',
+        day5: 'Final ping for now. Want me to send a 60-sec summary?'
       },
       scriptVariants: {
-        noAnswer: "Missed you, {{name}}.",
-        voicemailDrop: "Left a voicemail — text works great if easier."
+        noAnswer: 'Missed you, {{name}}. Try again shortly or later today?',
+        voicemailDrop: 'Left a voicemail. Text works great if easier—what time can I call?'
       },
-      businessHours: { start: "09:00", end: "17:00" }
+      businessHours: { start:'09:00', end:'17:00' }
     },
     data: {
-      leads: [],
-      campaigns: [],
+      leads: [
+        { id: 1, market:'Insurance', type:'Life', source:'Manual', name:'Alex Morgan', phone:'(555) 123-4567', email:'alex@example.com', status:'New', location:'ID', time:'Today 10:15 AM', notes:'Wants quick quote', isClient:false, callLogs:[] },
+        { id: 2, market:'Insurance', type:'Term', source:'Manual', name:'Sam Taylor', phone:'(555) 987-6543', email:'sam@example.com', status:'Scheduled', location:'TX', time:'Today 2:30 PM', isClient:false, callLogs:[] },
+        { id: 3, market:'Insurance', type:'Final Expense', source:'Manual', name:'Jordan Lee', phone:'', email:'', status:'Contacted', location:'AL', time:'Yesterday 4:05 PM', isClient:false, callLogs:[] }
+      ],
+      campaigns: [
+        { id:'c1', name:'Insurance/Life - ID, OR', market:'Insurance', type:'Life', budget:100, status:'active', leads:24, costPerLead:12.45 }
+      ],
       objections: [],
-      analytics: { overview: {}, performance: {} },
+      analytics: {
+        overview: { totalLeads: 3, totalCampaigns: 1, conversionRate: 34, avgCostPerLead: 14.12 },
+        performance: { callAnswerRate: 41, smsResponseRate: 52, schedulingRate: 23, revenuePerLead: 186.4 }
+      },
       inbound: [],
       imports: [],
-      adLab: { variants: [], images: [], rotate: false }
+      adLab: { variants: [], rotate: false }
     }
   };
 }
 
-const isObj = (obj) => obj && typeof obj === "object" && !Array.isArray(obj);
+/* =========================
+   HELPERS
+   ========================= */
+function startOfWeek(d){ const x = new Date(d); const day = (x.getDay()+6)%7; x.setHours(0,0,0,0); x.setDate(x.getDate()-day); return x; }
+function startOfMonth(d){ const x = new Date(d); x.setDate(1); x.setHours(0,0,0,0); return x; }
+function startOfYear(d){ const x = new Date(d); x.setMonth(0,1); x.setHours(0,0,0,0); return x; }
 
-function mergeDeep(base, patch) {
-  const output = Array.isArray(base) ? base.slice() : { ...base };
-  if (!patch) return output;
-  
-  for (const key of Object.keys(patch)) {
-    const baseValue = base ? base[key] : undefined;
-    const patchValue = patch[key];
-    
-    if (isObj(baseValue) && isObj(patchValue)) {
-      output[key] = mergeDeep(baseValue, patchValue);
-    } else if (Array.isArray(patchValue)) {
-      output[key] = patchValue.slice();
-    } else if (typeof patchValue !== "undefined") {
-      output[key] = patchValue;
-    }
-  }
-  return output;
-}
-
-function migrateWorkspace(raw) {
-  const defaults = seedWorkspace();
-  const merged = mergeDeep(defaults, raw || {});
-  
-  merged.voiceSettings.provider = merged.apiSelection.voiceProvider || "elevenlabs";
-  merged.smsSettings.provider = merged.apiSelection.smsProvider || "twilio";
-  
-  return merged;
-}
-
-const ADMIN_EMAIL = "Joshua.kollar@me.com";
-const ADMIN_PLAIN = "Allglorytogod12!";
-
-async function ensureAdmin() {
-  try {
-    let users = loadUsers();
-    if (!users.some(u => emailEq(u.email, ADMIN_EMAIL))) {
-      const hash = await sha256(ADMIN_PLAIN);
-      users.push({
-        email: ADMIN_EMAIL,
-        passHash: hash,
-        isAdmin: true,
-        locked: false,
-        createdAt: new Date().toISOString(),
-        lastLogin: null
-      });
-      saveUsers(users);
-      
-      if (!loadWorkspace(ADMIN_EMAIL)) {
-        saveWorkspace(ADMIN_EMAIL, seedWorkspace());
-      }
-    }
-  } catch(e) {
-    console.warn("Storage unavailable; admin seeding skipped");
-  }
-}
-
-function LoginView({ onLoggedIn }) {
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+/* =========================
+   LOGIN
+   ========================= */
+function LoginView({onLoggedIn}){
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
+  const [err, setErr] = useState('');
 
   const login = async (e) => {
     e?.preventDefault();
-    setError("");
-    setBusy(true);
-    
-    try {
+    setErr(''); setBusy(true);
+    try{
       const users = loadUsers();
-      const user = users.find(x => emailEq(x.email, email));
-      
-      if (!user) throw new Error("Invalid email or password");
-      if (user.locked) throw new Error("Account locked");
-      
+      const idx = users.findIndex(x=>emailEq(x.email, email));
+      if (idx === -1) throw new Error('Invalid email or password');
+      const u = users[idx];
+      if (u.locked) throw new Error('Account locked');
       const hash = await sha256(password);
-      if (hash !== user.passHash) throw new Error("Invalid email or password");
-      
-      const updated = users.map(x => 
-        emailEq(x.email, email) 
-          ? { ...x, lastLogin: new Date().toISOString() }
-          : x
-      );
-      saveUsers(updated);
-      
-      saveSession({ email: user.email, isAdmin: !!user.isAdmin });
-      
-      if (!loadWorkspace(user.email)) {
-        saveWorkspace(user.email, seedWorkspace());
-      }
-      
-      onLoggedIn({ email: user.email, isAdmin: !!user.isAdmin });
-    } catch(ex) {
-      setError(ex.message || "Login failed");
-    } finally {
-      setBusy(false);
-    }
+      if (hash !== u.passHash) throw new Error('Invalid email or password');
+      const copy = [...users];
+      copy[idx] = { ...u, lastLogin: new Date().toISOString() };
+      saveUsers(copy);
+      saveSession({ email: u.email, isAdmin: !!u.isAdmin });
+      if (!loadWorkspace(u.email)) saveWorkspace(u.email, seedWorkspace());
+      onLoggedIn({ email: u.email, isAdmin: !!u.isAdmin });
+    } catch(ex){ setErr(ex.message || 'Login failed'); }
+    finally { setBusy(false); }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-6" style={{
-      background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'
-    }}>
-      <div className="floating-element">
-        <div className="glass-card w-full max-w-md p-8 fade-in">
-          <div className="flex items-center gap-4 mb-8">
-            <div className="w-16 h-16 rounded-2xl flex items-center justify-center text-white font-bold text-2xl glow-effect" style={{
-              background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'
-            }}>
-              LF
-            </div>
-            <div>
-              <div className="text-2xl font-bold gradient-text">LeadFlow Pro</div>
-              <div className="text-sm text-gray-600">Secure AI-Powered CRM</div>
-            </div>
-          </div>
-
-          <div className="flex gap-2 mb-6">
-            <button
-              onClick={() => {
-                try {
-                  Object.keys(localStorage).forEach(k => {
-                    if (k.startsWith('lfp:')) localStorage.removeItem(k);
-                  });
-                } catch(e) {}
-                alert('✅ Storage cleared. Sign in again.');
-              }}
-              className="px-4 py-2 text-sm rounded-lg bg-white bg-opacity-20 text-white hover:bg-opacity-30 transition-all"
-            >
-              🔄 Reset Storage
-            </button>
-          </div>
-
-          <form onSubmit={login} className="space-y-6">
-            <div>
-              <label className="block text-sm font-semibold mb-2 text-gray-700">Email Address</label>
-              <input
-                type="email"
-                className="input-field w-full"
-                value={email}
-                onChange={e => setEmail(e.target.value)}
-                placeholder="joshua.kollar@me.com"
-                required
-                autoComplete="email"
-              />
-            </div>
-            
-            <div>
-              <label className="block text-sm font-semibold mb-2 text-gray-700">Password</label>
-              <input
-                type="password"
-                className="input-field w-full"
-                value={password}
-                onChange={e => setPassword(e.target.value)}
-                placeholder="••••••••••••"
-                required
-                autoComplete="current-password"
-              />
-            </div>
-
-            {error && (
-              <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-red-700 text-sm">
-                {error}
-              </div>
-            )}
-
-            <button
-              disabled={busy}
-              className="btn-primary w-full text-lg font-semibold"
-              style={{ height: '52px' }}
-            >
-              {busy ? (
-                <div className="flex items-center justify-center gap-3">
-                  <div className="loading-spinner w-5 h-5"></div>
-                  Signing In...
-                </div>
-              ) : (
-                "🚀 Sign In to LeadFlow"
-              )}
-            </button>
-          </form>
-
-          <div className="mt-6 text-center text-sm text-gray-600">
-            <div className="flex items-center gap-2 justify-center">
-              <span>🔒</span>
-              <span>Secured with 256-bit encryption</span>
-            </div>
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 via-purple-50 to-pink-50 p-6">
+      <div className="card w-full max-w-md p-8">
+        <div className="flex items-center gap-3 mb-6">
+          <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-500 to-purple-600 text-white font-bold flex items-center justify-center">LF</div>
+          <div>
+            <div className="text-xl font-bold">LeadFlow Pro</div>
+            <div className="text-xs text-gray-500">Secure login</div>
           </div>
         </div>
+        <form onSubmit={login} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium mb-1">Email</label>
+            <input type="email" className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500" value={email} onChange={e=>setEmail(e.target.value)} placeholder="you@domain.com" required/>
+          </div>
+          <div>
+            <label className="block text-sm font-medium mb-1">Password</label>
+            <input type="password" className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500" value={password} onChange={e=>setPassword(e.target.value)} placeholder="••••••••" required/>
+          </div>
+          {err && <div className="text-sm text-red-600">{err}</div>}
+          <button disabled={busy} className="w-full p-3 bg-gradient-to-r from-blue-500 to-purple-600 text-white rounded-xl font-semibold hover:shadow-lg transition-all">{busy ? 'Signing in…' : 'Sign In'}</button>
+        </form>
       </div>
     </div>
   );
 }
 
-function LeadFlowApp({ me, onLogout, onImpersonate }) {
-  const [ws, setWs] = useState(null);
-  const [view, setView] = useState("dashboard");
-  const [editingLead, setEditingLead] = useState(null);
+/* =========================
+   USERS ADMIN
+   ========================= */
+function UsersAdmin({ me, onImpersonate }){
+  const [users, setUsers] = useState(loadUsers());
+  const [form, setForm] = useState({ email:'', password:'', isAdmin:false });
 
-  useEffect(() => {
-    if (me?.email) {
-      const data = loadWorkspace(me.email);
-      setWs(migrateWorkspace(data));
-    }
-  }, [me?.email]);
-
-  const saveWs = (newWs) => {
-    if (me?.email) {
-      setWs(newWs);
-      saveWorkspace(me.email, newWs);
-    }
+  const addUser = async ()=>{
+    if (!form.email || !form.password) { alert('Email and password required'); return; }
+    let list = loadUsers();
+    if (list.some(u=>emailEq(u.email, form.email))) { alert('User already exists'); return; }
+    const hash = await sha256(form.password);
+    const u = { email: form.email.trim(), passHash: hash, isAdmin: !!form.isAdmin, locked:false, createdAt: new Date().toISOString(), lastLogin:null };
+    list.push(u); saveUsers(list); setUsers(list);
+    if (!loadWorkspace(u.email)) saveWorkspace(u.email, seedWorkspace());
+    setForm({ email:'', password:'', isAdmin:false });
+    alert('✅ User added');
+  };
+  const toggleLock = (email)=>{
+    let list = loadUsers().map(u=> emailEq(u.email, email) ? { ...u, locked: !u.locked } : u);
+    saveUsers(list); setUsers(list);
+  };
+  const resetPassword = async (email)=>{
+    const np = prompt('New password for '+email+':'); if (!np) return;
+    const hash = await sha256(np);
+    let list = loadUsers().map(u=> emailEq(u.email, email)? { ...u, passHash: hash } : u);
+    saveUsers(list); setUsers(list);
+    alert('✅ Password reset');
+  };
+  const toggleAdmin = (email)=>{
+    if (emailEq(email, me.email)) { alert('You cannot change your own admin flag here.'); return; }
+    let list = loadUsers().map(u=> emailEq(u.email, email)? { ...u, isAdmin: !u.isAdmin } : u);
+    saveUsers(list); setUsers(list);
   };
 
-  if (!ws) {
-    return (
-      <div className="min-h-screen flex items-center justify-center" style={{
-        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'
-      }}>
-        <div className="text-center glass-card p-8 rounded-2xl">
-          <div className="loading-spinner w-12 h-12 mx-auto mb-4"></div>
-          <div className="text-white text-lg font-semibold">Loading your workspace...</div>
-          <div className="text-white text-opacity-80 text-sm mt-2">Setting up your AI-powered CRM</div>
+  return (
+    <div className="bg-white rounded-2xl p-6 shadow-lg">
+      <h3 className="text-xl font-bold mb-4">👥 Users (Admin)</h3>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
+        <input type="email" placeholder="user@email.com" className="p-3 border rounded-xl" value={form.email} onChange={e=>setForm(prev=>({...prev,email:e.target.value}))}/>
+        <input type="text" placeholder="Temp password" className="p-3 border rounded-xl" value={form.password} onChange={e=>setForm(prev=>({...prev,password:e.target.value}))}/>
+        <div className="flex items-center gap-2">
+          <label className="text-sm">Admin?</label>
+          <input type="checkbox" checked={form.isAdmin} onChange={e=>setForm(prev=>({...prev,isAdmin:e.target.checked}))}/>
+          <button onClick={addUser} className="ml-auto px-4 py-2 bg-gradient-to-r from-blue-500 to-purple-600 text-white rounded-xl">Add</button>
         </div>
       </div>
-    );
-  }
 
-  const renderSidebar = () => (
-    <div className="w-72 h-screen overflow-y-auto sidebar-gradient">
-      <div className="p-6 border-b border-white border-opacity-20">
-        <div className="flex items-center gap-4">
-          <div className="w-12 h-12 rounded-xl bg-white bg-opacity-20 text-white font-bold flex items-center justify-center text-lg backdrop-filter backdrop-blur-sm">
-            LF
-          </div>
+      <div className="overflow-auto border rounded-xl">
+        <table className="min-w-full text-sm">
+          <thead className="bg-gray-50">
+            <tr>
+              <th className="px-3 py-2 text-left">Email</th>
+              <th className="px-3 py-2 text-left">Admin</th>
+              <th className="px-3 py-2 text-left">Locked</th>
+              <th className="px-3 py-2 text-left">Created</th>
+              <th className="px-3 py-2 text-left">Last login</th>
+              <th className="px-3 py-2 text-left">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {users.map(u=>(
+              <tr key={u.email} className="border-t">
+                <td className="px-3 py-2">{u.email}</td>
+                <td className="px-3 py-2">{u.isAdmin ? 'Yes' : 'No'} {!emailEq(u.email, me.email) && <button onClick={()=>toggleAdmin(u.email)} className="ml-2 text-blue-600">toggle</button>}</td>
+                <td className="px-3 py-2">{u.locked ? 'Locked' : 'Active'} <button onClick={()=>toggleLock(u.email)} className="ml-2 text-blue-600">{u.locked?'unlock':'lock'}</button></td>
+                <td className="px-3 py-2">{new Date(u.createdAt).toLocaleString()}</td>
+                <td className="px-3 py-2">{u.lastLogin ? new Date(u.lastLogin).toLocaleString() : '—'}</td>
+                <td className="px-3 py-2">
+                  <button onClick={()=>resetPassword(u.email)} className="text-blue-600 mr-3">reset pwd</button>
+                  {me.isAdmin && !emailEq(u.email, me.email) && <button onClick={()=>onImpersonate(u.email)} className="text-purple-600">impersonate</button>}
+                </td>
+              </tr>
+            ))}
+            {users.length===0 && <tr><td colSpan="6" className="px-3 py-3 text-center text-gray-500">No users</td></tr>}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+/* =========================
+   APP
+   ========================= */
+function LeadFlowApp({ me, onLogout, onImpersonate }){
+  const ws0 = loadWorkspace(me.email) || seedWorkspace();
+
+  const [activeTab, setActiveTab] = useState('dashboard');
+  const [showMobileMenu, setShowMobileMenu] = useState(false);
+
+  const [apiKeys, setApiKeys] = useState(ws0.apiKeys);
+  const [routing, setRouting] = useState(ws0.routing);
+  const [automation, setAutomation] = useState(ws0.automation || { autoStartOnMeta:true, immediateRetryOnNoAnswer:true, immediateRetryOnVoicemail:false });
+  const [voiceSettings, setVoiceSettings] = useState(ws0.voiceSettings);
+  const [smsSettings, setSmsSettings] = useState(ws0.smsSettings);
+
+  const [leads, _setLeads] = useState(ws0.data.leads || []);
+  const [campaigns, setCampaigns] = useState(ws0.data.campaigns || []);
+  const [objections, setObjections] = useState(ws0.data.objections || []);
+  const [analyticsData, setAnalyticsData] = useState(ws0.data.analytics || null);
+  const [inboundEvents, setInboundEvents] = useState(ws0.data.inbound || []);
+  const [imports, setImports] = useState(ws0.data.imports || []);
+  const [adLab, setAdLab] = useState(ws0.data.adLab || { variants:[], rotate:false });
+
+  const saveNow = (next) => {
+    saveWorkspace(me.email, {
+      apiKeys, routing, automation, voiceSettings, smsSettings,
+      data: {
+        leads: next?.leads ?? leads,
+        campaigns: next?.campaigns ?? campaigns,
+        objections: next?.objections ?? objections,
+        analytics: next?.analytics ?? analyticsData,
+        inbound: next?.inbound ?? inboundEvents,
+        imports: next?.imports ?? imports,
+        adLab: next?.adLab ?? adLab
+      }
+    });
+  };
+  const setLeads = (fnOrArr) => { const v = typeof fnOrArr==='function'? fnOrArr(leads):fnOrArr; _setLeads(v); saveNow({leads:v}); };
+  const setAdLabPersist = (updater) => { const v = typeof updater==='function' ? updater(adLab) : updater; setAdLab(v); saveNow({ adLab: v }); };
+
+  /* ---------- Stats & APV ---------- */
+  const computeAPVStats = (list)=>{
+    const now = new Date();
+    const w0 = startOfWeek(now), m0 = startOfMonth(now), y0 = startOfYear(now);
+    let week=0, month=0, year=0;
+    list.forEach(l=>{
+      const apv = Number(l.apv||0);
+      if (!apv) return;
+      const dt = l.apvDate ? new Date(l.apvDate) : new Date();
+      if (dt >= w0) week += apv;
+      if (dt >= m0) month += apv;
+      if (dt >= y0) year += apv;
+    });
+    return { week: Math.round(week*100)/100, month: Math.round(month*100)/100, year: Math.round(year*100)/100 };
+  };
+
+  const apvStats = computeAPVStats(leads);
+
+  const [stats, setStats] = useState({
+    totalLeads: analyticsData?.overview?.totalLeads ?? (leads?.length || 0),
+    scheduledToday: (leads||[]).filter(l=>l.status==='Scheduled').length,
+    adSpend: 2450,
+    conversionRate: Math.round(analyticsData?.overview?.conversionRate ?? 34)
+  });
+  useEffect(()=>{
+    setStats({
+      totalLeads: leads.length,
+      scheduledToday: leads.filter(l=>l.status==='Scheduled').length,
+      adSpend: 2450,
+      conversionRate: Math.round(analyticsData?.overview?.conversionRate ?? 34)
+    });
+  }, [leads, analyticsData]);
+
+  /* ---------- Optional backend fetch (safe no-throw) ---------- */
+  useEffect(()=>{
+    Promise.allSettled([
+      fetch('/api/leads').then(r=>r.json()),
+      fetch('/api/campaigns').then(r=>r.json()),
+      fetch('/api/objections').then(r=>r.json()),
+      fetch('/api/analytics').then(r=>r.json())
+    ]).then(([leadsRes, campRes, objRes, anaRes])=>{
+      if (leadsRes.status==='fulfilled' && Array.isArray(leadsRes.value)) setLeads(leadsRes.value);
+      if (campRes.status==='fulfilled' && Array.isArray(campRes.value)) { setCampaigns(campRes.value); saveNow({campaigns: campRes.value}); }
+      if (objRes.status==='fulfilled' && Array.isArray(objRes.value)) { setObjections(objRes.value); saveNow({objections: objRes.value}); }
+      if (anaRes.status==='fulfilled' && anaRes.value) { setAnalyticsData(anaRes.value); saveNow({analytics: anaRes.value}); }
+    }).catch(()=>{});
+    // eslint-disable-next-line
+  },[]);
+
+  /* ---------- Nav ---------- */
+  const MobileNav = () => (
+    <div className="lg:hidden bg-white shadow-lg p-4">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-xl flex items-center justify-center text-white font-bold">LF</div>
           <div>
-            <div className="font-bold text-white text-lg">LeadFlow Pro</div>
-            <div className="text-xs text-white text-opacity-70">{me.email.split('@')[0]}</div>
+            <div className="font-bold">LeadFlow Pro</div>
+            <div className="text-xs text-gray-600">{me.email}</div>
           </div>
         </div>
+        <button onClick={()=>setShowMobileMenu(!showMobileMenu)} className="p-2 rounded-lg bg-gray-100">☰</button>
       </div>
-
-      <nav className="p-4 space-y-2">
+      {showMobileMenu && (
+        <div className="mt-4 space-y-2">
+          {[
+            { id:'dashboard', icon:'📊', label:'Dashboard' },
+            { id:'ad-creator', icon:'🎯', label:'Ad Creator' },
+            { id:'leads', icon:'👥', label:'Leads' },
+            { id:'voice-ai', icon:'🎙️', label:'Voice AI' },
+            { id:'objections', icon:'💬', label:'Objections' },
+            { id:'campaigns', icon:'📈', label:'Campaigns' },
+            { id:'analytics', icon:'📊', label:'Analytics' },
+            { id:'inbound', icon:'📞', label:'Inbound Center' },
+            { id:'imports', icon:'📂', label:'Imports' },
+            { id:'settings', icon:'⚙️', label:'Settings' },
+            ...(me.isAdmin ? [{ id:'admin-users', icon:'🛡️', label:'Users (Admin)' }] : []),
+          ].map(({id,icon,label})=>(
+            <button key={id} onClick={()=>{ setActiveTab(id); setShowMobileMenu(false); }}
+              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeTab===id ? 'bg-gradient-to-r from-blue-500 to-purple-600 text-white' : 'hover:bg-blue-50 text-gray-700'}`}>
+              <span className="text-xl">{icon}</span>{label}
+            </button>
+          ))}
+          <button onClick={onLogout} className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-red-50 text-red-600">🚪 Logout</button>
+        </div>
+      )}
+    </div>
+  );
+  const Sidebar = () => (
+    <div className="hidden lg:block w-80 bg-white bg-opacity-95 backdrop-blur-lg p-6 shadow-xl">
+      <div className="flex items-center gap-3 mb-8 pb-4 border-b-2 border-gray-200">
+        <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-purple-600 rounded-xl flex items-center justify-center text-white font-bold text-xl">LF</div>
+        <div>
+          <div className="font-bold text-lg">LeadFlow Pro</div>
+          <div className="text-xs text-gray-600">{me.email}</div>
+        </div>
+      </div>
+      <nav className="space-y-2">
         {[
-          { id: "dashboard", label: "Dashboard", icon: "📊", desc: "Overview & Stats" },
-          { id: "leads", label: "Lead Management", icon: "👥", desc: "Manage Prospects" },
-          { id: "campaigns", label: "Campaign Manager", icon: "📢", desc: "Marketing Campaigns" },
-          { id: "ads", label: "Ad Creator", icon: "🎨", desc: "AI-Generated Ads" },
-          { id: "inbound", label: "Inbound Center", icon: "📞", desc: "Call & SMS Hub" },
-          { id: "imports", label: "Import Data", icon: "📂", desc: "CSV & Integrations" },
-          { id: "analytics", label: "Analytics", icon: "📈", desc: "Performance Insights" },
-          { id: "settings", label: "Settings", icon: "⚙️", desc: "AI & API Config" },
-          ...(me.isAdmin ? [{ id: "users", label: "User Admin", icon: "👤", desc: "Manage Team" }] : [])
-        ].map(item => (
-          <button
-            key={item.id}
-            onClick={() => setView(item.id)}
-            className={`nav-item w-full text-left p-4 ${
-              view === item.id ? "active" : ""
-            }`}
-          >
-            <div className="flex items-center gap-3">
-              <span className="text-xl">{item.icon}</span>
-              <div className="flex-1">
-                <div className="font-semibold text-white">{item.label}</div>
-                <div className="text-xs text-white text-opacity-70">{item.desc}</div>
-              </div>
-            </div>
+          { id:'dashboard', icon:'📊', label:'Dashboard' },
+          { id:'ad-creator', icon:'🎯', label:'Ad Creator' },
+          { id:'leads', icon:'👥', label:'Lead Management' },
+          { id:'voice-ai', icon:'🎙️', label:'Voice AI System' },
+          { id:'objections', icon:'💬', label:'Objection Handling' },
+          { id:'campaigns', icon:'📈', label:'Campaign Manager' },
+          { id:'analytics', icon:'📊', label:'Analytics' },
+          { id:'inbound', icon:'📞', label:'Inbound Center' },
+          { id:'imports', icon:'📂', label:'Imports & Mapping' },
+          { id:'settings', icon:'⚙️', label:'Settings & Configuration' },
+          ...(me.isAdmin ? [{ id:'admin-users', icon:'🛡️', label:'Users (Admin)' }] : []),
+        ].map(({id,icon,label})=>(
+          <button key={id} onClick={()=>setActiveTab(id)}
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300 ${activeTab===id ? 'bg-gradient-to-r from-blue-500 to-purple-600 text-white shadow-lg' : 'hover:bg-blue-50 text-gray-700 hover:translate-x-1'}`}>
+            <span className="text-xl">{icon}</span>{label}
           </button>
         ))}
-      </nav>
-
-      <div className="p-4 border-t border-white border-opacity-20 mt-auto">
-        <button
-          onClick={onLogout}
-          className="nav-item w-full p-4 text-left hover:bg-red-500 hover:bg-opacity-20"
-        >
-          <div className="flex items-center gap-3">
-            <span className="text-xl">🚪</span>
-            <div>
-              <div className="font-semibold text-white">Sign Out</div>
-              <div className="text-xs text-white text-opacity-70">Exit Safely</div>
-            </div>
-          </div>
+        <button onClick={onLogout} className="w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300 hover:bg-red-50 text-red-600">
+          <span className="text-xl">🚪</span>Logout
         </button>
+      </nav>
+    </div>
+  );
+
+  /* ---------- Dashboard (with Quick Actions + APV widgets) ---------- */
+  const Dashboard = () => (
+    <div className="space-y-6 fade-in">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-6">
+        {[
+          { label:'Total Leads', value:stats.totalLeads, icon:'👥', color:'from-blue-500 to-blue-600' },
+          { label:'Scheduled Today', value:stats.scheduledToday, icon:'📅', color:'from-green-500 to-green-600' },
+          { label:'Ad Spend', value:`$${new Intl.NumberFormat().format(stats.adSpend)}`, icon:'💰', color:'from-purple-500 to-purple-600' },
+          { label:'Conversion Rate', value:`${stats.conversionRate}%`, icon:'📈', color:'from-orange-500 to-orange-600' }
+        ].map(({label,value,icon,color})=>(
+          <div key={label} className={`bg-gradient-to-br ${color} text-white p-4 lg:p-6 rounded-2xl shadow-lg text-center`}>
+            <div className="text-2xl mb-2">{icon}</div>
+            <div className="text-2xl lg:text-3xl font-bold mb-1">{value}</div>
+            <div className="text-xs lg:text-sm opacity-90">{label}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* APV Totals */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="bg-white rounded-2xl p-4 shadow-lg text-center">
+          <div className="text-xs text-gray-500">APV This Week</div>
+          <div className="text-2xl font-bold">${apvStats.week.toLocaleString()}</div>
+        </div>
+        <div className="bg-white rounded-2xl p-4 shadow-lg text-center">
+          <div className="text-xs text-gray-500">APV This Month</div>
+          <div className="text-2xl font-bold">${apvStats.month.toLocaleString()}</div>
+        </div>
+        <div className="bg-white rounded-2xl p-4 shadow-lg text-center">
+          <div className="text-xs text-gray-500">APV This Year</div>
+          <div className="text-2xl font-bold">${apvStats.year.toLocaleString()}</div>
+        </div>
+      </div>
+
+      {/* Quick Actions (restored) */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="bg-white rounded-2xl p-4 lg:p-6 shadow-lg">
+          <h3 className="text-lg lg:text-xl font-bold mb-4">Recent Leads</h3>
+          <div className="space-y-3">
+            {leads.slice(0, 3).map(lead => (
+              <button key={lead.id} onClick={()=>openLeadEditor(lead)} className="w-full text-left p-3 lg:p-4 border border-gray-200 rounded-xl hover:border-blue-300">
+                <div className="flex justify-between items-start mb-2">
+                  <div className="font-semibold text-sm lg:text-base">{lead.name}</div>
+                  <span className={`px-2 lg:px-3 py-1 rounded-full text-xs font-medium ${
+                    lead.status === 'New' ? 'bg-blue-100 text-blue-800' :
+                    lead.status === 'Contacted' ? 'bg-orange-100 text-orange-800' :
+                    lead.status === 'Scheduled' ? 'bg-purple-100 text-purple-800' :
+                    lead.status === 'Paid' ? 'bg-green-100 text-green-800' :
+                    'bg-gray-100 text-gray-800'
+                  }`}>{lead.status}</span>
+                </div>
+                <div className="text-xs lg:text-sm text-gray-600">
+                  {lead.market}/{lead.type} • {lead.location||'—'} • {lead.time||'—'}
+                </div>
+              </button>
+            ))}
+            {leads.length===0 && <div className="text-gray-500">No leads yet.</div>}
+          </div>
+        </div>
+
+        <div className="bg-white rounded-2xl p-4 lg:p-6 shadow-lg">
+          <h3 className="text-lg lg:text-xl font-bold mb-4">Quick Actions</h3>
+          <div className="space-y-3">
+            <button onClick={()=>setActiveTab('ad-creator')} className="w-full p-3 lg:p-4 bg-gradient-to-r from-blue-500 to-purple-600 text-white rounded-xl font-semibold hover:shadow-lg transition-all">
+              🎯 Create New Ad Campaign
+            </button>
+            <button onClick={()=>setActiveTab('leads')} className="w-full p-3 lg:p-4 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-xl font-semibold hover:shadow-lg transition-all">
+              👥 Manage Leads
+            </button>
+            <button onClick={()=>setActiveTab('voice-ai')} className="w-full p-3 lg:p-4 bg-gradient-to-r from-orange-500 to-red-600 text-white rounded-xl font-semibold hover:shadow-lg transition-all">
+              🎙️ Test Voice AI System
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );
 
-  const renderDashboard = () => {
-    const totalLeads = ws.data.leads.length;
-    const paidLeads = ws.data.leads.filter(l => l.status === "Paid").length;
-    const thisWeekAPV = ws.data.leads
-      .filter(l => l.status === "Paid" && l.apvAmount)
-      .reduce((sum, l) => sum + (parseFloat(l.apvAmount) || 0), 0);
+  /* ---------- Ad Creator (market/sub) ---------- */
+  const AdCreator = () => {
+    const [adForm, setAdForm] = useState({
+      market: 'Insurance',
+      subType: '',
+      targetLocations: '',
+      minAge: '',
+      maxAge: '',
+      dailyBudget: '',
+      headline: '',
+      copy: '',
+      cta: 'learn-more'
+    });
 
-    const shortcuts = [
-      { label: "Add Lead", action: () => setView("leads"), icon: "➕", color: "linear-gradient(135deg, #10b981 0%, #059669 100%)", desc: "New Prospect" },
-      { label: "Create Campaign", action: () => setView("campaigns"), icon: "📢", color: "linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%)", desc: "Marketing" },
-      { label: "Voice Settings", action: () => setView("settings"), icon: "🎤", color: "linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)", desc: "AI Calls" },
-      { label: "SMS Config", action: () => setView("settings"), icon: "💬", color: "linear-gradient(135deg, #f59e0b 0%, #d97706 100%)", desc: "Text Messages" },
-      { label: "Import Data", action: () => setView("imports"), icon: "📂", color: "linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)", desc: "Upload CSV" },
-      { label: "Analytics", action: () => setView("analytics"), icon: "📊", color: "linear-gradient(135deg, #ec4899 0%, #db2777 100%)", desc: "Insights" }
-    ];
+    const [localVariants, setLocalVariants] = useState(adLab.variants || []);
+    const [rotate, setRotate] = useState(adLab.rotate || false);
+
+    useEffect(()=>{ setAdForm(prev=>({...prev, subType:''})); }, [adForm.market]);
+
+    const currentTemplates = (PROMPT_TEMPLATES[adForm.market] || {})[adForm.subType] || [];
+    const applyTemplate = (tpl)=>{
+      setAdForm(prev=>({
+        ...prev,
+        headline: tpl.h.replace('{{CITY}}','your area').replace('{{STATE}}','your state').replace('{{LOW_PRICE}}','15'),
+        copy: tpl.c.replace('{{CITY}}','your area').replace('{{STATE}}','your state').replace('{{PRICE}}','500k').replace('{{INDUSTRY}}','your industry'),
+        cta: tpl.cta || prev.cta
+      }));
+    };
+
+    const suggestAI = async () => {
+      try{
+        const payload = { market: adForm.market, subType: adForm.subType, targeting: { locations: adForm.targetLocations }, analytics: analyticsData, routing, metadata: routing.metadata.adsCopy };
+        const res = await fetch('/api/generate-ad', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+        const data = await res.json();
+        setAdForm(prev=>({ ...prev, headline: data.headline || prev.headline, copy: data.copy || prev.copy, cta: data.cta || prev.cta }));
+        alert('✨ AI refreshed your ad content.');
+      }catch{
+        const tpl = currentTemplates[Math.floor(Math.random()*currentTemplates.length)];
+        if (tpl) applyTemplate(tpl); else alert('No templates for this selection.');
+      }
+    };
+
+    const addVariant = ()=>{
+      if (!adForm.headline || !adForm.copy) { alert('Set headline and copy first'); return; }
+      const v = { id: Date.now(), headline: adForm.headline, copy: adForm.copy, cta: adForm.cta, impressions: 0, clicks: 0 };
+      const next = [v, ...localVariants];
+      setLocalVariants(next);
+      setAdLabPersist({ ...adLab, variants: next, rotate });
+    };
+    const deleteVariant = (id)=>{
+      const next = localVariants.filter(v=>v.id!==id);
+      setLocalVariants(next);
+      setAdLabPersist({ ...adLab, variants: next, rotate });
+    };
+    const simulateTraffic = (views=200)=>{
+      if (localVariants.length===0) return alert('Add at least one variant.');
+      const next = localVariants.map(v=>{
+        const share = Math.floor(views / localVariants.length);
+        const ctr = 0.02 + Math.random()*0.03;
+        return { ...v, impressions: v.impressions + share, clicks: v.clicks + Math.round(share*ctr) };
+      });
+      setLocalVariants(next);
+      setAdLabPersist({ ...adLab, variants: next, rotate });
+    };
+    const bestVariant = localVariants.reduce((b,v)=> ((v.clicks/(v.impressions||1)) > (b?.clicks/(b?.impressions||1) || 0) ? v : b), null);
+
+    const launchCampaign = async () => {
+      if (!adForm.headline || !adForm.copy || !adForm.targetLocations || !adForm.subType) { alert('Fill headline, copy, locations, and sub-type'); return; }
+      try{
+        const body = {
+          name: `${adForm.market}/${adForm.subType} - ${adForm.targetLocations}`,
+          market: adForm.market, type: adForm.subType,
+          budget: parseInt(adForm.dailyBudget) || 100,
+          adContent: { headline: adForm.headline, copy: adForm.copy, cta: adForm.cta },
+          targeting: { locations: adForm.targetLocations.split(',').map(s=>s.trim()).filter(Boolean), ageMin: parseInt(adForm.minAge)||25, ageMax: parseInt(adForm.maxAge)||65 },
+          routing, metadata: routing.metadata.adsCopy, variants: localVariants
+        };
+        await fetch('/api/launch-campaign', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) }).catch(()=>{});
+        const newCamp = { id:'c'+Date.now(), name: body.name, market: body.market, type: body.type, budget: body.budget, status:'active', leads:0, costPerLead:0 };
+        setCampaigns(prev => [newCamp, ...prev]); saveNow({ campaigns: [newCamp, ...campaigns] });
+        alert('🚀 Campaign launched (simulated).');
+      } catch { alert('❌ Launch failed.'); }
+    };
 
     return (
-      <div className="p-8 space-y-8 bg-gradient-to-br from-gray-50 to-blue-50 min-h-screen">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-4xl font-bold gradient-text">Dashboard</h1>
-            <p className="text-gray-600 mt-2">Welcome back, {me.email.split('@')[0]}! Here's your AI-powered overview.</p>
+      <div className="space-y-6 fade-in">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 lg:gap-6">
+          <div className="bg-white rounded-2xl p-4 lg:p-6 shadow-lg">
+            <h3 className="text-lg lg:text-xl font-bold mb-4">Category</h3>
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-medium mb-2 text-sm lg:text-base">Market</label>
+                  <select className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500" value={adForm.market} onChange={(e)=>setAdForm(prev=>({...prev, market:e.target.value, subType:''}))}>
+                    {Object.keys(MARKET_OPTIONS).map(m=><option key={m} value={m}>{m}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block font-medium mb-2 text-sm lg:text-base">Sub-Type</label>
+                  <select className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500" value={adForm.subType} onChange={(e)=>setAdForm(prev=>({...prev, subType:e.target.value}))}>
+                    <option value="">Choose…</option>
+                    {MARKET_OPTIONS[adForm.market].map(s=><option key={s} value={s}>{s}</option>)}
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-medium mb-2 text-sm lg:text-base">Target Locations</label>
+                <input type="text" className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500" placeholder="FL, TX, CA" value={adForm.targetLocations} onChange={(e)=>setAdForm(prev=>({...prev, targetLocations:e.target.value}))}/>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-medium mb-2 text-sm lg:text-base">Min Age</label>
+                  <input type="number" className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500" placeholder="25" value={adForm.minAge} onChange={(e)=>setAdForm(prev=>({...prev, minAge:e.target.value}))}/>
+                </div>
+                <div>
+                  <label className="block font-medium mb-2 text-sm lg:text-base">Max Age</label>
+                  <input type="number" className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500" placeholder="65" value={adForm.maxAge} onChange={(e)=>setAdForm(prev=>({...prev, maxAge:e.target.value}))}/>
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-medium mb-2 text-sm lg:text-base">Daily Budget ($)</label>
+                <input type="number" className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500" placeholder="150" value={adForm.dailyBudget} onChange={(e)=>setAdForm(prev=>({...prev, dailyBudget:e.target.value}))}/>
+              </div>
+            </div>
           </div>
-          <div className="text-right">
-            <div className="text-sm text-gray-500">Last updated</div>
-            <div className="text-lg font-semibold text-gray-700">{new Date().toLocaleDateString()}</div>
+
+          <div className="bg-white rounded-2xl p-4 lg:p-6 shadow-lg">
+            <h3 className="text-lg lg:text-xl font-bold mb-4">Ad Content</h3>
+            <div className="space-y-4">
+              <div className="bg-gray-50 p-3 rounded-xl">
+                <div className="text-sm font-semibold mb-2">Prompt Examples for {adForm.market}{adForm.subType? ' / '+adForm.subType:''}</div>
+                <div className="flex flex-wrap gap-2">
+                  {currentTemplates.length===0 && <div className="text-xs text-gray-500">Select Market and Sub-type to see examples.</div>}
+                  {currentTemplates.map((tpl, i)=>(
+                    <button key={i} onClick={()=>applyTemplate(tpl)} className="px-3 py-2 text-xs bg-white border rounded-lg hover:bg-blue-50">
+                      “{tpl.h}”
+                    </button>
+                  ))}
+                </div>
+                <div className="mt-3">
+                  <button onClick={suggestAI} className="px-3 py-2 bg-gradient-to-r from-blue-500 to-purple-600 text-white rounded-lg text-sm">⚡ Suggest New Copy (AI)</button>
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-medium mb-2 text-sm lg:text-base">Headline</label>
+                <input type="text" className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500" placeholder="Your compelling headline..." value={adForm.headline} onChange={(e)=>setAdForm(prev=>({...prev, headline:e.target.value}))}/>
+              </div>
+              <div>
+                <label className="block font-medium mb-2 text-sm lg:text-base">Ad Copy</label>
+                <textarea className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500 h-28 resize-none" placeholder="Write your ad copy here..." value={adForm.copy} onChange={(e)=>setAdForm(prev=>({...prev, copy:e.target.value}))}/>
+              </div>
+              <div>
+                <label className="block font-medium mb-2 text-sm lg:text-base">Call-to-Action</label>
+                <select className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500" value={adForm.cta} onChange={(e)=>setAdForm(prev=>({...prev, cta:e.target.value}))}>
+                  <option value="learn-more">Learn More</option>
+                  <option value="get-quote">Get Free Quote</option>
+                  <option value="call-now">Call Now</option>
+                  <option value="apply-now">Apply Now</option>
+                </select>
+              </div>
+
+              <div className="space-y-3">
+                <button onClick={launchCampaign} className="w-full p-3 bg-gradient-to-r from-green-500 to-green-600 text-white font-semibold rounded-xl hover:shadow-lg transition-all">🚀 Launch Campaign</button>
+              </div>
+            </div>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          <div className="stat-card group">
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="text-3xl font-bold text-blue-600">{totalLeads}</div>
-                <div className="text-sm text-gray-600 font-medium">Total Leads</div>
+        {/* Variants / Rotation */}
+        <div className="bg-white rounded-2xl p-4 lg:p-6 shadow-lg">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg lg:text-xl font-bold">Ad Variants & Rotation</h3>
+            <div className="flex items-center gap-3">
+              <span className="text-sm">Rotate</span>
+              <div className={`toggle-switch ${adLab.rotate ? 'active' : ''}`} onClick={()=>{ const nv = !adLab.rotate; setRotate(nv); setAdLabPersist({ ...adLab, rotate: nv }); }}>
+                <div className="toggle-slider"></div>
               </div>
-              <div className="text-4xl opacity-20 group-hover:opacity-40 transition-opacity">👥</div>
             </div>
           </div>
-          <div className="stat-card group">
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="text-3xl font-bold text-green-600">{paidLeads}</div>
-                <div className="text-sm text-gray-600 font-medium">Paid Clients</div>
-              </div>
-              <div className="text-4xl opacity-20 group-hover:opacity-40 transition-opacity">💰</div>
-            </div>
+          <div className="flex gap-2 mb-3">
+            <button onClick={addVariant} className="px-3 py-2 bg-purple-100 text-purple-700 rounded-lg">➕ Add Variant (from current)</button>
+            <button onClick={()=>simulateTraffic(200)} className="px-3 py-2 bg-blue-100 text-blue-700 rounded-lg">▶️ Simulate 200 Views</button>
           </div>
-          <div className="stat-card group">
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="text-3xl font-bold text-purple-600">${thisWeekAPV.toLocaleString()}</div>
-                <div className="text-sm text-gray-600 font-medium">This Week APV</div>
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            {localVariants.map(v=>(
+              <div key={v.id} className="border rounded-xl p-3">
+                <div className="font-semibold mb-1">{v.headline}</div>
+                <div className="text-sm text-gray-700 mb-2">{v.copy}</div>
+                <div className="text-xs text-gray-500 mb-2">CTA: {v.cta}</div>
+                <div className="text-xs">Impr: <strong>{v.impressions}</strong> • Clicks: <strong>{v.clicks}</strong> • CTR: <strong>{((v.clicks/(v.impressions||1))*100).toFixed(1)}%</strong></div>
+                <div className="text-right mt-2">
+                  <button onClick={()=>deleteVariant(v.id)} className="px-2 py-1 bg-gray-100 rounded">Delete</button>
+                </div>
               </div>
-              <div className="text-4xl opacity-20 group-hover:opacity-40 transition-opacity">📈</div>
-            </div>
-          </div>
-          <div className="stat-card group">
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="text-3xl font-bold text-orange-600">{ws.data.campaigns.length}</div>
-                <div className="text-sm text-gray-600 font-medium">Active Campaigns</div>
-              </div>
-              <div className="text-4xl opacity-20 group-hover:opacity-40 transition-opacity">🎯</div>
-            </div>
-          </div>
-        </div>
-
-        <div className="card p-8">
-          <h2 className="text-2xl font-bold gradient-text mb-6">Quick Actions</h2>
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-            {shortcuts.map((shortcut, idx) => (
-              <button
-                key={idx}
-                onClick={shortcut.action}
-                className="shortcut-btn p-6 text-center"
-                style={{ background: shortcut.color }}
-              >
-                <div className="text-3xl mb-3">{shortcut.icon}</div>
-                <div className="font-semibold text-white mb-1">{shortcut.label}</div>
-                <div className="text-xs text-white text-opacity-80">{shortcut.desc}</div>
-              </button>
             ))}
+            {localVariants.length===0 && <div className="text-gray-500">No variants yet. Click “Add Variant”.</div>}
           </div>
+          {bestVariant && (
+            <div className="mt-4 text-sm text-gray-700">
+              Current best: <span className="font-semibold">{bestVariant.headline}</span>
+            </div>
+          )}
         </div>
       </div>
     );
   };
 
-  const renderLeads = () => {
-    const addLead = () => {
-      const newLead = {
-        id: Date.now().toString(),
-        name: "",
-        email: "",
-        phone: "",
-        market: "Insurance",
-        sub: "Life",
-        status: "New",
-        notes: "",
-        createdAt: new Date().toISOString(),
-        apvAmount: "",
-        insuranceCarrier: "",
-        debtDetails: {
-          creditCards: [],
-          mortgages: [],
-          cars: [],
-          other: []
-        },
-        recordings: [],
-        transcripts: []
-      };
-      setEditingLead(newLead);
-    };
+  /* ---------- Leads (click to edit + advanced statuses + notes + recordings) ---------- */
+  const LeadManagement = () => {
+    const [searchTerm, setSearchTerm] = useState('');
+    const [filterMarket, setFilterMarket] = useState('');
+    const [filterType, setFilterType] = useState('');
+    const [filterStatus, setFilterStatus] = useState('');
+    const [showImportModal, setShowImportModal] = useState(false);
+    const [showTestModal, setShowTestModal] = useState(false);
+    const [showAddLead, setShowAddLead] = useState(false);
 
-    const deleteLead = (leadId) => {
-      if (confirm("Delete this lead permanently?")) {
-        const updated = { ...ws };
-        updated.data.leads = updated.data.leads.filter(l => l.id !== leadId);
-        saveWs(updated);
+    const [newLead, setNewLead] = useState({ market:'Insurance', type:'Life', source:'Manual', name:'', phone:'', email:'', location:'', status:'New', notes:'' });
+
+    const filteredLeads = leads.filter(lead => {
+      const term = searchTerm.toLowerCase();
+      const matchesSearch = (lead.name||'').toLowerCase().includes(term) || (lead.phone||'').includes(searchTerm) || (lead.email||'').toLowerCase().includes(term);
+      const matchesMarket = !filterMarket || lead.market===filterMarket;
+      const matchesType = !filterType || (lead.type||'').toLowerCase() === filterType.toLowerCase();
+      const matchesStatus = !filterStatus || lead.status===filterStatus;
+      return matchesSearch && matchesMarket && matchesType && matchesStatus;
+    });
+
+    const handleFileUpload = async (event, type) => {
+      const file = event.target.files[0]; if (!file) return;
+      if (type === 'csv') {
+        const text = await file.text();
+        const rows = parseCSV(text).slice(0, 200);
+        const imp = { id: Date.now(), filename: file.name, createdAt: new Date().toISOString(), rows, mapped: {}, dropPlaceholders: true };
+        const next = [imp, ...imports];
+        setImports(next); saveNow({ imports: next });
+        alert(`✅ CSV loaded (${rows.length} preview rows). Go to Imports to map.`);
+        setShowImportModal(false); setActiveTab('imports');
+      } else {
+        alert('🔍 PDF scanning simulated (connect OCR later).');
+        const imp = { id: Date.now(), filename: file.name, createdAt: new Date().toISOString(), rows: [], mapped: {}, dropPlaceholders: true };
+        const next = [imp, ...imports];
+        setImports(next); saveNow({ imports: next });
+        setShowImportModal(false); setActiveTab('imports');
       }
     };
 
+    const saveNewLead = async () => {
+      if (!newLead.name || !newLead.phone) { alert('Name and phone are required'); return; }
+      const created = { ...newLead, id: Date.now(), time: new Date().toLocaleString(), callLogs: [], isClient: false };
+      try{ await fetch('/api/leads', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(created) }).catch(()=>{}); } catch {}
+      setLeads(prev => [created, ...prev]);
+      setShowAddLead(false);
+      setNewLead({ market:'Insurance', type:'Life', source:'Manual', name:'', phone:'', email:'', location:'', status:'New', notes:'' });
+
+      // auto-start outreach if Meta and automation enabled
+      if (created.source === 'Meta' && automation.autoStartOnMeta) {
+        alert('⚡ Auto-start outreach: calling now (sim).');
+        try{ await fetch('/api/ai-call', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ leadId: created.id, phoneNumber: created.phone, method:'call', routing, metadata: routing.metadata.call }) }).catch(()=>{});}catch{}
+      }
+    };
+
+    const deleteLead = async (leadId) => {
+      if (!confirm('Delete this lead?')) return;
+      try{ await fetch(`/api/leads/${leadId}`, { method:'DELETE' }).catch(()=>{}); }catch{}
+      setLeads(prev => prev.filter(l=>l.id!==leadId));
+    };
+
     return (
-      <div className="p-8 bg-gradient-to-br from-gray-50 to-blue-50 min-h-screen">
-        <div className="flex items-center justify-between mb-8">
-          <div>
-            <h1 className="text-4xl font-bold gradient-text">Lead Management</h1>
-            <p className="text-gray-600 mt-2">Manage your prospects and track their journey</p>
-          </div>
-          <button
-            onClick={addLead}
-            className="btn-primary flex items-center gap-2 px-6 py-3 text-lg"
-          >
-            <span>➕</span>
-            Add New Lead
-          </button>
-        </div>
+      <div className="space-y-6 fade-in">
+        <div className="bg-white rounded-2xl p-4 lg:p-6 shadow-lg">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
+            <h3 className="text-lg lg:text-xl font-bold">Lead Pipeline</h3>
+            <div className="flex flex-wrap gap-2">
+              <button onClick={()=>setShowAddLead(true)} className="px-3 py-2 bg-purple-100 text-purple-700 rounded-xl hover:bg-purple-200 transition-all text-sm">➕ Add Lead</button>
 
-        <div className="card overflow-hidden">
-          <div className="table-header p-6">
-            <h3 className="text-xl font-semibold gradient-text">Your Prospects</h3>
+              <input type="file" accept=".csv" onChange={(e)=>handleFileUpload(e,'csv')} className="hidden" id="csv-upload-direct"/>
+              <label htmlFor="csv-upload-direct" className="px-3 py-2 bg-green-100 text-green-700 rounded-xl hover:bg-green-200 transition-all text-sm cursor-pointer">📊 Upload CSV</label>
+
+              <input type="file" accept=".pdf" onChange={(e)=>handleFileUpload(e,'pdf')} className="hidden" id="pdf-upload-direct"/>
+              <label htmlFor="pdf-upload-direct" className="px-3 py-2 bg-red-100 text-red-700 rounded-xl hover:bg-red-200 transition-all text-sm cursor-pointer">📄 Scan PDF → CSV</label>
+
+              <button onClick={()=>setShowImportModal(true)} className="px-3 py-2 bg-blue-100 text-blue-700 rounded-xl hover:bg-blue-200 transition-all text-sm">📋 Import Options</button>
+              <button onClick={()=>setShowTestModal(true)} className="px-3 py-2 bg-amber-100 text-amber-700 rounded-xl hover:bg-amber-200 transition-all text-sm">🧪 Test System</button>
+            </div>
           </div>
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="table-header">
-                <tr>
-                  <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700 uppercase tracking-wider">Lead Info</th>
-                  <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700 uppercase tracking-wider">Contact</th>
-                  <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700 uppercase tracking-wider">Market</th>
-                  <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700 uppercase tracking-wider">Status</th>
-                  <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700 uppercase tracking-wider">APV Value</th>
-                  <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700 uppercase tracking-wider">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-200">
-                {ws.data.leads.length === 0 ? (
-                  <tr>
-                    <td colSpan="6" className="px-6 py-12 text-center">
-                      <div className="text-gray-500">
-                        <div className="text-4xl mb-4">🎯</div>
-                        <div className="text-lg font-semibold">No leads yet</div>
-                        <div className="text-sm">Click "Add New Lead" to get started!</div>
-                      </div>
-                    </td>
-                  </tr>
-                ) : (
-                  ws.data.leads.map(lead => (
-                    <tr key={lead.id} className="table-row hover:shadow-sm transition-all">
-                      <td className="px-6 py-4">
-                        <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-full bg-gradient-to-r from-blue-400 to-purple-500 flex items-center justify-center text-white font-semibold">
-                            {(lead.name || "?")[0].toUpperCase()}
-                          </div>
-                          <div>
-                            <div className="font-semibold text-gray-900">{lead.name || "Unnamed Lead"}</div>
-                            <div className="text-sm text-gray-500">ID: {lead.id.slice(-6)}</div>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="text-sm">
-                          <div className="font-medium text-gray-900">{lead.email}</div>
-                          <div className="text-gray-500">{lead.phone}</div>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="text-sm">
-                          <div className="font-medium text-gray-900">{lead.market}</div>
-                          <div className="text-gray-500">{lead.sub}</div>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <span className={`badge ${
-                          lead.status === "Paid" ? "status-paid" :
-                          lead.status === "Approved" ? "bg-blue-100 text-blue-800" :
-                          lead.status === "Declined" ? "status-declined" :
-                          lead.status === "Contacted" ? "status-contacted" :
-                          "status-new"
-                        }`}>
-                          {lead.status}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="font-semibold text-gray-900">
-                          {lead.apvAmount ? `$${parseFloat(lead.apvAmount).toLocaleString()}` : "—"}
-                        </div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="flex items-center gap-2">
-                          <button
-                            onClick={() => setEditingLead(lead)}
-                            className="px-3 py-1 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors text-sm font-medium"
-                          >
-                            ✏️ Edit
-                          </button>
-                          <button
-                            onClick={() => deleteLead(lead.id)}
-                            className="px-3 py-1 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition-colors text-sm font-medium"
-                          >
-                            🗑️ Delete
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
+
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+            <select className="p-3 border rounded-xl focus:ring-2 focus:ring-blue-500" value={filterMarket} onChange={(e)=>setFilterMarket(e.target.value)}>
+              <option value="">All Markets</option>
+              {Object.keys(MARKET_OPTIONS).map(m=><option key={m} value={m}>{m}</option>)}
+            </select>
+            <select className="p-3 border rounded-xl focus:ring-2 focus:ring-blue-500" value={filterType} onChange={(e)=>setFilterType(e.target.value)}>
+              <option value="">All Sub-Types</option>
+              {Object.values(MARKET_OPTIONS).flat().map(t=><option key={t} value={t}>{t}</option>)}
+            </select>
+            <input type="text" className="p-3 border rounded-xl focus:ring-2 focus:ring-blue-500" placeholder="Search leads…" value={searchTerm} onChange={(e)=>setSearchTerm(e.target.value)}/>
+            <select className="p-3 border rounded-xl focus:ring-2 focus:ring-blue-500" value={filterStatus} onChange={(e)=>setFilterStatus(e.target.value)}>
+              <option value="">All Status</option>
+              {STATUS_LABELS.map(s=><option key={s} value={s}>{s}</option>)}
+            </select>
+          </div>
+
+          <div className="space-y-4">
+            {filteredLeads.map(lead=>(
+              <div key={lead.id} className="p-4 border border-gray-200 rounded-xl hover:border-blue-300 transition-all">
+                <div className="flex flex-col sm:flex-row justify-between items-start gap-3 mb-3">
+                  <div>
+                    <button onClick={()=>openLeadEditor(lead)} className="font-semibold text-lg text-left hover:underline">{lead.name}</button>
+                    <div className="text-sm text-gray-600">{lead.phone || '—'} • {lead.email || '—'}</div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className={`badge ${
+                      lead.status==='New'?'bg-blue-100 text-blue-800':
+                      lead.status==='Contacted'?'bg-orange-100 text-orange-800':
+                      lead.status==='Scheduled'?'bg-purple-100 text-purple-800':
+                      lead.status==='Paid'?'bg-green-100 text-green-800':
+                      'bg-gray-100 text-gray-800'
+                    }`}>{lead.status}</span>
+                    {lead.isClient && <span className="badge bg-green-50 text-green-700 border border-green-200">Client</span>}
+                    <button onClick={()=>openLeadEditor(lead)} className="px-2 py-1 text-sm bg-blue-100 text-blue-700 rounded hover:bg-blue-200">✏️ Edit</button>
+                    <button onClick={()=>{ if(confirm('Delete this lead?')) deleteLead(lead.id); }} className="px-2 py-1 text-sm bg-gray-100 text-gray-700 rounded hover:bg-gray-200">🗑️</button>
+                  </div>
+                </div>
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+                  <div className="text-sm text-gray-600">{lead.market}/{lead.type} • {lead.location || '—'} • {lead.time || '—'}</div>
+                  <div className="flex flex-wrap gap-2">
+                    <button onClick={()=>initiateContact(lead,'call')} className="px-3 py-1 bg-green-100 text-green-700 rounded-lg hover:bg-green-200 transition-all text-sm">📞 AI Call</button>
+                    <button onClick={()=>initiateContact(lead,'sms')} className="px-3 py-1 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-all text-sm">💬 AI SMS</button>
+                    <button className="px-3 py-1 bg-purple-100 text-purple-700 rounded-lg hover:bg-purple-200 transition-all text-sm">📅 Schedule</button>
+                  </div>
+                </div>
+                {lead.apv ? <div className="mt-2 text-xs text-gray-700">APV: <strong>${Number(lead.apv).toLocaleString()}</strong> {lead.carrier? `• Carrier: ${lead.carrier}`:''}</div> : null}
+              </div>
+            ))}
+            {filteredLeads.length===0 && <div className="text-center py-8 text-gray-500">No leads found</div>}
           </div>
         </div>
 
-        {editingLead && (
-          <LeadEditor
-            lead={editingLead}
-            onSave={(updatedLead) => {
-              const updated = { ...ws };
-              const existing = updated.data.leads.find(l => l.id === updatedLead.id);
-              if (existing) {
-                Object.assign(existing, updatedLead);
+        {/* Import Modal */}
+        {showImportModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-2xl p-6 max-w-md w-full">
+              <h3 className="text-xl font-bold mb-4">Import Leads</h3>
+              <div className="space-y-4">
+                <div className="p-4 border-2 border-dashed border-gray-300 rounded-xl text-center">
+                  <div className="text-2xl mb-2">📄</div>
+                  <h4 className="font-semibold mb-2">Upload PDF</h4>
+                  <p className="text-sm text-gray-600 mb-3">Front-end sim. Connect OCR later.</p>
+                  <input type="file" accept=".pdf" onChange={(e)=>handleFileUpload(e,'pdf')} className="hidden" id="pdf-upload"/>
+                  <label htmlFor="pdf-upload" className="px-4 py-2 bg-red-100 text-red-700 rounded-lg cursor-pointer hover:bg-red-200 transition-all">Choose PDF File</label>
+                </div>
+                <div className="p-4 border-2 border-dashed border-gray-300 rounded-xl text-center">
+                  <div className="text-2xl mb-2">📊</div>
+                  <h4 className="font-semibold mb-2">Upload CSV</h4>
+                  <p className="text-sm text-gray-600 mb-3">Preview first 200 rows.</p>
+                  <input type="file" accept=".csv" onChange={(e)=>handleFileUpload(e,'csv')} className="hidden" id="csv-upload"/>
+                  <label htmlFor="csv-upload" className="px-4 py-2 bg-green-100 text-green-700 rounded-lg cursor-pointer hover:bg-green-200 transition-all">Choose CSV File</label>
+                </div>
+              </div>
+              <div className="flex gap-3 mt-6">
+                <button onClick={()=>setShowImportModal(false)} className="flex-1 px-4 py-2 border border-gray-300 rounded-xl hover:bg-gray-50 transition-all">Close</button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Test Modal (simulated) */}
+        {showTestModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-2xl p-6 max-w-md w-full">
+              <h3 className="text-xl font-bold mb-4">🧪 Test Complete System</h3>
+              <p className="text-gray-600 mb-4">Simulates voice, SMS, objections, scoring, and calendar.</p>
+              <div className="bg-yellow-50 p-4 rounded-xl mb-4">
+                <ul className="text-sm text-yellow-700 space-y-1">
+                  <li>• AI voice call simulation</li>
+                  <li>• SMS backup message</li>
+                  <li>• Objection handling test</li>
+                  <li>• Lead scoring verification</li>
+                  <li>• Calendar integration check</li>
+                </ul>
+              </div>
+              <div className="flex gap-3">
+                <button onClick={()=>setShowTestModal(false)} className="flex-1 px-4 py-2 border border-gray-300 rounded-xl hover:bg-gray-50 transition-all">Close</button>
+                <button onClick={()=>{ alert('✅ All checks passed (sim).'); setShowTestModal(false); }} className="flex-1 px-4 py-3 bg-gradient-to-r from-blue-500 to-purple-600 text-white font-semibold rounded-xl hover:shadow-lg transition-all">Run</button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Add Lead Modal */}
+        {showAddLead && (
+          <LeadEditorModal
+            initialLead={{ ...newLead, id: 'new' }}
+            onClose={()=>setShowAddLead(false)}
+            onSave={(lead)=>{
+              const isNew = lead.id==='new';
+              if (isNew) {
+                const created = { ...lead, id: Date.now(), time: new Date().toLocaleString(), callLogs: lead.callLogs || [], isClient: lead.status==='Paid' };
+                setLeads(prev => [created, ...prev]);
+                setShowAddLead(false);
+                // Auto outreach if source Meta
+                if (created.source==='Meta' && automation.autoStartOnMeta) {
+                  alert('⚡ Auto-start outreach: calling now (sim).');
+                }
               } else {
-                updated.data.leads.push(updatedLead);
+                setLeads(prev => prev.map(l => l.id===lead.id ? lead : l));
               }
-              saveWs(updated);
-              setEditingLead(null);
             }}
-            onCancel={() => setEditingLead(null)}
           />
         )}
       </div>
     );
   };
 
-  const LeadEditor = ({ lead, onSave, onCancel }) => {
-    const [formData, setFormData] = useState(lead);
+  /* ---------- Lead Editor Modal (full editor) ---------- */
+  function LeadEditorModal({ initialLead, onClose, onSave }) {
+    const [lead, setLead] = useState(() => ({
+      id: initialLead.id,
+      market: initialLead.market || 'Insurance',
+      type: initialLead.type || '',
+      source: initialLead.source || 'Manual',
+      name: initialLead.name || '',
+      phone: initialLead.phone || '',
+      email: initialLead.email || '',
+      location: initialLead.location || '',
+      status: initialLead.status || 'New',
+      notes: initialLead.notes || '',
+      apv: initialLead.apv || '',
+      apvDate: initialLead.apvDate || null,
+      carrier: initialLead.carrier || '',
+      isClient: !!initialLead.isClient,
+      debt: initialLead.debt || { creditCards:[], mortgages:[], cars:[], others:[] },
+      callLogs: initialLead.callLogs || [],
+      time: initialLead.time || new Date().toLocaleString()
+    }));
+    const [tab, setTab] = useState('profile');
 
-    const updateField = (field, value) => {
-      setFormData(prev => ({ ...prev, [field]: value }));
+    const isInsurance = lead.market === 'Insurance';
+    const showAPVSection = isInsurance && STATUS_ADVANCED.has(lead.status);
+
+    const addDebtRow = (key)=> setLead(prev=>({ ...prev, debt: { ...prev.debt, [key]: [ ...(prev.debt[key]||[]), { amount:'', apr:'', label:'' } ] } }));
+    const updateDebtRow = (key, idx, field, value)=> {
+      setLead(prev=>{
+        const arr = [...(prev.debt[key]||[])];
+        arr[idx] = { ...arr[idx], [field]: value };
+        return { ...prev, debt: { ...prev.debt, [key]: arr } };
+      });
+    };
+    const removeDebtRow = (key, idx)=> setLead(prev=>({ ...prev, debt: { ...prev.debt, [key]: (prev.debt[key]||[]).filter((_,i)=>i!==idx) } }));
+
+    const addCallLog = ()=> setLead(prev=>({ ...prev, callLogs: [{ id: Date.now(), date: new Date().toLocaleString(), direction:'outbound', result:'no_answer', recordingUrl:'', transcript:'' }, ...(prev.callLogs||[]) ] }));
+    const updateCallLog = (id, field, value)=> setLead(prev=>({ ...prev, callLogs: prev.callLogs.map(c => c.id===id ? { ...c, [field]: value } : c) }));
+    const onUploadRecording = (id, file)=>{
+      if (!file) return;
+      const url = URL.createObjectURL(file);
+      updateCallLog(id, 'recordingUrl', url);
     };
 
-    const addDebtItem = (category) => {
-      const newItem = { amount: "", apr: "", description: "" };
-      setFormData(prev => ({
-        ...prev,
-        debtDetails: {
-          ...prev.debtDetails,
-          [category]: [...(prev.debtDetails[category] || []), newItem]
-        }
-      }));
-    };
-
-    const updateDebtItem = (category, index, field, value) => {
-      setFormData(prev => ({
-        ...prev,
-        debtDetails: {
-          ...prev.debtDetails,
-          [category]: prev.debtDetails[category].map((item, i) => 
-            i === index ? { ...item, [field]: value } : item
-          )
-        }
-      }));
+    const saveLead = ()=>{
+      // Paid => becomes a Client
+      const isClient = lead.status === 'Paid';
+      const apvDate = showAPVSection && lead.apv && !lead.apvDate ? new Date().toISOString() : lead.apvDate;
+      onSave({ ...lead, isClient, apvDate });
+      onClose();
     };
 
     return (
-      <div className="modal-overlay fixed inset-0 flex items-center justify-center p-4 z-50">
-        <div className="modal-content w-full max-w-5xl max-h-[95vh] overflow-y-auto">
-          <div className="p-8 border-b border-gray-200">
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 rounded-xl bg-gradient-to-r from-blue-500 to-purple-600 flex items-center justify-center text-white font-bold text-xl">
-                {lead.id ? "✏️" : "➕"}
-              </div>
-              <div>
-                <h2 className="text-2xl font-bold gradient-text">
-                  {lead.id ? "Edit Lead" : "Add New Lead"}
-                </h2>
-                <p className="text-gray-600">Manage prospect information and status</p>
-              </div>
-            </div>
+      <div className="fixed inset-0 bg-black bg-opacity-50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div className="bg-white rounded-2xl p-6 max-w-4xl w-full">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-xl font-bold">Lead — {lead.name || 'New'}</h3>
+            <button onClick={onClose} className="px-3 py-1 rounded bg-gray-100">Close</button>
           </div>
 
-          <div className="p-8 space-y-8">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div>
-                <label className="block text-sm font-semibold mb-2 text-gray-700">👤 Full Name</label>
-                <input
-                  type="text"
-                  className="input-field w-full"
-                  value={formData.name || ""}
-                  onChange={e => updateField("name", e.target.value)}
-                  placeholder="John Smith"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-semibold mb-2 text-gray-700">📧 Email Address</label>
-                <input
-                  type="email"
-                  className="input-field w-full"
-                  value={formData.email || ""}
-                  onChange={e => updateField("email", e.target.value)}
-                  placeholder="john@example.com"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-semibold mb-2 text-gray-700">📱 Phone Number</label>
-                <input
-                  type="tel"
-                  className="input-field w-full"
-                  value={formData.phone || ""}
-                  onChange={e => updateField("phone", e.target.value)}
-                  placeholder="+1 (555) 123-4567"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-semibold mb-2 text-gray-700">📊 Status</label>
-                <select
-                  className="input-field w-full"
-                  value={formData.status || "New"}
-                  onChange={e => updateField("status", e.target.value)}
-                >
-                  {STATUS_LABELS.map(status => (
-                    <option key={status} value={status}>{status}</option>
-                  ))}
-                </select>
-              </div>
-            </div>
+          <div className="flex gap-2 flex-wrap mb-4">
+            {['profile','status','debt','notes','calls'].map(t=>(
+              <button key={t} onClick={()=>setTab(t)} className={`px-3 py-2 rounded ${tab===t ? 'bg-blue-600 text-white':'bg-gray-100'}`}>
+                {t==='profile'?'Profile':t==='status'?'Status & APV':t==='debt'?'Debt Worksheet':t==='notes'?'Notes':'Calls'}
+              </button>
+            ))}
+          </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* PROFILE */}
+          {tab==='profile' && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-semibold mb-2 text-gray-700">🏢 Market</label>
-                <select
-                  className="input-field w-full"
-                  value={formData.market || "Insurance"}
-                  onChange={e => {
-                    updateField("market", e.target.value);
-                    updateField("sub", MARKET_OPTIONS[e.target.value]?.[0] || "");
-                  }}
-                >
-                  {Object.keys(MARKET_OPTIONS).map(market => (
-                    <option key={market} value={market}>{market}</option>
-                  ))}
+                <label className="block text-sm font-medium mb-1">Market</label>
+                <select className="w-full p-3 border rounded-xl" value={lead.market} onChange={(e)=>setLead(prev=>({...prev, market:e.target.value, type:''}))}>
+                  {Object.keys(MARKET_OPTIONS).map(m=><option key={m} value={m}>{m}</option>)}
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-semibold mb-2 text-gray-700">🎯 Sub Category</label>
-                <select
-                  className="input-field w-full"
-                  value={formData.sub || ""}
-                  onChange={e => updateField("sub", e.target.value)}
-                >
-                  {(MARKET_OPTIONS[formData.market] || []).map(sub => (
-                    <option key={sub} value={sub}>{sub}</option>
-                  ))}
+                <label className="block text-sm font-medium mb-1">Sub-Type</label>
+                <select className="w-full p-3 border rounded-xl" value={lead.type} onChange={(e)=>setLead(prev=>({...prev, type:e.target.value}))}>
+                  <option value="">Choose…</option>
+                  {(MARKET_OPTIONS[lead.market]||[]).map(s=><option key={s} value={s}>{s}</option>)}
                 </select>
               </div>
-            </div>
 
-            {STATUS_ADVANCED.has(formData.status) && (
-              <div className="card p-6">
-                <h3 className="text-lg font-semibold gradient-text mb-4">💰 Advanced Status Information</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div>
-                    <label className="block text-sm font-semibold mb-2 text-gray-700">💵 APV Amount ($)</label>
-                    <input
-                      type="number"
-                      className="input-field w-full"
-                      value={formData.apvAmount || ""}
-                      onChange={e => updateField("apvAmount", e.target.value)}
-                      placeholder="5000.00"
-                    />
+              <div>
+                <label className="block text-sm font-medium mb-1">Source</label>
+                <select className="w-full p-3 border rounded-xl" value={lead.source} onChange={(e)=>setLead(prev=>({...prev, source:e.target.value}))}>
+                  {['Manual','Meta','Website','Other'].map(s=><option key={s} value={s}>{s}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Status</label>
+                <select className="w-full p-3 border rounded-xl" value={lead.status} onChange={(e)=>setLead(prev=>({...prev, status:e.target.value}))}>
+                  {STATUS_LABELS.map(s=><option key={s} value={s}>{s}</option>)}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-1">Name</label>
+                <input className="w-full p-3 border rounded-xl" value={lead.name} onChange={(e)=>setLead(prev=>({...prev, name:e.target.value}))}/>
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Phone</label>
+                <input className="w-full p-3 border rounded-xl" value={lead.phone} onChange={(e)=>setLead(prev=>({...prev, phone:e.target.value}))}/>
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Email</label>
+                <input className="w-full p-3 border rounded-xl" value={lead.email} onChange={(e)=>setLead(prev=>({...prev, email:e.target.value}))}/>
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Location</label>
+                <input className="w-full p-3 border rounded-xl" value={lead.location} onChange={(e)=>setLead(prev=>({...prev, location:e.target.value}))}/>
+              </div>
+
+              {/* Conditional APV/Carrier quick note */}
+              {showAPVSection && (
+                <div className="md:col-span-2 bg-blue-50 border border-blue-200 p-3 rounded-xl text-sm">
+                  Status enables APV + Carrier fields in “Status & APV” tab.
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* STATUS + APV */}
+          {tab==='status' && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-sm font-medium mb-1">Status</label>
+                  <select className="w-full p-3 border rounded-xl" value={lead.status} onChange={(e)=>setLead(prev=>({...prev, status:e.target.value}))}>
+                    {STATUS_LABELS.map(s=><option key={s} value={s}>{s}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Carrier (Insurance)</label>
+                  <input className="w-full p-3 border rounded-xl" value={lead.carrier || ''} onChange={(e)=>setLead(prev=>({...prev, carrier:e.target.value}))} disabled={!showAPVSection}/>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">APV ($)</label>
+                  <input type="number" className="w-full p-3 border rounded-xl" value={lead.apv || ''} onChange={(e)=>setLead(prev=>({...prev, apv:e.target.value}))} disabled={!showAPVSection}/>
+                </div>
+              </div>
+              <div className="text-xs text-gray-600">Tip: When status changes to <strong>Paid</strong>, this lead is marked as a <strong>Client</strong>.</div>
+            </div>
+          )}
+
+          {/* DEBT WORKSHEET (only for Insurance/Debt Free) */}
+          {tab==='debt' && lead.market==='Insurance' && lead.type==='Debt Free' && (
+            <div className="space-y-4">
+              {[
+                ['creditCards','Credit Cards'],
+                ['mortgages','Mortgage'],
+                ['cars','Car Loans'],
+                ['others','Other Debts']
+              ].map(([key,label])=>(
+                <div key={key} className="bg-gray-50 p-4 rounded-xl">
+                  <div className="flex items-center justify-between mb-2">
+                    <h4 className="font-semibold">{label}</h4>
+                    <button onClick={()=>addDebtRow(key)} className="px-2 py-1 bg-white border rounded">➕ Add</button>
                   </div>
-                  {formData.market === "Insurance" && (
-                    <div>
-                      <label className="block text-sm font-semibold mb-2 text-gray-700">🏛️ Insurance Carrier</label>
-                      <input
-                        type="text"
-                        className="input-field w-full"
-                        value={formData.insuranceCarrier || ""}
-                        onChange={e => updateField("insuranceCarrier", e.target.value)}
-                        placeholder="State Farm, Allstate, etc."
-                      />
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {formData.sub === "Debt Free" && (
-              <div className="card p-6">
-                <h3 className="text-lg font-semibold gradient-text mb-4">💳 Debt Details Worksheet</h3>
-                <div className="space-y-6">
-                  {["creditCards", "mortgages", "cars", "other"].map(category => (
-                    <div key={category} className="border border-gray-200 rounded-lg p-4">
-                      <div className="flex items-center justify-between mb-4">
-                        <h4 className="font-semibold text-gray-700 capitalize">
-                          {category === "creditCards" ? "💳 Credit Cards" : 
-                           category === "mortgages" ? "🏠 Mortgages" :
-                           category === "cars" ? "🚗 Car Loans" : "📄 Other Debts"}
-                        </h4>
-                        <button
-                          onClick={() => addDebtItem(category)}
-                          className="btn-primary px-4 py-2 text-sm"
-                        >
-                          + Add Item
-                        </button>
+                  <div className="space-y-2">
+                    {(lead.debt[key]||[]).map((row,idx)=>(
+                      <div key={idx} className="grid grid-cols-1 md:grid-cols-4 gap-2">
+                        {key==='others' && (
+                          <input placeholder="Label (e.g., Personal Loan)" className="p-2 border rounded" value={row.label||''} onChange={(e)=>updateDebtRow(key, idx, 'label', e.target.value)}/>
+                        )}
+                        <input placeholder="Amount" type="number" className="p-2 border rounded" value={row.amount||''} onChange={(e)=>updateDebtRow(key, idx, 'amount', e.target.value)}/>
+                        <input placeholder="APR %" type="number" className="p-2 border rounded" value={row.apr||''} onChange={(e)=>updateDebtRow(key, idx, 'apr', e.target.value)}/>
+                        <button onClick={()=>removeDebtRow(key, idx)} className="px-2 py-1 bg-gray-100 rounded">Remove</button>
                       </div>
-                      
-                      {(formData.debtDetails?.[category] || []).map((item, index) => (
-                      <div key={index} className="grid grid-cols-3 gap-3 mb-3">
-                          <input
-                            type="number"
-                            placeholder="$0.00"
-                            className="input-field"
-                            value={item.amount || ""}
-                            onChange={e => updateDebtItem(category, index, "amount", e.target.value)}
-                          />
-                          <input
-                            type="number"
-                            placeholder="APR %"
-                            className="input-field"
-                            value={item.apr || ""}
-                            onChange={e => updateDebtItem(category, index, "apr", e.target.value)}
-                          />
-                          <input
-                            type="text"
-                            placeholder="Description"
-                            className="input-field"
-                            value={item.description || ""}
-                            onChange={e => updateDebtItem(category, index, "description", e.target.value)}
-                          />
-                        </div>
-                      ))}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            <div>
-              <label className="block text-sm font-semibold mb-2 text-gray-700">📝 Notes & Comments</label>
-              <textarea
-                className="input-field w-full"
-                rows="4"
-                value={formData.notes || ""}
-                onChange={e => updateField("notes", e.target.value)}
-                placeholder="Add any important notes about this lead..."
-              />
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="card p-6">
-                <label className="block text-sm font-semibold mb-3 text-gray-700">🎙️ Call Recordings</label>
-                <div className="min-h-[120px] bg-gradient-to-br from-blue-50 to-purple-50 rounded-lg p-4">
-                  {formData.recordings?.length > 0 ? (
-                    formData.recordings.map((recording, index) => (
-                      <div key={index} className="mb-3 p-3 bg-white rounded-lg border">
-                        <div className="text-sm font-semibold text-gray-900">{recording.date}</div>
-                        <div className="text-xs text-gray-500">{recording.duration}</div>
-                      </div>
-                    ))
-                  ) : (
-                    <div className="text-center text-gray-500 py-8">
-                      <div className="text-2xl mb-2">🎙️</div>
-                      <div className="text-sm">No recordings yet</div>
-                    </div>
-                  )}
-                </div>
-              </div>
-              <div className="card p-6">
-                <label className="block text-sm font-semibold mb-3 text-gray-700">📄 Call Transcripts</label>
-                <div className="min-h-[120px] bg-gradient-to-br from-green-50 to-blue-50 rounded-lg p-4">
-                  {formData.transcripts?.length > 0 ? (
-                    formData.transcripts.map((transcript, index) => (
-                      <div key={index} className="mb-3 p-3 bg-white rounded-lg border">
-                        <div className="text-sm font-semibold text-gray-900">{transcript.date}</div>
-                        <div className="text-xs text-gray-500">{transcript.summary}</div>
-                      </div>
-                    ))
-                  ) : (
-                    <div className="text-center text-gray-500 py-8">
-                      <div className="text-2xl mb-2">📄</div>
-                      <div className="text-sm">No transcripts yet</div>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="p-8 border-t border-gray-200 flex gap-4 justify-end">
-            <button
-              onClick={onCancel}
-              className="btn-secondary px-8 py-3"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={() => onSave(formData)}
-              className="btn-primary px-8 py-3"
-            >
-              💾 Save Lead
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  };
-
-  const renderSettings = () => {
-    const updateCredentials = (provider, field, value) => {
-      const updated = { ...ws };
-      if (!updated.credentials[provider]) updated.credentials[provider] = {};
-      updated.credentials[provider][field] = value;
-      saveWs(updated);
-    };
-
-    const updateVoiceSettings = (field, value) => {
-      const updated = { ...ws };
-      updated.voiceSettings[field] = value;
-      saveWs(updated);
-    };
-
-    const updateSmsSettings = (field, value) => {
-      const updated = { ...ws };
-      updated.smsSettings[field] = value;
-      saveWs(updated);
-    };
-
-    return (
-      <div className="p-8 space-y-8 bg-gradient-to-br from-gray-50 to-blue-50 min-h-screen">
-        <div>
-          <h1 className="text-4xl font-bold gradient-text">⚙️ Settings</h1>
-          <p className="text-gray-600 mt-2">Configure your AI-powered automation and integrations</p>
-        </div>
-
-        <div className="card p-8">
-          <h2 className="text-2xl font-bold gradient-text mb-6">🔌 API Configuration</h2>
-          
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
-            <div>
-              <label className="block text-sm font-semibold mb-3 text-gray-700">🎤 Voice AI Provider</label>
-              <select
-                className="input-field w-full"
-                value={ws.apiSelection.voiceProvider}
-                onChange={e => {
-                  const updated = { ...ws };
-                  updated.apiSelection.voiceProvider = e.target.value;
-                  updated.voiceSettings.provider = e.target.value;
-                  saveWs(updated);
-                }}
-              >
-                <option value="elevenlabs">🎭 ElevenLabs (Premium)</option>
-                <option value="openai">🤖 OpenAI Voices</option>
-                <option value="azure">☁️ Azure Cognitive</option>
-                <option value="google">🌐 Google Cloud</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-sm font-semibold mb-3 text-gray-700">💬 SMS Provider</label>
-              <select
-                className="input-field w-full"
-                value={ws.apiSelection.smsProvider}
-                onChange={e => {
-                  const updated = { ...ws };
-                  updated.apiSelection.smsProvider = e.target.value;
-                  updated.smsSettings.provider = e.target.value;
-                  saveWs(updated);
-                }}
-              >
-                <option value="twilio">📱 Twilio (Recommended)</option>
-                <option value="messagebird">🐦 MessageBird</option>
-                <option value="vonage">📞 Vonage</option>
-              </select>
-            </div>
-          </div>
-
-          <div className="space-y-6">
-            <h3 className="text-xl font-semibold gradient-text">🔑 API Credentials</h3>
-            
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <div>
-                <label className="block text-sm font-semibold mb-2 text-gray-700">🤖 OpenAI API Key</label>
-                <input
-                  type="password"
-                  className="input-field w-full"
-                  value={ws.credentials.openai?.apiKey || ""}
-                  onChange={e => updateCredentials("openai", "apiKey", e.target.value)}
-                  placeholder="sk-proj-..."
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold mb-2 text-gray-700">🎭 ElevenLabs API Key</label>
-                <input
-                  type="password"
-                  className="input-field w-full"
-                  value={ws.credentials.elevenlabs?.apiKey || ""}
-                  onChange={e => updateCredentials("elevenlabs", "apiKey", e.target.value)}
-                  placeholder="sk_..."
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              <div>
-                <label className="block text-sm font-semibold mb-2 text-gray-700">📱 Twilio Account SID</label>
-                <input
-                  type="password"
-                  className="input-field w-full"
-                  value={ws.credentials.twilio?.accountSid || ""}
-                  onChange={e => updateCredentials("twilio", "accountSid", e.target.value)}
-                  placeholder="AC..."
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-semibold mb-2 text-gray-700">🔐 Twilio Auth Token</label>
-                <input
-                  type="password"
-                  className="input-field w-full"
-                  value={ws.credentials.twilio?.authToken || ""}
-                  onChange={e => updateCredentials("twilio", "authToken", e.target.value)}
-                  placeholder="Auth Token"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-semibold mb-2 text-gray-700">📞 From Number</label>
-                <input
-                  type="text"
-                  className="input-field w-full"
-                  value={ws.credentials.twilio?.fromNumber || ""}
-                  onChange={e => updateCredentials("twilio", "fromNumber", e.target.value)}
-                  placeholder="+1 (555) 123-4567"
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <div>
-                <label className="block text-sm font-semibold mb-2 text-gray-700">📘 Meta Access Token</label>
-                <input
-                  type="password"
-                  className="input-field w-full"
-                  value={ws.credentials.meta?.accessToken || ""}
-                  onChange={e => updateCredentials("meta", "accessToken", e.target.value)}
-                  placeholder="EAAx..."
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-semibold mb-2 text-gray-700">🎯 Ad Account ID</label>
-                <input
-                  type="text"
-                  className="input-field w-full"
-                  value={ws.credentials.meta?.adAccountId || ""}
-                  onChange={e => updateCredentials("meta", "adAccountId", e.target.value)}
-                  placeholder="act_..."
-                />
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="card p-8">
-          <h2 className="text-2xl font-bold gradient-text mb-6">🎤 Voice AI Configuration</h2>
-          
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
-            <div>
-              <label className="block text-sm font-semibold mb-2 text-gray-700">🗣️ Voice Selection</label>
-              <select
-                className="input-field w-full"
-                value={ws.voiceSettings.voice}
-                onChange={e => updateVoiceSettings("voice", e.target.value)}
-              >
-                {(VOICE_CATALOG[ws.voiceSettings.provider] || []).map(voice => (
-                  <option key={voice} value={voice}>{voice}</option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-sm font-semibold mb-2 text-gray-700">🌍 Time Zone</label>
-              <select
-                className="input-field w-full"
-                value={ws.voiceSettings.timezone}
-                onChange={e => updateVoiceSettings("timezone", e.target.value)}
-              >
-                {US_TIMEZONES.map(tz => (
-                  <option key={tz.value} value={tz.value}>{tz.label}</option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-sm font-semibold mb-2 text-gray-700">📞 Call Attempts</label>
-              <input
-                type="number"
-                min="1"
-                max="5"
-                className="input-field w-full"
-                value={ws.voiceSettings.callAttempts}
-                onChange={e => updateVoiceSettings("callAttempts", parseInt(e.target.value))}
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-semibold mb-2 text-gray-700">⚡ Immediate Attempts</label>
-              <select
-                className="input-field w-full"
-                value={ws.voiceSettings.immediateAttempts}
-                onChange={e => updateVoiceSettings("immediateAttempts", parseInt(e.target.value))}
-              >
-                <option value="1">1 Attempt</option>
-                <option value="2">2 Attempts</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-sm font-semibold mb-2 text-gray-700">⏱️ Time Between Calls</label>
-              <select
-                className="input-field w-full"
-                value={ws.voiceSettings.callInterval}
-                onChange={e => updateVoiceSettings("callInterval", parseInt(e.target.value))}
-              >
-                <option value="15">15 minutes</option>
-                <option value="30">30 minutes</option>
-                <option value="60">1 hour</option>
-                <option value="1440">1 day</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-sm font-semibold mb-2 text-gray-700">📧 Voicemail Behavior</label>
-              <select
-                className="input-field w-full"
-                value={ws.voiceSettings.voicemailBehavior}
-                onChange={e => updateVoiceSettings("voicemailBehavior", e.target.value)}
-              >
-                <option value="hang_up">🔇 Hang Up</option>
-                <option value="leave_message">💬 Leave Message</option>
-              </select>
-            </div>
-          </div>
-
-          <div className="space-y-6">
-            <h3 className="text-xl font-semibold gradient-text">📝 Voice Scripts</h3>
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <div>
-                <label className="block text-sm font-semibold mb-2 text-gray-700">🎯 Generic Script</label>
-                <textarea
-                  className="input-field w-full"
-                  rows="4"
-                  value={ws.voiceSettings.scripts?.generic || ""}
-                  onChange={e => updateVoiceSettings("scripts", { 
-                    ...ws.voiceSettings.scripts, 
-                    generic: e.target.value 
-                  })}
-                  placeholder="Hi, this is LeadFlow Pro about your request..."
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold mb-2 text-gray-700">📧 Voicemail Script</label>
-                <textarea
-                  className="input-field w-full"
-                  rows="4"
-                  value={ws.voiceSettings.voicemailScript || ""}
-                  onChange={e => updateVoiceSettings("voicemailScript", e.target.value)}
-                  placeholder="Sorry I missed you—this is LeadFlow Pro..."
-                />
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="card p-8">
-          <h2 className="text-2xl font-bold gradient-text mb-6">💬 SMS Configuration</h2>
-          
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
-            <div>
-              <label className="block text-sm font-semibold mb-2 text-gray-700">⏰ Follow-up Delay</label>
-              <select
-                className="input-field w-full"
-                value={ws.smsSettings.followUpDelay}
-                onChange={e => updateSmsSettings("followUpDelay", parseInt(e.target.value))}
-              >
-                <option value="15">⚡ 15 minutes</option>
-                <option value="60">🕐 1 hour</option>
-                <option value="1440">📅 1 day</option>
-                <option value="2880">📅📅 2 days</option>
-                <option value="10080">📆 1 week</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-sm font-semibold mb-2 text-gray-700">🤖 Auto Respond</label>
-              <div className="flex items-center gap-3">
-                <div
-                  className={`toggle-switch ${ws.smsSettings.autoRespond ? "active" : ""}`}
-                  onClick={() => updateSmsSettings("autoRespond", !ws.smsSettings.autoRespond)}
-                >
-                  <div className="toggle-slider"></div>
-                </div>
-                <span className="text-sm text-gray-600">
-                  {ws.smsSettings.autoRespond ? "Enabled" : "Disabled"}
-                </span>
-              </div>
-            </div>
-          </div>
-
-          <div className="space-y-6">
-            <h3 className="text-xl font-semibold gradient-text">📱 SMS Scripts</h3>
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {Object.entries(ws.smsSettings.scripts || {}).map(([key, script]) => (
-                <div key={key}>
-                  <label className="block text-sm font-semibold mb-2 text-gray-700 capitalize">
-                    {key === "day0" ? "📅 Day 0 - Initial" :
-                     key === "day1" ? "📅 Day 1 - Follow-up" :
-                     key === "day3" ? "📅 Day 3 - Check-in" :
-                     key === "day5" ? "📅 Day 5 - Final" :
-                     key.replace(/([A-Z])/g, ' $1').trim()}
-                  </label>
-                  <textarea
-                    className="input-field w-full"
-                    rows="3"
-                    value={script}
-                    onChange={e => updateSmsSettings("scripts", {
-                      ...ws.smsSettings.scripts,
-                      [key]: e.target.value
-                    })}
-                    placeholder="Enter your SMS message template..."
-                  />
+                    ))}
+                    {(lead.debt[key]||[]).length===0 && <div className="text-sm text-gray-500">No entries. Click Add.</div>}
+                  </div>
                 </div>
               ))}
             </div>
+          )}
+          {tab==='debt' && !(lead.market==='Insurance' && lead.type==='Debt Free') && (
+            <div className="text-gray-500">Debt worksheet is available when sub-type is <strong>Debt Free</strong> under Insurance.</div>
+          )}
+
+          {/* NOTES */}
+          {tab==='notes' && (
+            <div>
+              <label className="block text-sm font-medium mb-1">Notes</label>
+              <textarea className="w-full p-3 border rounded-xl h-40" value={lead.notes} onChange={(e)=>setLead(prev=>({...prev, notes:e.target.value}))}/>
+            </div>
+          )}
+
+          {/* CALLS */}
+          {tab==='calls' && (
+            <div className="space-y-3">
+              <div className="flex justify-between items-center">
+                <h4 className="font-semibold">Call Logs</h4>
+                <button onClick={addCallLog} className="px-3 py-2 bg-gray-100 rounded">➕ Add Log</button>
+              </div>
+              {lead.callLogs.map(log=>(
+                <div key={log.id} className="p-3 border rounded-xl">
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
+                    <input className="p-2 border rounded" value={log.date} onChange={(e)=>updateCallLog(log.id,'date',e.target.value)}/>
+                    <select className="p-2 border rounded" value={log.direction} onChange={(e)=>updateCallLog(log.id,'direction',e.target.value)}>
+                      <option value="outbound">Outbound</option>
+                      <option value="inbound">Inbound</option>
+                    </select>
+                    <select className="p-2 border rounded" value={log.result} onChange={(e)=>updateCallLog(log.id,'result',e.target.value)}>
+                      <option value="answered">Answered</option>
+                      <option value="no_answer">No Answer</option>
+                      <option value="voicemail">Voicemail</option>
+                      <option value="call_back">Call Back</option>
+                    </select>
+                    <label className="p-2 border rounded flex items-center justify-between">
+                      <span>Recording</span>
+                      <input type="file" accept="audio/*" onChange={(e)=>onUploadRecording(log.id, e.target.files[0])}/>
+                    </label>
+                  </div>
+                  {log.recordingUrl && <audio controls src={log.recordingUrl} className="mt-2 w-full"></audio>}
+                  <div className="mt-2">
+                    <label className="block text-sm font-medium mb-1">Transcript</label>
+                    <textarea className="w-full p-2 border rounded h-24" value={log.transcript} onChange={(e)=>updateCallLog(log.id,'transcript',e.target.value)}/>
+                  </div>
+                </div>
+              ))}
+              {lead.callLogs.length===0 && <div className="text-sm text-gray-500">No call logs.</div>}
+            </div>
+          )}
+
+          <div className="flex gap-3 mt-6">
+            <button onClick={saveLead} className="flex-1 px-4 py-3 bg-gradient-to-r from-green-500 to-green-600 text-white font-semibold rounded-xl hover:shadow-lg">Save</button>
+            <button onClick={onClose} className="flex-1 px-4 py-2 border border-gray-300 rounded-xl hover:bg-gray-50">Cancel</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  /* ---------- Voice + SMS ---------- */
+  const VoiceAI = () => {
+    const [local, setLocal] = useState(voiceSettings);
+    useEffect(()=>{ setLocal(voiceSettings); }, [voiceSettings]);
+    const voices = VOICE_CATALOG[local.provider] || [];
+    const saveVoiceSettings = () => { setVoiceSettings(local); saveNow(); alert('✅ Voice settings saved.'); };
+
+    return (
+      <div className="space-y-6 fade-in">
+        <div className="bg-white rounded-2xl p-6 shadow-lg">
+          <h3 className="text-xl font-bold mb-4">🎙️ Voice AI Configuration</h3>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div className="space-y-4">
+              <div>
+                <label className="block font-medium mb-2">Voice Provider</label>
+                <select className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500" value={local.provider} onChange={(e)=>setLocal(prev=>({...prev, provider:e.target.value, voice:''}))}>
+                  <option value="elevenlabs">ElevenLabs</option>
+                  <option value="openai">OpenAI Voice</option>
+                  <option value="azure">Azure Speech</option>
+                  <option value="google">Google Cloud Speech</option>
+                </select>
+              </div>
+              <div>
+                <label className="block font-medium mb-2">Voice</label>
+                <select className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500" value={local.voice} onChange={(e)=>setLocal(prev=>({...prev, voice:e.target.value}))}>
+                  <option value="">Select…</option>
+                  {voices.map(v=><option key={v} value={v}>{v}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block font-medium mb-2">Style</label>
+                <select className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500" value={local.style} onChange={(e)=>setLocal(prev=>({...prev, style:e.target.value}))}>
+                  <option value="professional">Professional</option>
+                  <option value="friendly">Friendly</option>
+                  <option value="authoritative">Authoritative</option>
+                  <option value="conversational">Conversational</option>
+                </select>
+              </div>
+              <div>
+                <label className="block font-medium mb-2">Response Speed</label>
+                <select className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500" value={local.speed} onChange={(e)=>setLocal(prev=>({...prev, speed:e.target.value}))}>
+                  <option value="fast">Fast (0.5–1s)</option>
+                  <option value="normal">Normal (1–2s)</option>
+                  <option value="thoughtful">Thoughtful (2–3s)</option>
+                </select>
+              </div>
+              <div>
+                <label className="block font-medium mb-2">Time Between Calls</label>
+                <select className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500" value={local.callInterval} onChange={(e)=>setLocal(prev=>({...prev, callInterval: parseInt(e.target.value)}))}>
+                  <option value="15">15 minutes</option>
+                  <option value="30">30 minutes</option>
+                  <option value="60">1 hour</option>
+                  <option value="120">2 hours</option>
+                  <option value="240">4 hours</option>
+                  <option value="1440">1 day</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <label className="flex items-center justify-between p-3 bg-gray-50 rounded-xl">
+                  <span className="font-medium text-sm">Immediate callback on no answer</span>
+                  <div className={`toggle-switch ${local.immediateCallbackOnNoAnswer ? 'active' : ''}`} onClick={()=>setLocal(prev=>({...prev, immediateCallbackOnNoAnswer: !prev.immediateCallbackOnNoAnswer}))}><div className="toggle-slider"></div></div>
+                </label>
+                <label className="flex items-center justify-between p-3 bg-gray-50 rounded-xl">
+                  <span className="font-medium text-sm">Immediate callback after voicemail</span>
+                  <div className={`toggle-switch ${local.immediateCallbackOnVoicemail ? 'active' : ''}`} onClick={()=>setLocal(prev=>({...prev, immediateCallbackOnVoicemail: !prev.immediateCallbackOnVoicemail}))}><div className="toggle-slider"></div></div>
+                </label>
+              </div>
+
+              <div>
+                <label className="block font-medium mb-2">Voicemail Behavior</label>
+                <select className="w-full p-3 border rounded-xl" value={local.voicemailBehavior} onChange={(e)=>setLocal(prev=>({...prev, voicemailBehavior:e.target.value}))}>
+                  <option value="hangup">Detect beep → hang up</option>
+                  <option value="leave_message">Detect beep → leave message</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block font-medium mb-2">Voicemail Script</label>
+                <textarea className="w-full p-3 border rounded-xl h-24" value={local.voicemailScript} onChange={(e)=>setLocal(prev=>({...prev, voicemailScript:e.target.value}))}/>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-medium mb-2">Time Zone</label>
+                  <select className="w-full p-3 border rounded-xl" value={local.timezone} onChange={(e)=>setLocal(prev=>({...prev, timezone:e.target.value}))}>
+                    {US_TZ.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block font-medium mb-2">Call Attempts</label>
+                  <input type="range" min="1" max="5" value={local.callAttempts} onChange={(e)=>setLocal(prev=>({...prev, callAttempts: parseInt(e.target.value)}))} className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"/>
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-medium mb-2">Script Template (Generic)</label>
+                <textarea className="w-full p-3 border rounded-xl h-24" value={local.scripts.generic} onChange={(e)=>setLocal(prev=>({...prev, scripts:{...prev.scripts, generic:e.target.value}}))}/>
+              </div>
+              {['life','term','finalExpense','medicare'].map(key=>{
+                const label = key==='finalExpense' ? 'Final Expense' : key[0].toUpperCase()+key.slice(1);
+                return (
+                  <div key={key}>
+                    <label className="block font-medium mb-2">Script Template ({label})</label>
+                    <textarea className="w-full p-3 border rounded-xl h-20" value={local.scripts[key] || ''} onChange={(e)=>setLocal(prev=>({...prev, scripts:{...prev.scripts, [key]: e.target.value}}))}/>
+                  </div>
+                );
+              })}
+
+              <button onClick={saveVoiceSettings} className="w-full p-3 bg-gradient-to-r from-blue-500 to-purple-600 text-white font-semibold rounded-xl hover:shadow-lg transition-all">💾 Save Voice Settings</button>
+            </div>
+          </div>
+        </div>
+
+        <SMSConfig smsSettings={smsSettings} setSmsSettings={(s)=>{ setSmsSettings(s); saveNow(); }}/>
+      </div>
+    );
+  };
+
+  function SMSConfig({ smsSettings, setSmsSettings }){
+    const DELAY_OPTIONS = [
+      { v: 5, label: '5 minutes' },
+      { v: 15, label: '15 minutes' },
+      { v: 30, label: '30 minutes' },
+      { v: 60, label: '1 hour' },
+      { v: 1440, label: '1 day' },
+      { v: 2880, label: '2 days' },
+      { v: 10080, label: 'Next week' }
+    ];
+    return (
+      <div className="bg-white rounded-2xl p-6 shadow-lg">
+        <h3 className="text-xl font-bold mb-4">💬 SMS Configuration & Drip</h3>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="space-y-4">
+            <div>
+              <label className="block font-medium mb-2">SMS Provider</label>
+              <select className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500" value={smsSettings.provider} onChange={(e)=>setSmsSettings(prev=>({...prev, provider:e.target.value}))}>
+                <option value="twilio">Twilio</option>
+                <option value="messagebird">MessageBird</option>
+                <option value="vonage">Vonage</option>
+              </select>
+            </div>
+            <div className="flex items-center justify-between">
+              <div>
+                <label className="font-medium">Auto-Respond</label>
+                <p className="text-sm text-gray-600">AI replies to inbound texts</p>
+              </div>
+              <div className={`toggle-switch ${smsSettings.autoRespond ? 'active' : ''}`} onClick={()=>setSmsSettings(prev=>({...prev, autoRespond: !prev.autoRespond}))}>
+                <div className="toggle-slider"></div>
+              </div>
+            </div>
+            <div>
+              <label className="block font-medium mb-2">Default Follow-Up Delay</label>
+              <select className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500" value={smsSettings.followUpDelay} onChange={(e)=>setSmsSettings(prev=>({...prev, followUpDelay: parseInt(e.target.value)}))}>
+                {DELAY_OPTIONS.map(o=><option key={o.v} value={o.v}>{o.label}</option>)}
+              </select>
+              <p className="text-xs text-gray-500 mt-1">Per-lead overrides can change this.</p>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block font-medium mb-2">Business Start</label>
+                <input type="time" className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500" value={smsSettings.businessHours.start} onChange={(e)=>setSmsSettings(prev=>({...prev, businessHours:{...prev.businessHours, start:e.target.value}}))}/>
+              </div>
+              <div>
+                <label className="block font-medium mb-2">Business End</label>
+                <input type="time" className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500" value={smsSettings.businessHours.end} onChange={(e)=>setSmsSettings(prev=>({...prev, businessHours:{...prev.businessHours, end:e.target.value}}))}/>
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            <div className="bg-gray-50 p-4 rounded-xl">
+              <h4 className="font-semibold mb-2">📆 Drip Scripts (by day)</h4>
+              {Object.entries(smsSettings.scripts).map(([key,val])=>(
+                <div key={key} className="mb-2">
+                  <label className="block text-sm font-medium mb-1 uppercase">{key}</label>
+                  <textarea className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500 h-20 resize-none" value={val} onChange={(e)=>setSmsSettings(prev=>({...prev, scripts:{...prev.scripts, [key]: e.target.value}}))}/>
+                </div>
+              ))}
+            </div>
+
+            <div className="bg-gray-50 p-4 rounded-xl">
+              <h4 className="font-semibold mb-2">🎯 Situational Scripts</h4>
+              {Object.entries(smsSettings.scriptVariants).map(([key,val])=>(
+                <div key={key} className="mb-2">
+                  <label className="block text-sm font-medium mb-1 capitalize">{key}</label>
+                  <textarea className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500 h-16 resize-none" value={val} onChange={(e)=>setSmsSettings(prev=>({...prev, scriptVariants:{...prev.scriptVariants, [key]: e.target.value}}))}/>
+                </div>
+              ))}
+            </div>
+
+            <button onClick={()=>{ alert('✅ SMS settings saved.'); }} className="w-full p-3 bg-gradient-to-r from-green-500 to-green-600 text-white font-semibold rounded-xl hover:shadow-lg transition-all">💾 Save SMS Settings</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  /* ---------- Objections ---------- */
+  const ObjectionHandling = () => {
+    const [newObjection, setNewObjection] = useState({ objection:'', response:'' });
+    const addObjection = () => {
+      if (!newObjection.objection || !newObjection.response) { alert('Fill both fields'); return; }
+      const obj = { id: Date.now(), ...newObjection };
+      setObjections(prev=>[...prev, obj]); saveNow({ objections: [...objections, obj] });
+      setNewObjection({ objection:'', response:'' });
+      alert('✅ Objection added.');
+    };
+    return (
+      <div className="space-y-6 fade-in">
+        <div className="bg-white rounded-2xl p-6 shadow-lg">
+          <h2 className="text-2xl font-bold mb-4">💬 Objection Handling</h2>
+          <div className="bg-gray-50 p-4 rounded-xl mb-6">
+            <h4 className="font-semibold mb-3">Add New Objection</h4>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-sm font-medium mb-1">Common Objection</label>
+                <input type="text" className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500" placeholder="e.g., I can't afford it right now" value={newObjection.objection} onChange={(e)=>setNewObjection(prev=>({...prev, objection:e.target.value}))}/>
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">AI Response</label>
+                <textarea className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500 h-24 resize-none" placeholder="Write a helpful, empathetic response..." value={newObjection.response} onChange={(e)=>setNewObjection(prev=>({...prev, response:e.target.value}))}/>
+              </div>
+              <button onClick={addObjection} className="px-4 py-2 bg-gradient-to-r from-blue-500 to-purple-600 text-white rounded-xl hover:shadow-lg transition-all">➕ Add Objection</button>
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            <h4 className="font-semibold">Current Objections ({objections.length})</h4>
+            {objections.map(obj=>(
+              <div key={obj.id} className="p-4 border border-gray-200 rounded-xl">
+                <div className="font-semibold text-red-600 mb-2">"{obj.objection}"</div>
+                <div className="text-sm text-gray-700 bg-green-50 p-3 rounded-lg"><strong>Response:</strong> {obj.response}</div>
+              </div>
+            ))}
+            {objections.length===0 && <div className="text-center py-6 text-gray-500">No objections yet.</div>}
           </div>
         </div>
       </div>
     );
   };
 
-  const renderCurrentView = () => {
-    switch (view) {
-      case "dashboard":
-        return renderDashboard();
-      case "leads":
-        return renderLeads();
-      case "settings":
-        return renderSettings();
-      default:
-        return (
-          <div className="p-8 text-center bg-gradient-to-br from-gray-50 to-blue-50 min-h-screen flex items-center justify-center">
-            <div className="card p-12">
-              <div className="text-6xl mb-6">🚧</div>
-              <h1 className="text-3xl font-bold gradient-text mb-4">Feature Coming Soon</h1>
-              <p className="text-gray-600 text-lg">This amazing feature is under development and will be available soon!</p>
-              <button
-                onClick={() => setView("dashboard")}
-                className="btn-primary mt-6 px-8 py-3"
-              >
-                🏠 Back to Dashboard
-              </button>
+  /* ---------- Campaigns (deletable) ---------- */
+  const CampaignManager = () => {
+    const deleteCampaign = (id)=>{
+      if (!confirm('Delete this campaign?')) return;
+      const next = campaigns.filter(c=>c.id!==id);
+      setCampaigns(next); saveNow({ campaigns: next });
+    };
+    return (
+      <div className="bg-white rounded-2xl p-6 shadow-lg fade-in">
+        <h2 className="text-2xl font-bold mb-4">📈 Campaign Manager</h2>
+        <div className="space-y-4">
+          {campaigns.map(c=>(
+            <div key={c.id} className="p-4 border border-gray-200 rounded-xl">
+              <div className="flex justify-between items-start">
+                <div>
+                  <div className="font-semibold">{c.name}</div>
+                  <div className="text-sm text-gray-600">{c.market}/{c.type} • ${c.budget}/day</div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className={`badge ${c.status==='active'?'bg-green-100 text-green-800':'bg-gray-100 text-gray-800'}`}>{c.status}</span>
+                  <button onClick={()=>deleteCampaign(c.id)} className="px-2 py-1 bg-gray-100 rounded text-sm">🗑️</button>
+                </div>
+              </div>
+              <div className="mt-2 text-sm">{c.leads} leads • ${c.costPerLead} CPL</div>
+            </div>
+          ))}
+          {campaigns.length===0 && <div className="text-gray-500">No campaigns yet.</div>}
+        </div>
+      </div>
+    );
+  };
+
+  /* ---------- Analytics ---------- */
+  const Analytics = () => {
+    const a = analyticsData;
+    if (!a) return <div className="bg-white rounded-2xl p-6 shadow-lg">Loading analytics…</div>;
+    return (
+      <div className="space-y-6 fade-in">
+        <div className="bg-white rounded-2xl p-6 shadow-lg">
+          <h2 className="text-2xl font-bold mb-6">📊 Analytics & Reporting</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
+            <div className="text-center p-4 bg-blue-50 rounded-xl"><div className="text-2xl font-bold text-blue-600">${a.overview.avgCostPerLead}</div><div className="text-sm text-blue-800">Avg CPL</div></div>
+            <div className="text-center p-4 bg-green-50 rounded-xl"><div className="text-2xl font-bold text-green-600">{a.performance.callAnswerRate}%</div><div className="text-sm text-green-800">Call Answer Rate</div></div>
+            <div className="text-center p-4 bg-purple-50 rounded-xl"><div className="text-2xl font-bold text-purple-600">{a.performance.schedulingRate}%</div><div className="text-sm text-purple-800">Scheduling Rate</div></div>
+            <div className="text-center p-4 bg-orange-50 rounded-xl"><div className="text-2xl font-bold text-orange-600">${a.performance.revenuePerLead}</div><div className="text-sm text-orange-800">Revenue / Lead</div></div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  /* ---------- Inbound Center (unchanged core) ---------- */
+  const InboundCenter = () => {
+    const [autoMatchUnknown, setAutoMatchUnknown] = useState(true);
+    const [testing, setTesting] = useState(false);
+
+    const matchLeadByPhone = (num) => {
+      const clean = (num||'').replace(/\D/g,'');
+      return leads.find(l => (l.phone||'').replace(/\D/g,'') === clean);
+    };
+
+    const handleInbound = async (evt) => {
+      let matched = matchLeadByPhone(evt.from);
+      let askName = false;
+      if (!matched && autoMatchUnknown) {
+        const nameMatch = (evt.text||'').match(/\b(I'm|I am|This is)\s+([A-Z][a-zA-Z]+)\b/);
+        if (nameMatch) matched = leads.find(l=> (l.name||'').toLowerCase().includes(nameMatch[2].toLowerCase()));
+        if (!matched) askName = true;
+      }
+      const record = { id: Date.now(), ...evt, time: new Date().toLocaleString(), matchedLeadId: matched?.id, status:'received', askName };
+      setInboundEvents(prev => [record, ...prev]); saveNow({ inbound: [record, ...inboundEvents] });
+      try { await fetch('/api/inbound', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ event: record, routing, metadata: evt.type==='call'? routing.metadata.call : routing.metadata.sms }) }).catch(()=>{}); } catch {}
+    };
+
+    useEffect(()=>{
+      let stop=false;
+      (async ()=>{
+        if (testing) {
+          await new Promise(r=>setTimeout(r, 1000));
+          if (!stop) handleInbound({ type:'sms', from:'+1 (555) 333-1212', to:'+1 (555) 111-0000', text:'Hey this is Chris, calling back about the quote' });
+        }
+      })();
+      return ()=>{ stop=true; };
+    },[testing]);
+
+    const copy = async (text)=>{ try{ await navigator.clipboard.writeText(text); alert('Copied'); } catch{} };
+    const webhookBase = window.location.origin || 'https://your-server.com';
+
+    return (
+      <div className="space-y-6 fade-in">
+        <div className="bg-white rounded-2xl p-6 shadow-lg">
+          <h3 className="text-xl font-bold mb-4">📞 Inbound Center</h3>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div className="space-y-4">
+              <div className="bg-gray-50 p-4 rounded-xl">
+                <h4 className="font-semibold mb-2">Webhooks (configure at Twilio/Vonage)</h4>
+                <div className="text-sm">
+                  <div className="flex items-center justify-between mb-2"><span>Inbound Call URL</span><button onClick={()=>copy(`${webhookBase}/webhooks/inbound/call`)} className="text-blue-600 text-sm">Copy</button></div>
+                  <code className="inline block mb-2">{webhookBase}/webhooks/inbound/call</code>
+                </div>
+                <div className="text-sm">
+                  <div className="flex items-center justify-between mb-2"><span>Inbound SMS URL</span><button onClick={()=>copy(`${webhookBase}/webhooks/inbound/sms`)} className="text-blue-600 text-sm">Copy</button></div>
+                  <code className="inline block">{webhookBase}/webhooks/inbound/sms</code>
+                </div>
+              </div>
+              <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl">
+                <div>
+                  <div className="font-medium">Auto-match unknown callers</div>
+                  <div className="text-xs text-gray-600">Try number/name; otherwise ask their name</div>
+                </div>
+                <div className={`toggle-switch ${autoMatchUnknown ? 'active' : ''}`} onClick={()=>setAutoMatchUnknown(!autoMatchUnknown)}><div className="toggle-slider"></div></div>
+              </div>
+              <button onClick={()=>setTesting(v=>!v)} className="w-full p-3 bg-gradient-to-r from-orange-500 to-red-600 text-white font-semibold rounded-xl hover:shadow-lg transition-all">{testing ? '⏹️ Stop Simulated Inbound' : '▶️ Simulate Inbound'}</button>
+            </div>
+
+            <div className="space-y-3">
+              <h4 className="font-semibold">Recent Inbound</h4>
+              {inboundEvents.map(evt=>(
+                <div key={evt.id} className="p-3 border rounded-xl">
+                  <div className="flex justify-between">
+                    <div className="font-semibold">{evt.type==='call'?'📞 Call':'💬 SMS'} from {evt.from || 'unknown'}</div>
+                    <span className="text-xs text-gray-500">{evt.time}</span>
+                  </div>
+                  {evt.text && <div className="text-sm text-gray-700 mt-1">“{evt.text}”</div>}
+                  <div className="text-xs text-gray-600 mt-1">Matched lead: {evt.matchedLeadId ? `#${evt.matchedLeadId}` : (evt.askName ? 'ask for name' : 'not found')}</div>
+                </div>
+              ))}
+              {inboundEvents.length===0 && <div className="text-gray-500 text-sm">No inbound yet.</div>}
             </div>
           </div>
-        );
+        </div>
+      </div>
+    );
+  };
+
+  /* ---------- Imports ---------- */
+  const Imports = () => {
+    const [selectedImport, setSelectedImport] = useState(imports[0] || null);
+    const [importsFilterPlaceholders, setImportsFilterPlaceholders] = useState(true);
+    const [currentMapping, setCurrentMapping] = useState({ name:'', phone:'', email:'', type:'', market:'', location:'', time:'', source:'', custom1:'', custom2:'' });
+
+    useEffect(()=>{ if (!selectedImport && imports.length) setSelectedImport(imports[0]); }, [imports, selectedImport]);
+
+    const rows0 = selectedImport?.rows || [];
+    const headers = Object.keys(rows0[0] || {});
+    const filteredRows = useMemo(()=>{
+      const rows = rows0;
+      if (!importsFilterPlaceholders) return rows.slice(0, 200);
+      return rows.filter(r=>{
+        const values = Object.values(r).join(' ').toLowerCase();
+        return !values.includes('example') && !values.includes('(555)');
+      }).slice(0, 200);
+    },[rows0, importsFilterPlaceholders]);
+
+    const saveMapping = () => {
+      if (!selectedImport) return;
+      const updated = imports.map(i => i.id===selectedImport.id ? { ...i, mapped: currentMapping, dropPlaceholders: importsFilterPlaceholders } : i);
+      setImports(updated); saveNow({ imports: updated });
+      alert('✅ Mapping saved.');
+    };
+    const importToLeads = () => {
+      if (!selectedImport) return;
+      const newLeads = filteredRows.map((row)=>({
+        id: Date.now() + Math.floor(Math.random()*100000),
+        name: row[currentMapping.name] || 'Unknown',
+        phone: row[currentMapping.phone] || '',
+        email: row[currentMapping.email] || '',
+        market: row[currentMapping.market] || 'Insurance',
+        type: (row[currentMapping.type] || 'Other'),
+        source: row[currentMapping.source] || 'Import',
+        location: row[currentMapping.location] || '',
+        time: row[currentMapping.time] || new Date().toLocaleString(),
+        status: 'New',
+        isClient:false,
+        callLogs:[]
+      }));
+      setLeads(prev => [...newLeads, ...prev]);
+      alert(`✅ Imported ${newLeads.length} leads.`);
+    };
+    const deleteImport = () => {
+      if (!selectedImport) return;
+      if (!confirm('Delete this import file from the list?')) return;
+      const updated = imports.filter(i => i.id !== selectedImport.id);
+      setImports(updated); saveNow({ imports: updated });
+      setSelectedImport(updated[0] || null);
+    };
+
+    return (
+      <div className="space-y-6 fade-in">
+        <div className="bg-white rounded-2xl p-6 shadow-lg">
+          <h3 className="text-xl font-bold mb-4">📂 Imports</h3>
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className="space-y-3">
+              <h4 className="font-semibold">Files</h4>
+              {imports.map(imp=>(
+                <button key={imp.id} onClick={()=>{ setSelectedImport(imp); setCurrentMapping(imp.mapped || currentMapping); }}
+                        className={`w-full text-left p-3 border rounded-xl hover:border-blue-300 ${selectedImport?.id===imp.id?'border-blue-400 bg-blue-50':''}`}>
+                  <div className="font-medium">{imp.filename}</div>
+                  <div className="text-xs text-gray-600">{new Date(imp.createdAt).toLocaleString()}</div>
+                </button>
+              ))}
+              {imports.length===0 && <div className="text-sm text-gray-500">No imports yet. Use “Upload CSV”.</div>}
+            </div>
+
+            <div className="lg:col-span-2 space-y-4">
+              {!selectedImport && <div className="text-gray-500">Select an import to view rows and map fields.</div>}
+
+              {selectedImport && (
+                <>
+                  <div className="flex items-center justify-between">
+                    <div className="font-semibold">{selectedImport.filename}</div>
+                    <div className="flex gap-2">
+                      <label className="flex items-center gap-2 text-sm">
+                        <input type="checkbox" checked={importsFilterPlaceholders} onChange={(e)=>setImportsFilterPlaceholders(e.target.checked)}/>
+                        Filter placeholders (e.g., “example”, 555)
+                      </label>
+                      <button onClick={deleteImport} className="px-3 py-1 bg-gray-100 rounded">Delete</button>
+                    </div>
+                  </div>
+
+                  <div className="overflow-auto border rounded-xl">
+                    <table className="min-w-full text-sm">
+                      <thead className="bg-gray-50">
+                        <tr>{headers.map(h=><th key={h} className="px-3 py-2 text-left font-medium text-gray-700">{h}</th>)}</tr>
+                      </thead>
+                      <tbody>
+                        {filteredRows.map((row,idx)=>(
+                          <tr key={idx} className="border-t">{headers.map(h=><td key={h} className="px-3 py-2">{row[h]}</td>)}</tr>
+                        ))}
+                        {filteredRows.length===0 && <tr><td className="px-3 py-6 text-center text-gray-500" colSpan="999">No rows to show.</td></tr>}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div className="text-xs text-gray-500">Showing up to 200 rows (preview).</div>
+
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                    {[
+                      ['name','Name'], ['phone','Phone'], ['email','Email'],
+                      ['market','Market'], ['type','Sub-Type'], ['location','City'], ['time','Time'], ['source','Source'],
+                      ['custom1','Custom 1'], ['custom2','Custom 2']
+                    ].map(([field,label])=>(
+                      <div key={field}>
+                        <label className="block text-sm font-medium mb-1">{label} → {field}</label>
+                        <select className="w-full p-2 border rounded" value={currentMapping[field] || ''} onChange={(e)=>setCurrentMapping(prev=>({...prev, [field]: e.target.value}))}>
+                          <option value="">Skip</option>
+                          {headers.map(h=><option key={h} value={h}>{h}</option>)}
+                        </select>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="flex gap-3">
+                    <button onClick={saveMapping} className="px-4 py-2 bg-gradient-to-r from-blue-500 to-purple-600 text-white rounded-xl">💾 Save Mapping</button>
+                    <button onClick={importToLeads} className="px-4 py-2 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-xl">⬆️ Import to Leads</button>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  /* ---------- Settings ---------- */
+  const Settings = () => {
+    const [tab, setTab] = useState('apis');
+    const saveAll = () => { saveNow(); alert('✅ Settings saved.'); };
+    const changePassword = async ()=>{
+      const oldp = prompt('Enter current password:'); if (!oldp) return;
+      const newp = prompt('Enter new password:'); if (!newp) return;
+      const conf = prompt('Confirm new password:'); if (conf !== newp) { alert('Passwords do not match'); return; }
+      const users = loadUsers();
+      const idx = users.findIndex(x=>emailEq(x.email, me.email)); if (idx<0) return alert('User not found');
+      const oldHash = await sha256(oldp);
+      if (oldHash !== users[idx].passHash) return alert('Current password incorrect');
+      users[idx] = { ...users[idx], passHash: await sha256(newp) };
+      saveUsers(users);
+      alert('✅ Password changed.');
+    };
+
+    return (
+      <div className="space-y-6 fade-in">
+        <div className="bg-white rounded-2xl p-4 lg:p-6 shadow-lg">
+          <div className="flex gap-2 mb-4 flex-wrap">
+            <button onClick={()=>setTab('apis')} className={`px-3 py-2 rounded ${tab==='apis'?'bg-blue-600 text-white':'bg-gray-100'}`}>API Keys</button>
+            <button onClick={()=>setTab('routing')} className={`px-3 py-2 rounded ${tab==='routing'?'bg-blue-600 text-white':'bg-gray-100'}`}>AI Routing & Workers</button>
+            <button onClick={()=>setTab('automation')} className={`px-3 py-2 rounded ${tab==='automation'?'bg-blue-600 text-white':'bg-gray-100'}`}>Automation</button>
+            <button onClick={()=>setTab('account')} className={`px-3 py-2 rounded ${tab==='account'?'bg-blue-600 text-white':'bg-gray-100'}`}>Account</button>
+            {me.isAdmin && <button onClick={()=>setTab('users')} className={`px-3 py-2 rounded ${tab==='users'?'bg-blue-600 text-white':'bg-gray-100'}`}>Users (Admin)</button>}
+          </div>
+
+          {tab==='apis' && (
+            <>
+              <h3 className="text-lg lg:text-xl font-bold mb-4">API Configuration</h3>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {[
+                  ['openai','OpenAI API Key','sk-...','For ad gen & voice'],
+                  ['meta','Meta Access Token','EA...','For Facebook/Instagram campaigns'],
+                  ['elevenlabs','ElevenLabs API Key','elevenlabs-...','For voice calling'],
+                  ['twilio','Twilio Account SID','AC...','For SMS/phone services'],
+                ].map(([key,label,ph,help])=>(
+                  <div key={key}>
+                    <label className="block font-medium mb-2">{label}</label>
+                    <input type="password" className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500" placeholder={ph} value={apiKeys[key]} onChange={(e)=>setApiKeys(prev=>({...prev, [key]: e.target.value}))}/>
+                    <p className="text-xs text-gray-500 mt-1">{help}</p>
+                  </div>
+                ))}
+                <div>
+                  <label className="block font-medium mb-2">Default Voice Provider (links to Voice tab)</label>
+                  <select className="w-full p-3 border rounded-xl" value={voiceSettings.provider} onChange={(e)=>{ setVoiceSettings(prev=>({...prev, provider:e.target.value, voice:''})); }}>
+                    <option value="elevenlabs">ElevenLabs</option>
+                    <option value="openai">OpenAI Voice</option>
+                    <option value="azure">Azure Speech</option>
+                    <option value="google">Google Cloud Speech</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block font-medium mb-2">Default SMS Provider (links to SMS section)</label>
+                  <select className="w-full p-3 border rounded-xl" value={smsSettings.provider} onChange={(e)=>{ setSmsSettings(prev=>({...prev, provider:e.target.value})); }}>
+                    <option value="twilio">Twilio</option>
+                    <option value="messagebird">MessageBird</option>
+                    <option value="vonage">Vonage</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block font-medium mb-2">From Number (SMS)</label>
+                  <input className="w-full p-3 border rounded-xl" placeholder="+1 555 111 0000" value={apiKeys.smsFrom} onChange={(e)=>setApiKeys(prev=>({...prev, smsFrom:e.target.value}))}/>
+                </div>
+                <div>
+                  <label className="block font-medium mb-2">From Number (Voice)</label>
+                  <input className="w-full p-3 border rounded-xl" placeholder="+1 555 222 0000" value={apiKeys.voiceFrom} onChange={(e)=>setApiKeys(prev=>({...prev, voiceFrom:e.target.value}))}/>
+                </div>
+              </div>
+            </>
+          )}
+
+          {tab==='routing' && (
+            <>
+              <h3 className="text-lg lg:text-xl font-bold mb-4">Model Routing & Workers</h3>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div className="space-y-4">
+                  <div className="bg-gray-50 p-4 rounded-xl">
+                    <h4 className="font-semibold mb-2">Brains</h4>
+                    {[
+                      ['callsModel','Calls/SMS brain','gpt-5-mini'],
+                      ['callsEscalationModel','Escalation model','gpt-5'],
+                      ['smsModel','SMS brain','gpt-5-mini'],
+                      ['adsDraftModel','Ads draft model','gpt-5-mini'],
+                      ['adsPolishModel','Ads polish model','gpt-5'],
+                      ['adsImageModel','Ad images model','gpt-image-3.5']
+                    ].map(([field,label,def])=>(
+                      <div key={field} className="mb-2">
+                        <label className="block text-sm font-medium mb-1">{label}</label>
+                        <input type="text" className="w-full p-2 border rounded" value={routing[field]} onChange={(e)=>setRouting(prev=>({...prev, [field]: e.target.value || def}))}/>
+                      </div>
+                    ))}
+                    <p className="text-xs text-gray-600 mt-2">Realtime worker for calls/SMS; batch worker for ads. Kept isolated so calls never lag.</p>
+                  </div>
+
+                  <div className="bg-gray-50 p-4 rounded-xl">
+                    <h4 className="font-semibold mb-2">Workers (limits)</h4>
+                    <div className="mb-3">
+                      <div className="font-medium mb-1">Realtime (calls/SMS)</div>
+                      {['maxTokens','timeoutMs','rpm','tpm'].map(k=>(
+                        <div key={k} className="grid grid-cols-2 gap-2 mb-2">
+                          <label className="text-sm text-gray-600">{k}</label>
+                          <input type="number" className="p-2 border rounded" value={routing.realtimeWorker[k]} onChange={(e)=>setRouting(prev=>({...prev, realtimeWorker:{...prev.realtimeWorker, [k]: parseInt(e.target.value)||0}}))}/>
+                        </div>
+                      ))}
+                    </div>
+                    <div>
+                      <div className="font-medium mb-1">Batch (ads copy/image)</div>
+                      {['maxTokens','timeoutMs','rpm','tpm'].map(k=>(
+                        <div key={k} className="grid grid-cols-2 gap-2 mb-2">
+                          <label className="text-sm text-gray-600">{k}</label>
+                          <input type="number" className="p-2 border rounded" value={routing.batchWorker[k]} onChange={(e)=>setRouting(prev=>({...prev, batchWorker:{...prev.batchWorker, [k]: parseInt(e.target.value)||0}}))}/>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  <div className="bg-gray-50 p-4 rounded-xl">
+                    <h4 className="font-semibold mb-2">Spend Tracking Metadata</h4>
+                    {[
+                      ['call','call'],
+                      ['sms','sms'],
+                      ['adsCopy','ads-copy'],
+                      ['adsImage','ads-image']
+                    ].map(([key,def])=>(
+                      <div key={key} className="mb-3">
+                        <div className="text-sm font-medium mb-1">{key}</div>
+                        <div className="grid grid-cols-3 gap-2 items-center">
+                          <span className="text-xs text-gray-600 col-span-1">channel</span>
+                          <input type="text" className="p-2 border rounded col-span-2" value={routing.metadata[key]?.channel || def} onChange={(e)=>setRouting(prev=>({...prev, metadata:{...prev.metadata, [key]: { ...prev.metadata[key], channel: e.target.value }}}))}/>
+                        </div>
+                      </div>
+                    ))}
+                    <p className="text-xs text-gray-600">Requests are tagged like <code className="inline">{'{channel:"call"|"sms"|"ads-copy"|"ads-image"}'}</code></p>
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
+
+          {tab==='automation' && (
+            <div className="space-y-4">
+              <h3 className="text-lg lg:text-xl font-bold">Automation</h3>
+              <label className="flex items-center justify-between p-3 bg-gray-50 rounded-xl">
+                <span>Auto-start outreach when a Meta lead arrives</span>
+                <div className={`toggle-switch ${automation.autoStartOnMeta ? 'active' : ''}`} onClick={()=>setAutomation(prev=>({...prev, autoStartOnMeta: !prev.autoStartOnMeta}))}><div className="toggle-slider"></div></div>
+              </label>
+              <label className="flex items-center justify-between p-3 bg-gray-50 rounded-xl">
+                <span>Immediate retry on No Answer</span>
+                <div className={`toggle-switch ${automation.immediateRetryOnNoAnswer ? 'active' : ''}`} onClick={()=>setAutomation(prev=>({...prev, immediateRetryOnNoAnswer: !prev.immediateRetryOnNoAnswer}))}><div className="toggle-slider"></div></div>
+              </label>
+              <label className="flex items-center justify-between p-3 bg-gray-50 rounded-xl">
+                <span>Immediate retry after Voicemail</span>
+                <div className={`toggle-switch ${automation.immediateRetryOnVoicemail ? 'active' : ''}`} onClick={()=>setAutomation(prev=>({...prev, immediateRetryOnVoicemail: !prev.immediateRetryOnVoicemail}))}><div className="toggle-slider"></div></div>
+              </label>
+              <div className="text-xs text-gray-600">These work with Voice AI “immediate callback” settings.</div>
+            </div>
+          )}
+
+          {tab==='account' && (
+            <div className="space-y-4">
+              <h3 className="text-lg lg:text-xl font-bold">Account</h3>
+              <div className="p-4 bg-gray-50 rounded-xl">
+                <div className="text-sm text-gray-700"><strong>Email:</strong> {me.email}</div>
+                <div className="text-sm text-gray-700"><strong>Role:</strong> {me.isAdmin ? 'Admin' : 'User'}</div>
+              </div>
+              <div className="flex gap-2">
+                <button onClick={changePassword} className="px-4 py-2 bg-gradient-to-r from-blue-500 to-purple-600 text-white rounded-xl">Change Password</button>
+                <button onClick={onLogout} className="px-4 py-2 bg-red-100 text-red-700 rounded-xl">Logout</button>
+              </div>
+            </div>
+          )}
+
+          {tab==='users' && me.isAdmin && (
+            <UsersAdmin me={me} onImpersonate={(email)=>{
+              saveSession({ email, isAdmin: loadUsers().find(u=>emailEq(u.email,email))?.isAdmin || false });
+              onImpersonate(email);
+            }}/>
+          )}
+
+          {(tab==='apis' || tab==='routing' || tab==='automation') && (
+            <div className="mt-6">
+              <button onClick={saveAll} className="px-6 py-3 bg-gradient-to-r from-blue-500 to-purple-600 text-white font-semibold rounded-xl hover:shadow-lg transition-all">💾 Save</button>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  /* ---------- Utility actions used above ---------- */
+  const getLeadFollowUp = (lead) => {
+    // placeholder for future per-lead overrides (already exists in a previous version)
+    return { enabled: true, followUpDelay: smsSettings.followUpDelay, scripts: smsSettings.scripts };
+  };
+  const followUpLabel = (mins)=>{
+    const n = Number(mins)||0;
+    if (n < 120) return `${n} minutes`;
+    if (n < 24*60) return `${Math.round(n/60)} hours`;
+    if (n % (7*24*60) === 0) return `${n/(7*24*60)} week`;
+    return `${Math.round(n/1440)} day(s)`;
+  };
+  const initiateContact = async (lead, method) => {
+    try {
+      const f = getLeadFollowUp(lead);
+      await fetch('/api/ai-call', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({
+          leadId: lead.id, phoneNumber: lead.phone, method,
+          routing, metadata: method==='call'? routing.metadata.call : routing.metadata.sms,
+          followUp: f
+        })
+      }).catch(()=>{});
+      alert(`✅ ${method==='call'?'Call':'SMS'} initiated (sim).\nFollow-up: ${f.enabled ? followUpLabel(f.followUpDelay) : 'OFF'}`);
+    } catch { alert(`❌ ${method==='call'?'Call':'SMS'} failed.`); }
+  };
+
+  /* ---------- Mount helpers ---------- */
+  function openLeadEditor(lead){
+    const onClose = ()=>{ setEditor(null); };
+    const onSave = (updated)=>{ setLeads(prev => prev.map(l => l.id===updated.id ? updated : l)); };
+    setEditor(<LeadEditorModal initialLead={lead} onClose={onClose} onSave={onSave}/>);
+  }
+  const [editor, setEditor] = useState(null);
+
+  /* ---------- Render ---------- */
+  const renderContent = () => {
+    switch(activeTab) {
+      case 'dashboard': return <Dashboard/>;
+      case 'ad-creator': return <AdCreator/>;
+      case 'leads': return <LeadManagement/>;
+      case 'voice-ai': return <VoiceAI/>;
+      case 'objections': return <ObjectionHandling/>;
+      case 'campaigns': return <CampaignManager/>;
+      case 'analytics': return <Analytics/>;
+      case 'inbound': return <InboundCenter/>;
+      case 'imports': return <Imports/>;
+      case 'settings': return <Settings/>;
+      case 'admin-users': return <UsersAdmin me={me} onImpersonate={(email)=>{ saveSession({ email, isAdmin: loadUsers().find(u=>emailEq(u.email,email))?.isAdmin || false }); onImpersonate(email); }}/>;
+      default: return <Dashboard/>;
     }
   };
 
   return (
-    <div className="flex h-screen overflow-hidden">
-      {renderSidebar()}
-      <div className="flex-1 overflow-y-auto">
-        {renderCurrentView()}
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-purple-50 to-pink-50">
+      <div className="flex flex-col lg:flex-row">
+        <MobileNav/>
+        <Sidebar/>
+        <div className="flex-1 p-4 lg:p-8">
+          <div className="mb-6 lg:mb-8">
+            <h1 className="text-2xl lg:text-4xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent mb-2">
+              {activeTab==='dashboard' && 'Dashboard Overview'}
+              {activeTab==='ad-creator' && 'Professional Ad Creator'}
+              {activeTab==='leads' && 'Lead Management'}
+              {activeTab==='voice-ai' && 'Voice AI System'}
+              {activeTab==='objections' && 'Objection Handling'}
+              {activeTab==='campaigns' && 'Campaign Manager'}
+              {activeTab==='analytics' && 'Analytics & Reporting'}
+              {activeTab==='inbound' && 'Inbound Center'}
+              {activeTab==='imports' && 'Imports & Field Mapping'}
+              {activeTab==='settings' && 'Settings & Configuration'}
+              {activeTab==='admin-users' && 'Users (Admin)'}
+            </h1>
+            <p className="text-sm lg:text-base text-gray-600">Multi-tenant workspace • Logged in as {me.email}</p>
+          </div>
+          {renderContent()}
+        </div>
       </div>
+      {editor}
     </div>
   );
 }
 
-function AppWrapper() {
+/* =========================
+   APP WRAPPER
+   ========================= */
+function AppWrapper(){
   const [me, setMe] = useState(null);
-
-  useEffect(() => {
-    (async () => {
-      await ensureAdmin();
-      const session = loadSession();
-      if (session) {
-        setMe(session);
-      }
-    })();
-  }, []);
-
-  if (!me) {
-    return React.createElement(LoginView, {
-      onLoggedIn: setMe
-    });
-  }
-
-  const logout = () => {
-    clearSession();
-    setMe(null);
-  };
-
-  const impersonate = (email) => {
-    const users = loadUsers();
-    const user = users.find(x => emailEq(x.email, email));
-    if (!user) return;
-    
-    setMe({
-      email: user.email,
-      isAdmin: !!user.isAdmin
-    });
-  };
-
-  return React.createElement(LeadFlowApp, {
-    me,
-    onLogout: logout,
-    onImpersonate: impersonate
-  });
+  useEffect(()=>{ (async ()=>{ await ensureAdmin(); const sess = loadSession(); if (sess) setMe(sess); })(); },[]);
+  if (!me) return <LoginView onLoggedIn={setMe}/>;
+  const logout = ()=>{ clearSession(); setMe(null); };
+  const impersonate = (email)=>{ const u = loadUsers().find(x=>emailEq(x.email,email)); if (!u) return; setMe({ email: u.email, isAdmin: !!u.isAdmin }); };
+  return <LeadFlowApp me={me} onLogout={logout} onImpersonate={impersonate}/>;
 }
 
+/* =========================
+   CSV PARSER
+   ========================= */
+function parseCSV(text){
+  const rows = [];
+  let i=0, field='', row=[], inQuotes=false;
+  const pushField=()=>{ row.push(field); field=''; };
+  const raw = [];
+  row=[];
+  while(i<text.length){
+    const c = text[i];
+    if (c === '"'){
+      if (inQuotes && text[i+1]==='"'){ field+='"'; i++; }
+      else inQuotes = !inQuotes;
+    } else if (c === ',' && !inQuotes){ pushField(); }
+    else if ((c === '\n' || c === '\r') && !inQuotes){
+      pushField();
+      if (row.length>1 || (row.length===1 && row[0]!=='')) raw.push(row);
+      row=[];
+    } else { field+=c; }
+    i++;
+  }
+  if (field.length>0 || row.length){ pushField(); if (row.length) raw.push(row); }
+  if (!raw.length) return [];
+  const headers = raw[0].map(h=>String(h||'').trim() || 'col_'+Math.random().toString(36).slice(2,7));
+  for (let r=1; r<raw.length; r++){
+    const obj = {};
+    for (let c=0; c<headers.length; c++){ obj[headers[c]] = raw[r][c] ?? ''; }
+    rows.push(obj);
+  }
+  return rows;
+}
+
+/* =========================
+   MOUNT
+   ========================= */
 const root = ReactDOM.createRoot(document.getElementById('root'));
-root.render(
-  React.createElement(ErrorBoundary, null,
-    React.createElement(AppWrapper, null)
-  )
-);
+root.render(<AppWrapper/>);
 </script>
 </body>
 </html>
