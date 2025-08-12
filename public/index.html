@@ -3,7 +3,21 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>LeadFlow Pro — Multi-Tenant</title>
+  <title>LeadFlow Pro — Full Build</title>
+  <script>
+    // Optional: quick storage reset when opening with ?reset=1
+    (function(){
+      try {
+        const q = new URLSearchParams(location.search);
+        if (q.get('reset') === '1') {
+          Object.keys(localStorage).forEach(k => { if (k.startsWith('lfp:')) localStorage.removeItem(k); });
+          sessionStorage.clear?.();
+          document.write('<div style="padding:12px;background:#ECFDF5;color:#065F46;font-family:system-ui;border-bottom:1px solid #10B981">✅ Storage cleared. Reloading…</div>');
+          setTimeout(()=>location.replace(location.origin + location.pathname), 600);
+        }
+      } catch(e){}
+    })();
+  </script>
   <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -11,8 +25,8 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   <style>
     body { font-family: 'Inter', sans-serif; }
-    .fade-in { animation: fadeIn .35s ease-in; }
-    @keyframes fadeIn { from { opacity:0; transform: translateY(6px);} to { opacity:1; transform: translateY(0);} }
+    .fade-in { animation: fadeIn .3s ease-in; }
+    @keyframes fadeIn { from { opacity:.001; transform: translateY(6px);} to { opacity:1; transform: translateY(0);} }
     .toggle-switch { position: relative; width: 48px; height: 24px; background: #ccc; border-radius: 12px; cursor: pointer; transition: background .2s; }
     .toggle-switch.active { background: #667eea; }
     .toggle-slider { position:absolute; top:2px; left:2px; width:20px; height:20px; background:#fff; border-radius:50%; transition: transform .2s; }
@@ -25,22 +39,25 @@
 <body>
 <div id="root"></div>
 
-<!-- NOTE: explicit Babel presets so JSX compiles in-browser -->
 <script type="text/babel" data-presets="env,react">
-/* =========================
-   ERROR BOUNDARY
-   ========================= */
+/* ========== Error Boundary ========== */
 class ErrorBoundary extends React.Component {
-  constructor(props){ super(props); this.state = { error: null, info: null }; }
-  componentDidCatch(error, info){ this.setState({ error, info }); }
+  constructor(p){ super(p); this.state = { e:null, info:null }; }
+  componentDidCatch(e, info){ this.setState({ e, info }); }
   render(){
-    if (this.state.error){
+    if (this.state.e) {
       return (
         <div className="min-h-screen p-6 bg-red-50 text-red-900">
           <div className="max-w-3xl mx-auto">
             <h1 className="text-2xl font-bold mb-2">Something broke in the UI</h1>
-            <pre className="p-3 bg-white rounded border overflow-auto">{String(this.state.error)}</pre>
+            <pre className="p-3 bg-white rounded border overflow-auto">{String(this.state.e)}</pre>
             {this.state.info && <pre className="mt-3 p-3 bg-white rounded border overflow-auto">{this.state.info.componentStack}</pre>}
+            <div className="mt-4">
+              <button onClick={()=>{
+                try { Object.keys(localStorage).forEach(k=>{ if(k.startsWith('lfp:')) localStorage.removeItem(k); }); } catch(e){}
+                location.reload();
+              }} className="px-4 py-2 rounded bg-green-600 text-white">Reset App Storage</button>
+            </div>
           </div>
         </div>
       );
@@ -51,9 +68,7 @@ class ErrorBoundary extends React.Component {
 
 const { useState, useEffect } = React;
 
-/* =========================
-   STORAGE / AUTH
-   ========================= */
+/* ========== Storage / Auth ========== */
 const STORAGE_USERS   = 'lfp:users';
 const STORAGE_SESSION = 'lfp:session';
 const WORKSPACE_PREFIX= 'lfp:workspace:'; // + email
@@ -68,30 +83,18 @@ async function sha256(text){
     return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
   } catch { return btoa(unescape(encodeURIComponent(text))); }
 }
-function emailEq(a,b){ return (a||'').trim().toLowerCase() === (b||'').trim().toLowerCase(); }
-function loadUsers(){ try { return JSON.parse(localStorage.getItem(STORAGE_USERS)) || []; } catch { return []; } }
-function saveUsers(users){ localStorage.setItem(STORAGE_USERS, JSON.stringify(users)); }
-function loadSession(){ try { return JSON.parse(localStorage.getItem(STORAGE_SESSION)); } catch { return null; } }
-function saveSession(sess){ localStorage.setItem(STORAGE_SESSION, JSON.stringify(sess)); }
-function clearSession(){ localStorage.removeItem(STORAGE_SESSION); }
-function wsKey(email){ return WORKSPACE_PREFIX + (email||'').trim().toLowerCase(); }
-function loadWorkspace(email){ try{ return JSON.parse(localStorage.getItem(wsKey(email))) || null; } catch { return null; } }
-function saveWorkspace(email, data){ localStorage.setItem(wsKey(email), JSON.stringify(data)); }
+const emailEq=(a,b)=> (a||'').trim().toLowerCase()===(b||'').trim().toLowerCase();
+const safeParse=(j,f)=>{ try{return JSON.parse(j);}catch{return f;} };
+const loadUsers =()=> safeParse(localStorage.getItem(STORAGE_USERS), []);
+const saveUsers = u => { try{ localStorage.setItem(STORAGE_USERS, JSON.stringify(u)); }catch{} };
+const loadSession=()=> safeParse(localStorage.getItem(STORAGE_SESSION), null);
+const saveSession= s => { try{ localStorage.setItem(STORAGE_SESSION, JSON.stringify(s)); }catch{} };
+const clearSession=()=> { try{ localStorage.removeItem(STORAGE_SESSION);}catch{} };
+const wsKey=email=> WORKSPACE_PREFIX+(email||'').trim().toLowerCase();
+const loadWorkspace= email => safeParse(localStorage.getItem(wsKey(email)), null);
+const saveWorkspace= (email,data)=> { try{ localStorage.setItem(wsKey(email), JSON.stringify(data)); }catch{} };
 
-async function ensureAdmin(){
-  let users = loadUsers();
-  const hasAdmin = users.some(u => emailEq(u.email, ADMIN_EMAIL));
-  if (!hasAdmin){
-    const hash = await sha256(ADMIN_PLAIN);
-    users.push({ email: ADMIN_EMAIL, passHash: hash, isAdmin: true, locked: false, createdAt: new Date().toISOString(), lastLogin: null });
-    saveUsers(users);
-    if (!loadWorkspace(ADMIN_EMAIL)){ saveWorkspace(ADMIN_EMAIL, seedWorkspace()); }
-  }
-}
-
-/* =========================
-   CONSTANTS / CATALOGS
-   ========================= */
+/* ========== Constants / Catalogs ========== */
 const VOICE_CATALOG = {
   elevenlabs: ['Alloy','Callum','Rachel','Adam','Domi'],
   openai:     ['Alloy','Verse','Sol','Breeze'],
@@ -120,16 +123,39 @@ const STATUS_LABELS = [
 ];
 const STATUS_ADVANCED = new Set(['App Submitted','Pending','Approved','Paid','Declined']);
 const PROMPT_TEMPLATES = {
-  "Insurance": { "Life": [{ h:"Protect Your Family—Rates Most People Miss", c:"Quick 60-sec quote for {{CITY}} families. Lock in coverage before rates move again.", cta:"get-quote" }] },
-  "Real Estate": { "Buyer Leads": [{ h:"New Listings in {{CITY}}—Before They Hit Zillow", c:"Free daily list under {{PRICE}}. Tap for alerts.", cta:"learn-more" }] }
+  "Insurance": {
+    "Life": [
+      { h:"Protect Your Family—Rates Most People Miss", c:"Quick 60-sec quote for {{CITY}} families. Lock in coverage before rates move again.", cta:"get-quote" },
+      { h:"Life Insurance in {{CITY}} That Fits", c:"Custom options in minutes. No pushy sales.", cta:"learn-more" }
+    ],
+    "Debt Free":[
+      { h:"Crush High-APR Debt Fast", c:"See how policy-backed payoff beats cards at {{APR}}% APR.", cta:"learn-more" }
+    ]
+  },
+  "Real Estate": {
+    "Buyer Leads":[
+      { h:"New Listings in {{CITY}}—Before They Hit Zillow", c:"Free daily list under {{PRICE}}. Tap for alerts.", cta:"learn-more" }
+    ]
+  }
 };
 
-/* =========================
-   DEFAULT WORKSPACE + MIGRATION
-   ========================= */
+/* ========== Defaults + Migration ========== */
 function seedWorkspace(){
   return {
     apiSelection: { voiceProvider: 'elevenlabs', smsProvider: 'twilio' },
+    credentials: {
+      // voice providers
+      openai: { apiKey:'' },
+      elevenlabs: { apiKey:'' },
+      azure: { subscriptionKey:'', region:'' },
+      google: { jsonKey:'' },
+      // sms providers
+      twilio: { accountSid:'', authToken:'', fromNumber:'' },
+      messagebird: { accessKey:'', originator:'' },
+      vonage: { apiKey:'', apiSecret:'', fromNumber:'' },
+      // ads
+      meta: { accessToken:'', adAccountId:'', pageId:'', pixelId:'' }
+    },
     routing: {
       callsModel: 'gpt-5-mini',
       callsEscalationModel: 'gpt-5',
@@ -158,12 +184,14 @@ function seedWorkspace(){
       speed: 'normal',
       callAttempts: 2,
       immediateAttempts: 1,
-      callInterval: 30, // minutes; 1440=1 day
+      callInterval: 30, // minutes (1440 = 1 day)
       immediateCallbackOnNoAnswer: false,
       immediateCallbackOnVoicemail: false,
-      voicemailBehavior: 'leave_message',
+      voicemailBehavior: 'leave_message', // hangup | leave_message
       voicemailScript: 'Sorry I missed you—this is LeadFlow Pro. I’ll text details as well.',
-      scripts: { generic: 'Hi, this is LeadFlow Pro about your request. Do you have a minute?' },
+      scripts: {
+        generic: 'Hi, this is LeadFlow Pro about your request. Do you have a minute?'
+      },
       businessHours: { start:'09:00', end:'17:00' },
       workingDays: ['monday','tuesday','wednesday','thursday','friday'],
       timezone: 'America/Denver'
@@ -171,9 +199,17 @@ function seedWorkspace(){
     smsSettings: {
       provider: 'twilio',
       autoRespond: true,
-      followUpDelay: 15,
-      scripts: { day0:'Hey {{name}}, it’s Josh — got your request. 2 quick questions?', day1:'Been trying to reach you — want a ballpark quote?', day3:'Still here when you are.', day5:'Final ping for now — want a 60-sec summary?' },
-      scriptVariants: { noAnswer:'Missed you, {{name}}.', voicemailDrop:'Left a voicemail — text works great if easier.' },
+      followUpDelay: 15, // minutes default
+      scripts: {
+        day0:'Hey {{name}}, it’s Josh — got your request. 2 quick questions?',
+        day1:'Been trying to reach you — want a ballpark quote?',
+        day3:'Still here when you are.',
+        day5:'Final ping for now — want a 60-sec summary?'
+      },
+      scriptVariants: {
+        noAnswer:'Missed you, {{name}}.',
+        voicemailDrop:'Left a voicemail — text works great if easier.'
+      },
       businessHours: { start:'09:00', end:'17:00' }
     },
     data: {
@@ -190,31 +226,40 @@ function seedWorkspace(){
     }
   };
 }
-const isObj = (o)=> o && typeof o==='object' && !Array.isArray(o);
+const isObj=(o)=> o && typeof o==='object' && !Array.isArray(o);
 function mergeDeep(base, patch){
-  const out = Array.isArray(base) ? [...base] : { ...base };
-  if (!isObj(patch) && !Array.isArray(patch)) return out;
+  const out = Array.isArray(base) ? base.slice() : { ...base };
+  if (!patch) return out;
   for (const k of Object.keys(patch)){
-    const b = base ? base[k] : undefined;
-    const p = patch[k];
+    const b = base ? base[k] : undefined; const p = patch[k];
     if (isObj(b) && isObj(p)) out[k] = mergeDeep(b, p);
     else if (Array.isArray(p)) out[k] = p.slice();
-    else if (p !== undefined) out[k] = p;
+    else if (typeof p !== 'undefined') out[k] = p;
   }
   return out;
 }
 function migrateWorkspace(raw){
-  const defaults = seedWorkspace();
-  const merged = mergeDeep(defaults, raw || {});
-  // ensure mirrors
-  merged.voiceSettings.provider = merged.apiSelection.voiceProvider || 'elevenlabs';
-  merged.smsSettings.provider   = merged.apiSelection.smsProvider || 'twilio';
-  return merged;
+  const d = seedWorkspace();
+  const m = mergeDeep(d, raw || {});
+  // keep providers mirrored
+  m.voiceSettings.provider = m.apiSelection.voiceProvider || 'elevenlabs';
+  m.smsSettings.provider   = m.apiSelection.smsProvider   || 'twilio';
+  return m;
 }
 
-/* =========================
-   LOGIN
-   ========================= */
+/* ========== Bootstrap Admin ========== */
+async function ensureAdmin(){
+  let users = loadUsers();
+  let found = users.some(u => emailEq(u.email, ADMIN_EMAIL));
+  if (!found){
+    const hash = await sha256(ADMIN_PLAIN);
+    users.push({ email: ADMIN_EMAIL, passHash: hash, isAdmin: true, locked: false, createdAt: new Date().toISOString(), lastLogin: null });
+    saveUsers(users);
+    if (!loadWorkspace(ADMIN_EMAIL)) saveWorkspace(ADMIN_EMAIL, seedWorkspace());
+  }
+}
+
+/* ========== Login ========== */
 function LoginView({onLoggedIn}){
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -226,15 +271,13 @@ function LoginView({onLoggedIn}){
     setErr(''); setBusy(true);
     try{
       const users = loadUsers();
-      const idx = users.findIndex(x=>emailEq(x.email, email));
-      if (idx === -1) throw new Error('Invalid email or password');
-      const u = users[idx];
+      const u = users.find(x=>emailEq(x.email, email));
+      if (!u) throw new Error('Invalid email or password');
       if (u.locked) throw new Error('Account locked');
       const hash = await sha256(password);
       if (hash !== u.passHash) throw new Error('Invalid email or password');
-      const copy = [...users];
-      copy[idx] = { ...u, lastLogin: new Date().toISOString() };
-      saveUsers(copy);
+      const upd = users.map(x=> emailEq(x.email, email) ? { ...x, lastLogin: new Date().toISOString() } : x);
+      saveUsers(upd);
       saveSession({ email: u.email, isAdmin: !!u.isAdmin });
       if (!loadWorkspace(u.email)) saveWorkspace(u.email, seedWorkspace());
       onLoggedIn({ email: u.email, isAdmin: !!u.isAdmin });
@@ -251,6 +294,12 @@ function LoginView({onLoggedIn}){
             <div className="text-xl font-bold">LeadFlow Pro</div>
             <div className="text-xs text-gray-500">Secure login</div>
           </div>
+        </div>
+        <div className="flex gap-2 mb-4">
+          <button onClick={()=>{
+            try { Object.keys(localStorage).forEach(k=>{ if(k.startsWith('lfp:')) localStorage.removeItem(k); }); } catch(e){}
+            alert('✅ Storage cleared. Sign in again.');
+          }} className="px-3 py-2 text-sm rounded bg-gray-100">Reset App Storage</button>
         </div>
         <form onSubmit={login} className="space-y-4">
           <div>
@@ -269,9 +318,7 @@ function LoginView({onLoggedIn}){
   );
 }
 
-/* =========================
-   USERS ADMIN
-   ========================= */
+/* ========== Users Admin ========== */
 function UsersAdmin({ me, onImpersonate }){
   const [users, setUsers] = useState(loadUsers());
   const [form, setForm] = useState({ email:'', password:'', isAdmin:false });
@@ -350,66 +397,54 @@ function UsersAdmin({ me, onImpersonate }){
   );
 }
 
-/* =========================
-   WHOLE APP
-   ========================= */
+/* ========== App ========== */
 function LeadFlowApp({ me, onLogout, onImpersonate }){
-  // MIGRATED workspace (prevents undefined errors)
-  const wsSaved = migrateWorkspace(loadWorkspace(me.email));
-  const [apiSelection, setApiSelection] = useState(wsSaved.apiSelection);
-  const [routing, setRouting]         = useState(wsSaved.routing);
-  const [automation, setAutomation]   = useState(wsSaved.automation);
+  // workspace
+  const ws0 = migrateWorkspace(loadWorkspace(me.email));
+  const [apiSelection, setApiSelection] = useState(ws0.apiSelection);
+  const [credentials, setCredentials]   = useState(ws0.credentials);
+  const [routing, setRouting]           = useState(ws0.routing);
+  const [automation, setAutomation]     = useState(ws0.automation);
 
-  // mirror providers to feature settings
-  const [voiceSettings, setVoiceSettings] = useState({ ...wsSaved.voiceSettings, provider: wsSaved.apiSelection.voiceProvider || 'elevenlabs' });
-  const [smsSettings, setSmsSettings]     = useState({ ...wsSaved.smsSettings,   provider: wsSaved.apiSelection.smsProvider   || 'twilio' });
+  const [voiceSettings, setVoiceSettings] = useState({ ...ws0.voiceSettings, provider: ws0.apiSelection.voiceProvider });
+  const [smsSettings, setSmsSettings]     = useState({ ...ws0.smsSettings,   provider: ws0.apiSelection.smsProvider });
 
-  // data
-  const [leads, setLeadsState]         = useState(wsSaved.data.leads || []);
-  const [campaigns, setCampaigns]      = useState(wsSaved.data.campaigns || []);
-  const [objections, setObjections]    = useState(wsSaved.data.objections || []);
-  const [analyticsData, setAnalytics]  = useState(wsSaved.data.analytics || null);
-  const [inboundEvents, setInbound]    = useState(wsSaved.data.inbound || []);
-  const [imports, setImports]          = useState(wsSaved.data.imports || []);
-  const [adLab, setAdLab]              = useState(wsSaved.data.adLab || { variants:[], images:[], rotate:false });
+  const [leads, setLeadsState]       = useState(ws0.data.leads || []);
+  const [campaigns, setCampaigns]    = useState(ws0.data.campaigns || []);
+  const [objections, setObjections]  = useState(ws0.data.objections || []);
+  const [analyticsData, setAnalytics]= useState(ws0.data.analytics || null);
+  const [inboundEvents, setInbound]  = useState(ws0.data.inbound || []);
+  const [imports, setImports]        = useState(ws0.data.imports || []);
+  const [adLab, setAdLab]            = useState(ws0.data.adLab || { variants:[], images:[], rotate:false });
 
-  const [activeTab, setActiveTab]      = useState('dashboard');
+  const [activeTab, setActiveTab] = useState('dashboard');
+
+  // mobile menu state (fixed: correct setter)
   const [showMobileMenu, setShowMobileMenu] = useState(false);
-  const [editor, setEditor] = useState(null);
 
-  // persist helper
+  // persist
   const saveNow = (patch={})=>{
     const wsOut = migrateWorkspace({
-      apiSelection,
-      routing,
-      automation,
+      apiSelection, credentials, routing, automation,
       voiceSettings: { ...voiceSettings, provider: apiSelection.voiceProvider },
       smsSettings:   { ...smsSettings,   provider: apiSelection.smsProvider },
       data: {
         leads, campaigns, objections, analytics: analyticsData,
         inbound: inboundEvents, imports, adLab,
-        ...patch.data
+        ...(patch.data||{})
       }
     });
     saveWorkspace(me.email, wsOut);
   };
-  const setLeads = (updater)=>{
-    const next = typeof updater==='function' ? updater(leads) : updater;
-    setLeadsState(next);
-    saveNow({ data: { leads: next }});
-  };
+  const setLeads = (next)=>{ const out = typeof next==='function' ? next(leads) : next; setLeadsState(out); saveNow({ data:{ leads: out }}); };
 
-  /* ======= DASHBOARD STATS / APV ======= */
-  const startOfWeek=(d)=>{ const x = new Date(d); const day=(x.getDay()+6)%7; x.setHours(0,0,0,0); x.setDate(x.getDate()-day); return x; };
+  /* Stats (APV) */
+  const startOfWeek=(d)=>{ const x=new Date(d); const day=(x.getDay()+6)%7; x.setHours(0,0,0,0); x.setDate(x.getDate()-day); return x; };
   const startOfMonth=(d)=>{ const x=new Date(d); x.setDate(1); x.setHours(0,0,0,0); return x; };
   const startOfYear=(d)=>{ const x=new Date(d); x.setMonth(0,1); x.setHours(0,0,0,0); return x; };
-  const computeAPVStats = (list)=>{
-    const now = new Date(); const w0=startOfWeek(now), m0=startOfMonth(now), y0=startOfYear(now);
-    let week=0, month=0, year=0;
-    list.forEach(l=>{ const apv=Number(l.apv||0); if(!apv) return; const dt=l.apvDate? new Date(l.apvDate): new Date(); if(dt>=w0) week+=apv; if(dt>=m0) month+=apv; if(dt>=y0) year+=apv; });
-    return { week, month, year };
-  };
+  const computeAPVStats = (list)=>{ const now=new Date(), w0=startOfWeek(now), m0=startOfMonth(now), y0=startOfYear(now); let week=0,month=0,year=0; list.forEach(l=>{ const apv=Number(l.apv||0); if(!apv) return; const dt=l.apvDate? new Date(l.apvDate): new Date(); if(dt>=w0) week+=apv; if(dt>=m0) month+=apv; if(dt>=y0) year+=apv; }); return { week, month, year }; };
   const apv = computeAPVStats(leads);
+
   const [stats, setStats] = useState({
     totalLeads: leads.length,
     scheduledToday: leads.filter(l=>l.status==='Scheduled').length,
@@ -425,23 +460,23 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
     });
   }, [leads, analyticsData]);
 
-  /* ======= OPTIONAL INITIAL FETCH (safe) ======= */
+  /* Optional initial fetch (won't crash if missing) */
   useEffect(()=>{
     Promise.allSettled([
       fetch('/api/leads').then(r=>r.json()),
       fetch('/api/campaigns').then(r=>r.json()),
-      fetch('/api/objections').then(r=>r.json()),
-      fetch('/api/analytics').then(r=>r.json())
-    ]).then(([leadsRes, campRes, objRes, anaRes])=>{
-      if (leadsRes.status==='fulfilled' && Array.isArray(leadsRes.value)) setLeads(leadsRes.value);
-      if (campRes.status==='fulfilled' && Array.isArray(campRes.value)) { setCampaigns(campRes.value); saveNow({ data:{ campaigns: campRes.value }}); }
-      if (objRes.status==='fulfilled' && Array.isArray(objRes.value))   { setObjections(objRes.value); saveNow({ data:{ objections: objRes.value }}); }
-      if (anaRes.status==='fulfilled' && anaRes.value)                  { setAnalytics(anaRes.value);  saveNow({ data:{ analytics:  anaRes.value }}); }
+      fetch('/api/analytics').then(r=>r.json()),
+      fetch('/api/objections').then(r=>r.json())
+    ]).then(([a,b,c,d])=>{
+      if (a.status==='fulfilled' && Array.isArray(a.value)) setLeads(a.value);
+      if (b.status==='fulfilled' && Array.isArray(b.value)) { setCampaigns(b.value); saveNow({ data:{ campaigns:b.value }}); }
+      if (c.status==='fulfilled' && c.value) { setAnalytics(c.value); saveNow({ data:{ analytics:c.value }}); }
+      if (d.status==='fulfilled' && Array.isArray(d.value)) { setObjections(d.value); saveNow({ data:{ objections:d.value }}); }
     }).catch(()=>{});
     // eslint-disable-next-line
   },[]);
 
-  /* ======= NAV ======= */
+  /* UI: Mobile Nav (fixed and wired) */
   const MobileNav = () => (
     <div className="lg:hidden bg-white shadow-lg p-4">
       <div className="flex items-center justify-between">
@@ -452,14 +487,14 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
             <div className="text-xs text-gray-600">{me.email}</div>
           </div>
         </div>
-        <button onClick={()=>setShowMobileMenu(!showMobileMenu)} className="p-2 rounded-lg bg-gray-100">☰</button>
+        <button onClick={()=>setShowMobileMenu(v=>!v)} className="p-2 rounded-lg bg-gray-100">☰</button>
       </div>
       {showMobileMenu && (
         <div className="mt-4 space-y-2">
           {[
             { id:'dashboard', icon:'📊', label:'Dashboard' },
             { id:'ad-creator', icon:'🎯', label:'Ad Creator' },
-            { id:'leads', icon:'👥', label:'Leads' },
+            { id:'leads', icon:'👥', label:'Lead Management' },
             { id:'voice-ai', icon:'🎙️', label:'Voice AI' },
             { id:'objections', icon:'💬', label:'Objections' },
             { id:'campaigns', icon:'📈', label:'Campaigns' },
@@ -470,15 +505,18 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
             ...(me.isAdmin ? [{ id:'admin-users', icon:'🛡️', label:'Users (Admin)' }] : []),
           ].map(({id,icon,label})=>(
             <button key={id} onClick={()=>{ setActiveTab(id); setShowMobileMenu(false); }}
-              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeTab===id ? 'bg-gradient-to-r from-blue-500 to-purple-600 text-white' : 'hover:bg-blue-50 text-gray-700'}`}>
+              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeTab===id?'bg-gradient-to-r from-blue-500 to-purple-600 text-white':'hover:bg-blue-50 text-gray-700'}`}>
               <span className="text-xl">{icon}</span>{label}
             </button>
           ))}
-          <button onClick={onLogout} className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-red-50 text-red-600">🚪 Logout</button>
+          <button onClick={onLogout} className="w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all hover:bg-red-50 text-red-600">
+            <span className="text-xl">🚪</span>Logout
+          </button>
         </div>
       )}
     </div>
   );
+
   const Sidebar = () => (
     <div className="hidden lg:block w-80 bg-white bg-opacity-95 backdrop-blur-lg p-6 shadow-xl">
       <div className="flex items-center gap-3 mb-8 pb-4 border-b-2 border-gray-200">
@@ -493,13 +531,13 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
           { id:'dashboard', icon:'📊', label:'Dashboard' },
           { id:'ad-creator', icon:'🎯', label:'Ad Creator' },
           { id:'leads', icon:'👥', label:'Lead Management' },
-          { id:'voice-ai', icon:'🎙️', label:'Voice AI System' },
-          { id:'objections', icon:'💬', label:'Objection Handling' },
-          { id:'campaigns', icon:'📈', label:'Campaign Manager' },
+          { id:'voice-ai', icon:'🎙️', label:'Voice AI' },
+          { id:'objections', icon:'💬', label:'Objections' },
+          { id:'campaigns', icon:'📈', label:'Campaigns' },
           { id:'analytics', icon:'📊', label:'Analytics' },
           { id:'inbound', icon:'📞', label:'Inbound Center' },
-          { id:'imports', icon:'📂', label:'Imports & Mapping' },
-          { id:'settings', icon:'⚙️', label:'Settings & Configuration' },
+          { id:'imports', icon:'📂', label:'Imports' },
+          { id:'settings', icon:'⚙️', label:'Settings' },
           ...(me.isAdmin ? [{ id:'admin-users', icon:'🛡️', label:'Users (Admin)' }] : []),
         ].map(({id,icon,label})=>(
           <button key={id} onClick={()=>setActiveTab(id)}
@@ -514,7 +552,7 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
     </div>
   );
 
-  /* ======= DASHBOARD (no recent leads) ======= */
+  /* ========== Dashboard (no recent leads) ========== */
   const Dashboard = () => (
     <div className="space-y-6 fade-in">
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-6">
@@ -558,10 +596,11 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
     </div>
   );
 
-  /* ======= AD CREATOR (with creative preview, variants, images) ======= */
+  /* ========== Ad Creator (unchanged logic) ========== */
   const AdCreator = () => {
     const [adForm, setAdForm] = useState({
-      market: 'Insurance', subType: '', targetLocations: '', minAge: '', maxAge: '', dailyBudget: '', headline: '', copy: '', cta: 'learn-more'
+      market: 'Insurance', subType: '', targetLocations: '', minAge: '', maxAge: '', dailyBudget: '',
+      headline: '', copy: '', cta: 'learn-more'
     });
     const [localVariants, setLocalVariants] = useState(adLab.variants || []);
     const [images, setImages] = useState(adLab.images || []);
@@ -571,8 +610,8 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
     const applyTemplate = (tpl)=>{
       setAdForm(prev=>({
         ...prev,
-        headline: tpl.h.replace('{{CITY}}','your area').replace('{{PRICE}}','500k'),
-        copy: tpl.c.replace('{{CITY}}','your area'),
+        headline: tpl.h.replace('{{CITY}}','your area'),
+        copy: tpl.c.replace('{{CITY}}','your area').replace('{{APR}}','24').replace('{{PRICE}}','500k'),
         cta: tpl.cta || prev.cta
       }));
     };
@@ -585,6 +624,19 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
       setAdLab({ ...adLab, variants: next, images });
       saveNow({ data:{ adLab: { ...adLab, variants: next, images } }});
     };
+    const generateDrafts = ()=>{
+      const drafts = Array.from({length:3}).map((_,i)=>({
+        id: Date.now()+i+1,
+        headline: `[Draft] ${adForm.subType || adForm.market} — Variant ${i+1}`,
+        copy: `Fresh angle ${i+1} for ${adForm.market}/${adForm.subType}.`,
+        cta: adForm.cta, impressions:0, clicks:0, imageId: images[0]?.id || null
+      }));
+      const next = [...drafts, ...localVariants];
+      setLocalVariants(next);
+      setAdLab({ ...adLab, variants: next, images });
+      saveNow({ data:{ adLab: { ...adLab, variants: next, images } }});
+    };
+
     const uploadImage = (file)=>{
       if (!file) return;
       const url = URL.createObjectURL(file);
@@ -600,13 +652,13 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
       ctx.fillStyle='#111827'; ctx.font='28px Inter'; ctx.fillText(adForm.subType || 'Ad Creative', 30, 60);
       ctx.font='20px Inter'; ctx.fillText(adForm.headline || 'Headline goes here', 30, 110);
       const url = canv.toDataURL('image/png');
+      const dataURLtoFile=(dataurl, filename)=>{
+        const arr = dataurl.split(','), mime = arr[0].match(/:(.*?);/)[1], bstr = atob(arr[1]); let n = bstr.length; const u8arr = new Uint8Array(n);
+        while(n--){ u8arr[n] = bstr.charCodeAt(n); }
+        return new File([u8arr], filename, {type:mime});
+      };
       uploadImage(dataURLtoFile(url, 'placeholder.png'));
     };
-    const dataURLtoFile=(dataurl, filename)=>{
-      const arr = dataurl.split(','), mime = arr[0].match(/:(.*?);/)[1], bstr = atob(arr[1]); let n = bstr.length; const u8arr = new Uint8Array(n);
-      while(n--){ u8arr[n] = bstr.charCodeAt(n); }
-      return new File([u8arr], filename, {type:mime});
-    }
     const linkImage = (variantId, imageId)=>{
       const next = localVariants.map(v=> v.id===variantId ? { ...v, imageId } : v);
       setLocalVariants(next);
@@ -615,6 +667,11 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
     };
     const launchCampaign = async ()=>{
       if (!adForm.headline || !adForm.copy || !adForm.targetLocations || !adForm.subType) { alert('Fill headline, copy, locations, and sub-type'); return; }
+      const meta = credentials.meta || {};
+      if (!meta.accessToken || !meta.adAccountId) {
+        alert('⚠️ Meta credentials missing (Access Token + Ad Account ID). Set them in Settings → API Credentials.');
+        return;
+      }
       const body = {
         name: `${adForm.market}/${adForm.subType} - ${adForm.targetLocations}`,
         market: adForm.market, type: adForm.subType,
@@ -706,6 +763,7 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
               </div>
               <div className="flex gap-2">
                 <button onClick={addVariant} className="px-3 py-2 bg-purple-100 text-purple-700 rounded-lg">➕ Add Variant</button>
+                <button onClick={generateDrafts} className="px-3 py-2 bg-gray-100 rounded-lg">⚡ Generate 3 Drafts (sim)</button>
                 <button onClick={launchCampaign} className="px-3 py-2 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-lg">🚀 Launch Campaign</button>
               </div>
             </div>
@@ -717,7 +775,7 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
             <h3 className="text-lg lg:text-xl font-bold">Creative Preview</h3>
             <div className="flex items-center gap-3">
               <span className="text-sm">Rotate Variants</span>
-              <div className={`toggle-switch ${adLab.rotate ? 'active' : ''}`} onClick={()=>{ const nv = !adLab.rotate; setAdLab({...adLab, rotate:nv}); saveNow({ data:{ adLab: { ...adLab, rotate:nv }}}); }}>
+              <div className={`toggle-switch ${adLab.rotate ? 'active' : ''}`} onClick={()=>{ const nv=!adLab.rotate; setAdLab({...adLab, rotate:nv}); saveNow({ data:{ adLab:{...adLab, rotate:nv}}); }}>
                 <div className="toggle-slider"></div>
               </div>
             </div>
@@ -787,7 +845,7 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
                     <td className="px-3 py-2"><button onClick={()=>{ const nv=localVariants.filter(x=>x.id!==v.id); setLocalVariants(nv); setAdLab({...adLab, variants:nv}); saveNow({ data:{ adLab:{...adLab, variants:nv}}}); }} className="px-2 py-1 bg-gray-100 rounded">Delete</button></td>
                   </tr>
                 ))}
-                {localVariants.length===0 && <tr><td className="px-3 py-4 text-center text-gray-500" colSpan="6">No variants yet. Add one above.</td></tr>}
+                {localVariants.length===0 && <tr><td className="px-3 py-4 text-center text-gray-500" colSpan="6">No variants yet. Add or generate above.</td></tr>}
               </tbody>
             </table>
           </div>
@@ -798,7 +856,7 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
     );
   };
 
-  /* ======= LEADS (editor modal included) ======= */
+  /* ========== Lead Management (editor modal, statuses, APV, notes, recordings) ========== */
   const LeadManagement = () => {
     const [searchTerm, setSearchTerm] = useState('');
     const [filterMarket, setFilterMarket] = useState('');
@@ -807,6 +865,7 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
     const [showImportModal, setShowImportModal] = useState(false);
     const [showTestModal, setShowTestModal] = useState(false);
     const [showAddLead, setShowAddLead] = useState(false);
+    const [editingLead, setEditingLead] = useState(null);
 
     const filteredLeads = leads.filter(lead => {
       const term = searchTerm.toLowerCase();
@@ -818,11 +877,11 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
     });
 
     const parseCSV = (text)=>{
-      const rows = []; let i=0, field='', row=[], inQuotes=false; const raw=[];
+      const rows=[]; let i=0, field='', row=[], inQuotes=false; const raw=[];
       const pushField=()=>{ row.push(field); field=''; };
       while(i<text.length){
-        const c = text[i];
-        if (c === '"'){ if (inQuotes && text[i+1]==='"'){ field+='"'; i++; } else inQuotes = !inQuotes; }
+        const c=text[i];
+        if (c === '"'){ if (inQuotes && text[i+1]==='"'){ field+='"'; i++; } else inQuotes=!inQuotes; }
         else if (c === ',' && !inQuotes){ pushField(); }
         else if ((c === '\n' || c === '\r') && !inQuotes){ pushField(); if (row.length) raw.push(row); row=[]; }
         else { field+=c; }
@@ -831,7 +890,7 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
       if (field.length>0 || row.length){ pushField(); if (row.length) raw.push(row); }
       if (!raw.length) return [];
       const headers = raw[0].map(h=>String(h||'').trim() || 'col_'+Math.random().toString(36).slice(2,7));
-      for (let r=1; r<raw.length; r++){ const obj = {}; for (let c=0;c<headers.length;c++){ obj[headers[c]] = raw[r][c] ?? ''; } rows.push(obj); }
+      for (let r=1;r<raw.length;r++){ const obj={}; for (let c=0;c<headers.length;c++){ obj[headers[c]] = raw[r][c] ?? ''; } rows.push(obj); }
       return rows;
     };
 
@@ -859,14 +918,7 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
       setLeads(prev => [created, ...prev]);
     };
     const updateLead = (lead)=> setLeads(prev => prev.map(l => l.id===lead.id ? lead : l));
-    const deleteLead = async (leadId) => { if (!confirm('Delete this lead?')) return; setLeads(prev => prev.filter(l=>l.id!==leadId)); };
-
-    function openLeadEditor(lead){
-      setEditor(<LeadEditorModal initialLead={lead} onClose={()=>setEditor(null)} onSave={(updated)=>{ 
-        if (updated.id==='new') addLead(updated); else updateLead(updated);
-        setEditor(null);
-      }}/>);
-    }
+    const deleteLead = (leadId)=>{ if (!confirm('Delete this lead?')) return; setLeads(prev => prev.filter(l=>l.id!==leadId)); };
 
     return (
       <div className="space-y-6 fade-in">
@@ -905,14 +957,14 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
               <div key={lead.id} className="p-4 border border-gray-200 rounded-xl hover:border-blue-300 transition-all">
                 <div className="flex flex-col sm:flex-row justify-between items-start gap-3 mb-3">
                   <div>
-                    <button onClick={()=>openLeadEditor(lead)} className="font-semibold text-lg text-left hover:underline">{lead.name}</button>
+                    <button onClick={()=>setEditingLead(lead)} className="font-semibold text-lg text-left hover:underline">{lead.name}</button>
                     <div className="text-sm text-gray-600">{lead.phone || '—'} • {lead.email || '—'}</div>
                   </div>
                   <div className="flex items-center gap-2">
                     <span className={`badge ${lead.status==='Paid'?'bg-green-100 text-green-800':'bg-gray-100 text-gray-800'}`}>{lead.status}</span>
                     {lead.isClient && <span className="badge bg-green-50 text-green-700 border border-green-200">Client</span>}
-                    <button onClick={()=>openLeadEditor(lead)} className="px-2 py-1 text-sm bg-blue-100 text-blue-700 rounded">✏️ Edit</button>
-                    <button onClick={()=>{ if(confirm('Delete this lead?')) deleteLead(lead.id); }} className="px-2 py-1 text-sm bg-gray-100 rounded">🗑️</button>
+                    <button onClick={()=>setEditingLead(lead)} className="px-2 py-1 text-sm bg-blue-100 text-blue-700 rounded">✏️ Edit</button>
+                    <button onClick={()=>deleteLead(lead.id)} className="px-2 py-1 text-sm bg-gray-100 rounded">🗑️</button>
                   </div>
                 </div>
                 <div className="text-sm text-gray-600">{lead.market}/{lead.type} • {lead.location || '—'} • {lead.time || '—'}</div>
@@ -923,6 +975,7 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
           </div>
         </div>
 
+        {/* Import Modal */}
         {showImportModal && (
           <div className="fixed inset-0 bg-black bg-opacity-50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
             <div className="bg-white rounded-2xl p-6 max-w-md w-full">
@@ -950,6 +1003,7 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
           </div>
         )}
 
+        {/* Test System Modal */}
         {showTestModal && (
           <div className="fixed inset-0 bg-black bg-opacity-50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
             <div className="bg-white rounded-2xl p-6 max-w-md w-full">
@@ -972,6 +1026,7 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
           </div>
         )}
 
+        {/* Add lead */}
         {showAddLead && (
           <LeadEditorModal
             initialLead={{ id: 'new', market:'Insurance', type:'Life', source:'Manual', name:'', phone:'', email:'', location:'', status:'New', notes:'' }}
@@ -987,14 +1042,30 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
             }}
           />
         )}
+
+        {/* Editor */}
+        {editingLead && (
+          <LeadEditorModal
+            initialLead={editingLead}
+            onClose={()=>setEditingLead(null)}
+            onSave={(saved)=>{
+              setLeads(prev => prev.map(l => l.id===saved.id ? saved : l));
+              setEditingLead(null);
+            }}
+          />
+        )}
       </div>
     );
   };
 
   function LeadEditorModal({ initialLead, onClose, onSave }) {
-    const [lead, setLead] = useState({ ...initialLead, callLogs: initialLead.callLogs || [], debt: initialLead.debt || { creditCards:[], mortgages:[], cars:[], others:[] } });
+    const [lead, setLead] = useState({
+      ...initialLead,
+      callLogs: initialLead.callLogs || [],
+      debt: initialLead.debt || { creditCards:[], mortgages:[], cars:[], others:[] },
+      smsOverride: initialLead.smsOverride || { enabled:false, followUpDelay:null, off:false }
+    });
     const [tab, setTab] = useState('profile');
-
     const isInsurance = lead.market === 'Insurance';
     const showAPV = isInsurance && STATUS_ADVANCED.has(lead.status);
 
@@ -1028,8 +1099,10 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
           </div>
 
           <div className="flex gap-2 flex-wrap mb-4">
-            {['profile','status','debt','notes','calls'].map(t=>(
-              <button key={t} onClick={()=>setTab(t)} className={`px-3 py-2 rounded ${tab===t ? 'bg-blue-600 text-white':'bg-gray-100'}`}>{t==='profile'?'Profile':t==='status'?'Status & APV':t==='debt'?'Debt Worksheet':t==='notes'?'Notes':'Calls'}</button>
+            {['profile','status','debt','notes','calls','sms'].map(t=>(
+              <button key={t} onClick={()=>setTab(t)} className={`px-3 py-2 rounded ${tab===t ? 'bg-blue-600 text-white':'bg-gray-100'}`}>
+                {t==='profile'?'Profile':t==='status'?'Status & APV':t==='debt'?'Debt Worksheet':t==='notes'?'Notes':t==='calls'?'Calls':'SMS Override'}
+              </button>
             ))}
           </div>
 
@@ -1164,6 +1237,39 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
             </div>
           )}
 
+          {tab==='sms' && (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between p-3 bg-gray-50 rounded-xl">
+                <div>
+                  <div className="font-medium">Override follow-up for this lead</div>
+                  <div className="text-xs text-gray-600">If on, this beats the default SMS settings</div>
+                </div>
+                <div className={`toggle-switch ${lead.smsOverride.enabled ? 'active' : ''}`} onClick={()=>setLead(prev=>({...prev, smsOverride:{...prev.smsOverride, enabled:!prev.smsOverride.enabled}}))}><div className="toggle-slider"></div></div>
+              </div>
+              <div className={`grid grid-cols-1 md:grid-cols-3 gap-3 ${lead.smsOverride.enabled ? '' : 'opacity-50 pointer-events-none'}`}>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Follow-up Delay</label>
+                  <select className="w-full p-3 border rounded" value={lead.smsOverride.followUpDelay ?? ''} onChange={(e)=>setLead(prev=>({...prev, smsOverride:{...prev.smsOverride, followUpDelay: e.target.value ? parseInt(e.target.value) : null}}))}>
+                    <option value="">Use default</option>
+                    <option value="5">5 minutes</option>
+                    <option value="15">15 minutes</option>
+                    <option value="30">30 minutes</option>
+                    <option value="60">1 hour</option>
+                    <option value="1440">1 day</option>
+                    <option value="2880">2 days</option>
+                    <option value="10080">Next week</option>
+                  </select>
+                </div>
+                <div className="md:col-span-2 flex items-center">
+                  <label className="flex items-center gap-2">
+                    <input type="checkbox" checked={!!lead.smsOverride.off} onChange={(e)=>setLead(prev=>({...prev, smsOverride:{...prev.smsOverride, off:e.target.checked}}))}/>
+                    <span className="text-sm">Turn off follow-ups for this lead</span>
+                  </label>
+                </div>
+              </div>
+            </div>
+          )}
+
           <div className="flex gap-3 mt-6">
             <button onClick={saveLead} className="flex-1 px-4 py-3 bg-gradient-to-r from-green-500 to-green-600 text-white font-semibold rounded-xl hover:shadow-lg">Save</button>
             <button onClick={onClose} className="flex-1 px-4 py-2 border border-gray-300 rounded-xl hover:bg-gray-50">Cancel</button>
@@ -1173,7 +1279,7 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
     );
   }
 
-  /* ======= VOICE + SMS (providers controlled in Settings → APIs) ======= */
+  /* ========== Voice + SMS Config ========== */
   const VoiceAI = () => {
     const [local, setLocal] = useState({ ...voiceSettings, provider: apiSelection.voiceProvider });
     useEffect(()=>{ setLocal(prev=>({ ...prev, provider: apiSelection.voiceProvider })); }, [apiSelection.voiceProvider]);
@@ -1184,7 +1290,7 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
       <div className="space-y-6 fade-in">
         <div className="bg-white rounded-2xl p-6 shadow-lg">
           <h3 className="text-xl font-bold mb-2">🎙️ Voice AI Configuration</h3>
-          <p className="text-xs text-gray-600 mb-4">Provider is set in <strong>Settings → API Selection</strong>.</p>
+          <p className="text-xs text-gray-600 mb-4">Provider is selected in <strong>Settings → API Selection</strong>. Choose voice & policies here.</p>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <div className="space-y-4">
               <div><label className="block font-medium mb-2">Provider</label><input className="w-full p-3 border rounded-xl bg-gray-50" value={local.provider} readOnly/></div>
@@ -1283,7 +1389,7 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
     return (
       <div className="bg-white rounded-2xl p-6 shadow-lg">
         <h3 className="text-xl font-bold mb-2">💬 SMS Configuration & Drip</h3>
-        <p className="text-xs text-gray-600 mb-4">Provider is set in <strong>Settings → API Selection</strong>.</p>
+        <p className="text-xs text-gray-600 mb-4">Provider is selected in <strong>Settings → API Selection</strong>. Manage scripts and follow-ups here.</p>
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <div className="space-y-4">
             <div><label className="block font-medium mb-2">Provider</label><input className="w-full p-3 border rounded-xl bg-gray-50" value={smsSettings.provider} readOnly/></div>
@@ -1316,7 +1422,6 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
                 </div>
               ))}
             </div>
-
             <div className="bg-gray-50 p-4 rounded-xl">
               <h4 className="font-semibold mb-2">🎯 Situational Scripts</h4>
               {Object.entries(smsSettings.scriptVariants).map(([key,val])=>(
@@ -1326,7 +1431,6 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
                 </div>
               ))}
             </div>
-
             <button onClick={()=>{ alert('✅ SMS settings saved.'); }} className="w-full p-3 bg-gradient-to-r from-green-500 to-green-600 text-white font-semibold rounded-xl">💾 Save SMS Settings</button>
           </div>
         </div>
@@ -1334,7 +1438,7 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
     );
   }
 
-  /* ======= OBJECTIONS ======= */
+  /* ========== Objections ========== */
   const ObjectionHandling = () => {
     const [newObjection, setNewObjection] = useState({ objection:'', response:'' });
     const addObjection = () => {
@@ -1371,7 +1475,7 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
     );
   };
 
-  /* ======= CAMPAIGNS (view/edit & delete) ======= */
+  /* ========== Campaigns ========== */
   const CampaignManager = () => {
     const [editing, setEditing] = useState(null);
     const onDelete = (id)=>{
@@ -1490,7 +1594,7 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
     );
   }
 
-  /* ======= ANALYTICS ======= */
+  /* ========== Analytics ========== */
   const Analytics = () => {
     const a = analyticsData || { overview:{avgCostPerLead:0}, performance:{callAnswerRate:0,schedulingRate:0,revenuePerLead:0} };
     const statusCounts = STATUS_LABELS.reduce((acc,s)=> (acc[s]=leads.filter(l=>l.status===s).length, acc), {});
@@ -1534,7 +1638,7 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
     );
   };
 
-  /* ======= INBOUND CENTER ======= */
+  /* ========== Inbound Center (receive calls/SMS) ========== */
   const InboundCenter = () => {
     const [autoMatchUnknown, setAutoMatchUnknown] = useState(true);
     const [testing, setTesting] = useState(false);
@@ -1608,24 +1712,44 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
     );
   };
 
-  /* ======= IMPORTS (placeholder page; mapping flow is in Leads) ======= */
+  /* ========== Imports Placeholder ========== */
   const Imports = () => <div className="bg-white rounded-2xl p-6 shadow-lg fade-in">Use the imports flow from Leads.</div>;
 
-  /* ======= SETTINGS (central API selection) ======= */
+  /* ========== Settings ========== */
   const Settings = () => {
     const [tab, setTab] = useState('apis');
-    const saveAll = () => { 
+
+    const saveAll = () => {
       setVoiceSettings(prev=>({ ...prev, provider: apiSelection.voiceProvider }));
       setSmsSettings(prev=>({ ...prev, provider: apiSelection.smsProvider }));
-      saveNow(); 
+      saveNow();
       alert('✅ Settings saved.');
     };
+
+    const setCred = (path, value)=>{
+      const parts = path.split('.');
+      setCredentials(prev=>{
+        const next = { ...prev };
+        let cur = next;
+        for (let i=0;i<parts.length-1;i++){
+          const k = parts[i];
+          cur[k] = { ...(cur[k]||{}) };
+          cur = cur[k];
+        }
+        cur[parts[parts.length-1]] = value;
+        return next;
+      });
+    };
+
+    const vProv = apiSelection.voiceProvider;
+    const sProv = apiSelection.smsProvider;
 
     return (
       <div className="space-y-6 fade-in">
         <div className="bg-white rounded-2xl p-4 lg:p-6 shadow-lg">
           <div className="flex gap-2 mb-4 flex-wrap">
             <button onClick={()=>setTab('apis')} className={`px-3 py-2 rounded ${tab==='apis'?'bg-blue-600 text-white':'bg-gray-100'}`}>API Selection</button>
+            <button onClick={()=>setTab('creds')} className={`px-3 py-2 rounded ${tab==='creds'?'bg-blue-600 text-white':'bg-gray-100'}`}>API Credentials</button>
             <button onClick={()=>setTab('routing')} className={`px-3 py-2 rounded ${tab==='routing'?'bg-blue-600 text-white':'bg-gray-100'}`}>AI Routing & Workers</button>
             <button onClick={()=>setTab('automation')} className={`px-3 py-2 rounded ${tab==='automation'?'bg-blue-600 text-white':'bg-gray-100'}`}>Automation</button>
             <button onClick={()=>setTab('account')} className={`px-3 py-2 rounded ${tab==='account'?'bg-blue-600 text-white':'bg-gray-100'}`}>Account</button>
@@ -1634,7 +1758,7 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
 
           {tab==='apis' && (
             <>
-              <h3 className="text-lg lg:text-xl font-bold mb-4">API Selection (centralized)</h3>
+              <h3 className="text-lg lg:text-xl font-bold mb-4">API Selection</h3>
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <div>
                   <label className="block font-medium mb-2">Voice Provider</label>
@@ -1654,7 +1778,106 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
                   </select>
                 </div>
               </div>
-              <p className="text-xs text-gray-600 mt-3">Selections flow automatically to Voice AI and SMS pages.</p>
+              <p className="text-xs text-gray-600 mt-3">These flow automatically to Voice AI & SMS screens. Credentials are set in the next tab.</p>
+            </>
+          )}
+
+          {tab==='creds' && (
+            <>
+              <h3 className="text-lg lg:text-xl font-bold mb-4">API Credentials</h3>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* Voice provider credentials */}
+                <div className="bg-gray-50 p-4 rounded-xl">
+                  <div className="font-semibold mb-2">Voice — {vProv}</div>
+                  {vProv==='elevenlabs' && (
+                    <>
+                      <label className="block text-sm mb-1">ElevenLabs API Key</label>
+                      <input type="password" className="w-full p-2 border rounded" value={credentials.elevenlabs.apiKey} onChange={(e)=>setCred('elevenlabs.apiKey', e.target.value)}/>
+                    </>
+                  )}
+                  {vProv==='openai' && (
+                    <>
+                      <label className="block text-sm mb-1">OpenAI API Key</label>
+                      <input type="password" className="w-full p-2 border rounded" value={credentials.openai.apiKey} onChange={(e)=>setCred('openai.apiKey', e.target.value)}/>
+                    </>
+                  )}
+                  {vProv==='azure' && (
+                    <>
+                      <label className="block text-sm mb-1">Azure Subscription Key</label>
+                      <input type="password" className="w-full p-2 border rounded" value={credentials.azure.subscriptionKey} onChange={(e)=>setCred('azure.subscriptionKey', e.target.value)}/>
+                      <label className="block text-sm mt-2 mb-1">Region</label>
+                      <input className="w-full p-2 border rounded" value={credentials.azure.region} onChange={(e)=>setCred('azure.region', e.target.value)}/>
+                    </>
+                  )}
+                  {vProv==='google' && (
+                    <>
+                      <label className="block text-sm mb-1">Google Service Account JSON</label>
+                      <textarea className="w-full p-2 border rounded h-24" value={credentials.google.jsonKey} onChange={(e)=>setCred('google.jsonKey', e.target.value)}/>
+                    </>
+                  )}
+                </div>
+
+                {/* SMS provider credentials */}
+                <div className="bg-gray-50 p-4 rounded-xl">
+                  <div className="font-semibold mb-2">SMS — {sProv}</div>
+                  {sProv==='twilio' && (
+                    <>
+                      <label className="block text-sm mb-1">Account SID</label>
+                      <input className="w-full p-2 border rounded" value={credentials.twilio.accountSid} onChange={(e)=>setCred('twilio.accountSid', e.target.value)}/>
+                      <label className="block text-sm mt-2 mb-1">Auth Token</label>
+                      <input type="password" className="w-full p-2 border rounded" value={credentials.twilio.authToken} onChange={(e)=>setCred('twilio.authToken', e.target.value)}/>
+                      <label className="block text-sm mt-2 mb-1">From Number</label>
+                      <input className="w-full p-2 border rounded" value={credentials.twilio.fromNumber} onChange={(e)=>setCred('twilio.fromNumber', e.target.value)}/>
+                    </>
+                  )}
+                  {sProv==='messagebird' && (
+                    <>
+                      <label className="block text-sm mb-1">Access Key</label>
+                      <input className="w-full p-2 border rounded" value={credentials.messagebird.accessKey} onChange={(e)=>setCred('messagebird.accessKey', e.target.value)}/>
+                      <label className="block text-sm mt-2 mb-1">Originator</label>
+                      <input className="w-full p-2 border rounded" value={credentials.messagebird.originator} onChange={(e)=>setCred('messagebird.originator', e.target.value)}/>
+                    </>
+                  )}
+                  {sProv==='vonage' && (
+                    <>
+                      <label className="block text-sm mb-1">API Key</label>
+                      <input className="w-full p-2 border rounded" value={credentials.vonage.apiKey} onChange={(e)=>setCred('vonage.apiKey', e.target.value)}/>
+                      <label className="block text-sm mt-2 mb-1">API Secret</label>
+                      <input type="password" className="w-full p-2 border rounded" value={credentials.vonage.apiSecret} onChange={(e)=>setCred('vonage.apiSecret', e.target.value)}/>
+                      <label className="block text-sm mt-2 mb-1">From Number</label>
+                      <input className="w-full p-2 border rounded" value={credentials.vonage.fromNumber} onChange={(e)=>setCred('vonage.fromNumber', e.target.value)}/>
+                    </>
+                  )}
+                </div>
+
+                {/* Meta Ads */}
+                <div className="bg-gray-50 p-4 rounded-xl lg:col-span-2">
+                  <div className="font-semibold mb-2">Meta Ads</div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-sm mb-1">Access Token</label>
+                      <input type="password" className="w-full p-2 border rounded" value={credentials.meta.accessToken} onChange={(e)=>setCred('meta.accessToken', e.target.value)}/>
+                    </div>
+                    <div>
+                      <label className="block text-sm mb-1">Ad Account ID (act_123…)</label>
+                      <input className="w-full p-2 border rounded" value={credentials.meta.adAccountId} onChange={(e)=>setCred('meta.adAccountId', e.target.value)}/>
+                    </div>
+                    <div>
+                      <label className="block text-sm mb-1">Page ID</label>
+                      <input className="w-full p-2 border rounded" value={credentials.meta.pageId} onChange={(e)=>setCred('meta.pageId', e.target.value)}/>
+                    </div>
+                    <div>
+                      <label className="block text-sm mb-1">Pixel ID</label>
+                      <input className="w-full p-2 border rounded" value={credentials.meta.pixelId} onChange={(e)=>setCred('meta.pixelId', e.target.value)}/>
+                    </div>
+                  </div>
+                  <p className="text-xs text-gray-600 mt-2">Used by Ad Creator and Campaign Manager.</p>
+                </div>
+              </div>
+
+              <div className="mt-6">
+                <button onClick={()=>{ saveNow(); alert('✅ Credentials saved.'); }} className="px-6 py-3 bg-gradient-to-r from-blue-500 to-purple-600 text-white font-semibold rounded-xl hover:shadow-lg transition-all">💾 Save Credentials</button>
+              </div>
             </>
           )}
 
@@ -1665,7 +1888,7 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
                 <div className="bg-gray-50 p-4 rounded-xl">
                   <h4 className="font-semibold mb-2">Brains</h4>
                   {[
-                    ['callsModel','Calls/SMS brain','gpt-5-mini'],
+                    ['callsModel','Calls / SMS brain','gpt-5-mini'],
                     ['callsEscalationModel','Escalation model','gpt-5'],
                     ['smsModel','SMS brain','gpt-5-mini'],
                     ['adsDraftModel','Ads draft model','gpt-5-mini'],
@@ -1771,7 +1994,7 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
             }}/>
           )}
 
-          {(tab==='apis' || tab==='routing' || tab==='automation') && (
+          {(tab==='apis' || tab==='routing' || tab==='automation' || tab==='creds') && (
             <div className="mt-6">
               <button onClick={saveAll} className="px-6 py-3 bg-gradient-to-r from-blue-500 to-purple-600 text-white font-semibold rounded-xl hover:shadow-lg transition-all">💾 Save</button>
             </div>
@@ -1781,7 +2004,7 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
     );
   };
 
-  /* ======= RENDER SWITCH ======= */
+  /* ========== Render switch ========== */
   function renderContent(tab){
     switch(tab){
       case 'dashboard': return <Dashboard/>;
@@ -1801,8 +2024,9 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-purple-50 to-pink-50">
+      {/* Mobile top bar + menu */}
+      <MobileNav/>
       <div className="flex flex-col lg:flex-row">
-        <MobileNav/>
         <Sidebar/>
         <div className="flex-1 p-4 lg:p-8">
           <div className="mb-6 lg:mb-8">
@@ -1828,9 +2052,7 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
   );
 }
 
-/* =========================
-   APP WRAPPER
-   ========================= */
+/* ========== App Wrapper ========== */
 function AppWrapper(){
   const [me, setMe] = useState(null);
   useEffect(()=>{ (async ()=>{ await ensureAdmin(); const sess = loadSession(); if (sess) setMe(sess); })(); },[]);
@@ -1840,9 +2062,7 @@ function AppWrapper(){
   return <LeadFlowApp me={me} onLogout={logout} onImpersonate={impersonate}/>;
 }
 
-/* =========================
-   MOUNT
-   ========================= */
+/* ========== Mount ========== */
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(<ErrorBoundary><AppWrapper/></ErrorBoundary>);
 </script>
