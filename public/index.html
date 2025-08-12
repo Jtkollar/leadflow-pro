@@ -103,8 +103,6 @@ const STATUS_LABELS = [
 ];
 const STATUS_ADVANCED = new Set(['App Submitted','Pending','Approved','Paid','Declined']);
 
-// dashboard APV counts use leads with apv>0 (often Approved/Paid)
-
 /* =========================
    PROMPT EXAMPLES (unchanged)
    ========================= */
@@ -253,30 +251,37 @@ function seedWorkspace(){
 /* =========================
    HELPERS
    ========================= */
+function startOfDay(d){ const x = new Date(d); x.setHours(0,0,0,0); return x; }
 function startOfWeek(d){ const x = new Date(d); const day = (x.getDay()+6)%7; x.setHours(0,0,0,0); x.setDate(x.getDate()-day); return x; }
 function startOfMonth(d){ const x = new Date(d); x.setDate(1); x.setHours(0,0,0,0); return x; }
 function startOfYear(d){ const x = new Date(d); x.setMonth(0,1); x.setHours(0,0,0,0); return x; }
 
-/* ======= ADDED: deep-merge defaults so old localStorage never breaks UI ======= */
-function mergeDefaults(base, incoming) {
-  if (incoming == null) return JSON.parse(JSON.stringify(base));
-  if (Array.isArray(base)) return Array.isArray(incoming) ? incoming : base;
-  if (typeof base !== 'object' || base === null) return incoming ?? base;
-
-  const out = { ...base };
-  for (const k of Object.keys(base)) {
-    const b = base[k];
-    const i = incoming[k];
-    if (b && typeof b === 'object' && !Array.isArray(b)) {
-      out[k] = mergeDefaults(b, i ?? {});
-    } else {
-      out[k] = (i === undefined ? b : i);
+/* Robust parser for "Today 2:30 PM" / "Yesterday 4:05 PM" / ISO strings */
+function toDateSafe(value){
+  if (!value) return null;
+  if (value instanceof Date) return value;
+  if (typeof value === 'string'){
+    const mToday = value.match(/^Today\s+(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+    if (mToday){
+      const d = new Date();
+      let h = parseInt(mToday[1],10)%12;
+      if (mToday[3].toUpperCase()==='PM') h += 12;
+      d.setHours(h, parseInt(mToday[2],10), 0, 0);
+      return d;
     }
+    const mYday = value.match(/^Yesterday\s+(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+    if (mYday){
+      const d = new Date();
+      d.setDate(d.getDate()-1);
+      let h = parseInt(mYday[1],10)%12;
+      if (mYday[3].toUpperCase()==='PM') h += 12;
+      d.setHours(h, parseInt(mYday[2],10), 0, 0);
+      return d;
+    }
+    const d = new Date(value);
+    if (!isNaN(d.getTime())) return d;
   }
-  for (const k of Object.keys(incoming)) {
-    if (out[k] === undefined) out[k] = incoming[k];
-  }
-  return out;
+  return null;
 }
 
 /* =========================
@@ -423,8 +428,7 @@ function UsersAdmin({ me, onImpersonate }){
    APP
    ========================= */
 function LeadFlowApp({ me, onLogout, onImpersonate }){
-  /* ======= UPDATED: merge stored workspace with current defaults ======= */
-  const ws0 = mergeDefaults(seedWorkspace(), loadWorkspace(me.email));
+  const ws0 = loadWorkspace(me.email) || seedWorkspace();
 
   const [activeTab, setActiveTab] = useState('dashboard');
   const [showMobileMenu, setShowMobileMenu] = useState(false);
@@ -468,7 +472,7 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
     list.forEach(l=>{
       const apv = Number(l.apv||0);
       if (!apv) return;
-      const dt = l.apvDate ? new Date(l.apvDate) : new Date();
+      const dt = l.apvDate ? new Date(l.apvDate) : toDateSafe(l.time) || new Date();
       if (dt >= w0) week += apv;
       if (dt >= m0) month += apv;
       if (dt >= y0) year += apv;
@@ -478,20 +482,56 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
 
   const apvStats = computeAPVStats(leads);
 
+  // Derived KPIs for your dashboard spec
+  const now = new Date();
+  const day0 = startOfDay(now), week0 = startOfWeek(now), month0 = startOfMonth(now), year0 = startOfYear(now);
+
+  const OPEN_SET = new Set(['New','Contacted','Qualified']);
+  const totalOpenLeads = useMemo(()=> leads.filter(l=>OPEN_SET.has(l.status)).length, [leads]);
+
+  const getLeadDate = (l) => toDateSafe(l.apvDate) || toDateSafe(l.time) || new Date();
+
+  const scheduledDate = (l) => toDateSafe(l.scheduledAt) || toDateSafe(l.time) || null;
+  const isSameDay = (d1, d2)=> d1 && d2 && d1.getFullYear()===d2.getFullYear() && d1.getMonth()===d2.getMonth() && d1.getDate()===d2.getDate();
+
+  const scheduledToday = useMemo(()=> leads.filter(l=>l.status==='Scheduled' && isSameDay(scheduledDate(l)||new Date(), now)).length, [leads]);
+  const scheduledThisWeek = useMemo(()=> leads.filter(l=>l.status==='Scheduled' && (scheduledDate(l)||new Date()) >= week0).length, [leads, week0]);
+  const scheduledThisMonth = useMemo(()=> leads.filter(l=>l.status==='Scheduled' && (scheduledDate(l)||new Date()) >= month0).length, [leads, month0]);
+
+  const paidThisWeek = useMemo(()=> leads.filter(l=>l.status==='Paid' && getLeadDate(l) >= week0).length, [leads, week0]);
+  const paidThisMonth = useMemo(()=> leads.filter(l=>l.status==='Paid' && getLeadDate(l) >= month0).length, [leads, month0]);
+
+  // Ad spend estimation (front-end only): uses active daily budgets
+  const dailyBudgetSum = useMemo(()=> campaigns.filter(c=>c.status==='active').reduce((s,c)=>s+(parseFloat(c.budget)||0),0), [campaigns]);
+  const adSpendWeek  = Math.round(dailyBudgetSum * 7);
+  const adSpendMonth = Math.round(dailyBudgetSum * 30);
+  const adSpendYear  = Math.round(dailyBudgetSum * 365);
+
+  // Conversion rates by time window: Paid / Leads created in window
+  const leadCreatedAt = (l)=> toDateSafe(l.time) || new Date();
+  const leadsWeek  = leads.filter(l=> leadCreatedAt(l) >= week0);
+  const leadsMonth = leads.filter(l=> leadCreatedAt(l) >= month0);
+  const leadsYear  = leads.filter(l=> leadCreatedAt(l) >= year0);
+
+  const convWeek  = Math.round((paidThisWeek  / (leadsWeek.length  || 1)) * 100);
+  const convMonth = Math.round((paidThisMonth / (leadsMonth.length || 1)) * 100);
+  const convYear  = Math.round((leads.filter(l=>l.status==='Paid' && getLeadDate(l) >= year0).length / (leadsYear.length || 1)) * 100);
+
+  // Keep legacy stats for other parts (not used for these KPI numbers)
   const [stats, setStats] = useState({
     totalLeads: analyticsData?.overview?.totalLeads ?? (leads?.length || 0),
-    scheduledToday: (leads||[]).filter(l=>l.status==='Scheduled').length,
-    adSpend: 2450,
-    conversionRate: Math.round(analyticsData?.overview?.conversionRate ?? 34)
+    scheduledToday: scheduledToday,
+    adSpend: adSpendWeek,
+    conversionRate: convWeek
   });
   useEffect(()=>{
     setStats({
       totalLeads: leads.length,
-      scheduledToday: leads.filter(l=>l.status==='Scheduled').length,
-      adSpend: 2450,
-      conversionRate: Math.round(analyticsData?.overview?.conversionRate ?? 34)
+      scheduledToday,
+      adSpend: adSpendWeek,
+      conversionRate: convWeek
     });
-  }, [leads, analyticsData]);
+  }, [leads, analyticsData, scheduledToday, adSpendWeek, convWeek]);
 
   /* ---------- Optional backend fetch (safe no-throw) ---------- */
   useEffect(()=>{
@@ -582,25 +622,92 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
     </div>
   );
 
-  /* ---------- Dashboard (with Quick Actions + APV widgets) ---------- */
+  /* ---------- Dashboard (updated with your KPIs) ---------- */
   const Dashboard = () => (
     <div className="space-y-6 fade-in">
+      {/* Top four main KPIs */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-6">
-        {[
-          { label:'Total Leads', value:stats.totalLeads, icon:'👥', color:'from-blue-500 to-blue-600' },
-          { label:'Scheduled Today', value:stats.scheduledToday, icon:'📅', color:'from-green-500 to-green-600' },
-          { label:'Ad Spend', value:`$${new Intl.NumberFormat().format(stats.adSpend)}`, icon:'💰', color:'from-purple-500 to-purple-600' },
-          { label:'Conversion Rate', value:`${stats.conversionRate}%`, icon:'📈', color:'from-orange-500 to-orange-600' }
-        ].map(({label,value,icon,color})=>(
-          <div key={label} className={`bg-gradient-to-br ${color} text-white p-4 lg:p-6 rounded-2xl shadow-lg text-center`}>
-            <div className="text-2xl mb-2">{icon}</div>
-            <div className="text-2xl lg:text-3xl font-bold mb-1">{value}</div>
-            <div className="text-xs lg:text-sm opacity-90">{label}</div>
-          </div>
-        ))}
+        {/* Total Open Leads */}
+        <div className="bg-gradient-to-br from-blue-500 to-blue-600 text-white p-4 lg:p-6 rounded-2xl shadow-lg text-center">
+          <div className="text-2xl mb-2">👥</div>
+          <div className="text-2xl lg:text-3xl font-bold mb-1">{totalOpenLeads}</div>
+          <div className="text-xs lg:text-sm opacity-90">Total Open Leads</div>
+        </div>
+
+        {/* Scheduled Today */}
+        <div className="bg-gradient-to-br from-green-500 to-green-600 text-white p-4 lg:p-6 rounded-2xl shadow-lg text-center">
+          <div className="text-2xl mb-2">📅</div>
+          <div className="text-2xl lg:text-3xl font-bold mb-1">{scheduledToday}</div>
+          <div className="text-xs lg:text-sm opacity-90">Scheduled Today</div>
+        </div>
+
+        {/* Ad Spend This Week */}
+        <div className="bg-gradient-to-br from-purple-500 to-purple-600 text-white p-4 lg:p-6 rounded-2xl shadow-lg text-center">
+          <div className="text-2xl mb-2">💰</div>
+          <div className="text-2xl lg:text-3xl font-bold mb-1">${adSpendWeek.toLocaleString()}</div>
+          <div className="text-xs lg:text-sm opacity-90">Ad Spend This Week</div>
+        </div>
+
+        {/* Conversion Rate This Week */}
+        <div className="bg-gradient-to-br from-orange-500 to-orange-600 text-white p-4 lg:p-6 rounded-2xl shadow-lg text-center">
+          <div className="text-2xl mb-2">📈</div>
+          <div className="text-2xl lg:text-3xl font-bold mb-1">{convWeek}%</div>
+          <div className="text-xs lg:text-sm opacity-90">Conversion Rate This Week</div>
+        </div>
       </div>
 
-      {/* APV Totals */}
+      {/* Sub-metrics under each main KPI */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-6">
+        {/* Under Total Open Leads */}
+        <div className="space-y-4">
+          <div className="bg-gradient-to-br from-sky-500 to-blue-600 text-white p-4 rounded-2xl text-center">
+            <div className="text-sm opacity-90">Total Leads Paid This Week</div>
+            <div className="text-2xl font-bold">{paidThisWeek}</div>
+          </div>
+          <div className="bg-gradient-to-br from-indigo-500 to-purple-600 text-white p-4 rounded-2xl text-center">
+            <div className="text-sm opacity-90">Leads Paid This Month</div>
+            <div className="text-2xl font-bold">{paidThisMonth}</div>
+          </div>
+        </div>
+
+        {/* Under Scheduled Today */}
+        <div className="space-y-4">
+          <div className="bg-gradient-to-br from-emerald-500 to-green-600 text-white p-4 rounded-2xl text-center">
+            <div className="text-sm opacity-90">Scheduled This Week</div>
+            <div className="text-2xl font-bold">{scheduledThisWeek}</div>
+          </div>
+          <div className="bg-gradient-to-br from-teal-500 to-green-600 text-white p-4 rounded-2xl text-center">
+            <div className="text-sm opacity-90">Scheduled This Month</div>
+            <div className="text-2xl font-bold">{scheduledThisMonth}</div>
+          </div>
+        </div>
+
+        {/* Under Ad Spend */}
+        <div className="space-y-4">
+          <div className="bg-gradient-to-br from-fuchsia-500 to-purple-600 text-white p-4 rounded-2xl text-center">
+            <div className="text-sm opacity-90">Ad Spend This Month</div>
+            <div className="text-2xl font-bold">${adSpendMonth.toLocaleString()}</div>
+          </div>
+          <div className="bg-gradient-to-br from-pink-500 to-rose-600 text-white p-4 rounded-2xl text-center">
+            <div className="text-sm opacity-90">Ad Spend This Year</div>
+            <div className="text-2xl font-bold">${adSpendYear.toLocaleString()}</div>
+          </div>
+        </div>
+
+        {/* Under Conversion Rate */}
+        <div className="space-y-4">
+          <div className="bg-gradient-to-br from-amber-500 to-orange-600 text-white p-4 rounded-2xl text-center">
+            <div className="text-sm opacity-90">Conversion Rate This Month</div>
+            <div className="text-2xl font-bold">{convMonth}%</div>
+          </div>
+          <div className="bg-gradient-to-br from-yellow-500 to-amber-600 text-white p-4 rounded-2xl text-center">
+            <div className="text-sm opacity-90">Conversion Rate This Year</div>
+            <div className="text-2xl font-bold">{convYear}%</div>
+          </div>
+        </div>
+      </div>
+
+      {/* APV Totals (kept) */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="bg-white rounded-2xl p-4 shadow-lg text-center">
           <div className="text-xs text-gray-500">APV This Week</div>
@@ -616,7 +723,7 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
         </div>
       </div>
 
-      {/* Quick Actions (restored) */}
+      {/* Quick Actions + Recent Leads (unchanged) */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="bg-white rounded-2xl p-4 lg:p-6 shadow-lg">
           <h3 className="text-lg lg:text-xl font-bold mb-4">Recent Leads</h3>
@@ -660,7 +767,7 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
     </div>
   );
 
-  /* ---------- Ad Creator (market/sub) ---------- */
+  /* ---------- Ad Creator (unchanged) ---------- */
   const AdCreator = () => {
     const [adForm, setAdForm] = useState({
       market: 'Insurance',
@@ -871,7 +978,7 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
     );
   };
 
-  /* ---------- Leads (click to edit + advanced statuses + notes + recordings) ---------- */
+  /* ---------- Leads (unchanged core) ---------- */
   const LeadManagement = () => {
     const [searchTerm, setSearchTerm] = useState('');
     const [filterMarket, setFilterMarket] = useState('');
@@ -1079,7 +1186,7 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
     );
   };
 
-  /* ---------- Lead Editor Modal (full editor) ---------- */
+  /* ---------- Lead Editor Modal (unchanged) ---------- */
   function LeadEditorModal({ initialLead, onClose, onSave }) {
     const [lead, setLead] = useState(() => ({
       id: initialLead.id,
@@ -1226,7 +1333,7 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
             </div>
           )}
 
-          {/* DEBT WORKSHEET (only for Insurance/Debt Free) */}
+          {/* DEBT WORKSHEET */}
           {tab==='debt' && lead.market==='Insurance' && lead.type==='Debt Free' && (
             <div className="space-y-4">
               {[
@@ -1315,7 +1422,7 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
     );
   }
 
-  /* ---------- Voice + SMS ---------- */
+  /* ---------- Voice + SMS (unchanged) ---------- */
   const VoiceAI = () => {
     const [local, setLocal] = useState(voiceSettings);
     useEffect(()=>{ setLocal(voiceSettings); }, [voiceSettings]);
@@ -1559,7 +1666,7 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
     );
   };
 
-  /* ---------- Campaigns (deletable) ---------- */
+  /* ---------- Campaigns (unchanged) ---------- */
   const CampaignManager = () => {
     const deleteCampaign = (id)=>{
       if (!confirm('Delete this campaign?')) return;
@@ -1694,7 +1801,7 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
     );
   };
 
-  /* ---------- Imports ---------- */
+  /* ---------- Imports (unchanged) ---------- */
   const Imports = () => {
     const [selectedImport, setSelectedImport] = useState(imports[0] || null);
     const [importsFilterPlaceholders, setImportsFilterPlaceholders] = useState(true);
@@ -1823,7 +1930,7 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
     );
   };
 
-  /* ---------- Settings ---------- */
+  /* ---------- Settings (unchanged) ---------- */
   const Settings = () => {
     const [tab, setTab] = useState('apis');
     const saveAll = () => { saveNow(); alert('✅ Settings saved.'); };
@@ -2018,7 +2125,6 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
 
   /* ---------- Utility actions used above ---------- */
   const getLeadFollowUp = (lead) => {
-    // placeholder for future per-lead overrides (already exists in a previous version)
     return { enabled: true, followUpDelay: smsSettings.followUpDelay, scripts: smsSettings.scripts };
   };
   const followUpLabel = (mins)=>{
