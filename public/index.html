@@ -3,29 +3,62 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>LeadFlow Pro — Full Build</title>
+  <title>LeadFlow Pro — Full Build (hardened)</title>
+
+  <!-- Global error overlay so “blank” shows a reason -->
+  <style>
+    #lfp-error {
+      position: fixed; inset: 8px; z-index: 999999;
+      background: #fff5f5; color:#7f1d1d; border:1px solid #fecaca;
+      border-radius: 10px; font-family: system-ui, -apple-system, Segoe UI, Inter, sans-serif;
+      padding: 12px; display:none; overflow:auto;
+    }
+    #lfp-error pre { white-space: pre-wrap; word-break: break-word; }
+  </style>
   <script>
-    // Optional: quick storage reset when opening with ?reset=1
+    (function(){
+      function show(msg, detail){
+        var el = document.getElementById('lfp-error');
+        if (!el) { el = document.createElement('div'); el.id='lfp-error'; document.body.appendChild(el); }
+        el.innerHTML = '<div style="font-weight:700;margin-bottom:6px">Something broke in the UI</div>'
+          + '<div style="font-size:12px;margin-bottom:6px">'+(msg||'Unknown error')+'</div>'
+          + (detail? '<pre>'+detail+'</pre>' : '');
+        el.style.display='block';
+      }
+      window.addEventListener('error', function(e){
+        // ignore react devtools noise
+        show(String(e.message||e.error||'Script error'), (e.error && e.error.stack) ? e.error.stack : '');
+      });
+      window.addEventListener('unhandledrejection', function(e){
+        show('Unhandled Promise rejection', String(e.reason||''));
+      });
+    })();
+  </script>
+
+  <!-- Optional reset: open with ?reset=1 to clear storage -->
+  <script>
     (function(){
       try {
         const q = new URLSearchParams(location.search);
         if (q.get('reset') === '1') {
           Object.keys(localStorage).forEach(k => { if (k.startsWith('lfp:')) localStorage.removeItem(k); });
           sessionStorage.clear?.();
-          document.write('<div style="padding:12px;background:#ECFDF5;color:#065F46;font-family:system-ui;border-bottom:1px solid #10B981">✅ Storage cleared. Reloading…</div>');
-          setTimeout(()=>location.replace(location.origin + location.pathname), 600);
+          alert('✅ LeadFlow storage cleared. Reloading…');
+          location.replace(location.origin + location.pathname);
         }
       } catch(e){}
     })();
   </script>
+
+  <!-- React + Babel -->
   <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
   <script src="https://cdn.tailwindcss.com"></script>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   <style>
-    body { font-family: 'Inter', sans-serif; }
-    .fade-in { animation: fadeIn .3s ease-in; }
+    body { font-family: 'Inter', system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+    .fade-in { animation: fadeIn .25s ease-in; }
     @keyframes fadeIn { from { opacity:.001; transform: translateY(6px);} to { opacity:1; transform: translateY(0);} }
     .toggle-switch { position: relative; width: 48px; height: 24px; background: #ccc; border-radius: 12px; cursor: pointer; transition: background .2s; }
     .toggle-switch.active { background: #667eea; }
@@ -37,10 +70,11 @@
   </style>
 </head>
 <body>
+<div id="lfp-error"></div>
 <div id="root"></div>
 
 <script type="text/babel" data-presets="env,react">
-/* ========== Error Boundary ========== */
+/* ============================ Error Boundary ============================ */
 class ErrorBoundary extends React.Component {
   constructor(p){ super(p); this.state = { e:null, info:null }; }
   componentDidCatch(e, info){ this.setState({ e, info }); }
@@ -68,14 +102,27 @@ class ErrorBoundary extends React.Component {
 
 const { useState, useEffect } = React;
 
-/* ========== Storage / Auth ========== */
+/* ============================ Safe Storage Layer ============================ */
+const storage = {
+  get(k){ try { return localStorage.getItem(k); } catch(e){ return null; } },
+  set(k,v){ try { localStorage.setItem(k,v); } catch(e){} },
+  remove(k){ try { localStorage.removeItem(k); } catch(e){} }
+};
+const safeParse=(j,f)=>{ try{return JSON.parse(j);}catch{return f;} };
 const STORAGE_USERS   = 'lfp:users';
 const STORAGE_SESSION = 'lfp:session';
 const WORKSPACE_PREFIX= 'lfp:workspace:'; // + email
 
-const ADMIN_EMAIL = 'Joshua.kollar@me.com';
-const ADMIN_PLAIN = 'Allglorytogod12!';
+function wsKey(email){ return WORKSPACE_PREFIX+(email||'').trim().toLowerCase(); }
+const loadUsers    =()=> safeParse(storage.get(STORAGE_USERS), []);
+const saveUsers    = u => storage.set(STORAGE_USERS, JSON.stringify(u||[]));
+const loadSession  =()=> safeParse(storage.get(STORAGE_SESSION), null);
+const saveSession  = s => storage.set(STORAGE_SESSION, JSON.stringify(s||null));
+const clearSession =()=> storage.remove(STORAGE_SESSION);
+const loadWorkspace= email => safeParse(storage.get(wsKey(email)), null);
+const saveWorkspace= (email,data)=> storage.set(wsKey(email), JSON.stringify(data||null));
 
+/* ============================ Auth / Hash ============================ */
 async function sha256(text){
   try{
     const enc = new TextEncoder();
@@ -84,31 +131,14 @@ async function sha256(text){
   } catch { return btoa(unescape(encodeURIComponent(text))); }
 }
 const emailEq=(a,b)=> (a||'').trim().toLowerCase()===(b||'').trim().toLowerCase();
-const safeParse=(j,f)=>{ try{return JSON.parse(j);}catch{return f;} };
-const loadUsers =()=> safeParse(localStorage.getItem(STORAGE_USERS), []);
-const saveUsers = u => { try{ localStorage.setItem(STORAGE_USERS, JSON.stringify(u)); }catch{} };
-const loadSession=()=> safeParse(localStorage.getItem(STORAGE_SESSION), null);
-const saveSession= s => { try{ localStorage.setItem(STORAGE_SESSION, JSON.stringify(s)); }catch{} };
-const clearSession=()=> { try{ localStorage.removeItem(STORAGE_SESSION);}catch{} };
-const wsKey=email=> WORKSPACE_PREFIX+(email||'').trim().toLowerCase();
-const loadWorkspace= email => safeParse(localStorage.getItem(wsKey(email)), null);
-const saveWorkspace= (email,data)=> { try{ localStorage.setItem(wsKey(email), JSON.stringify(data)); }catch{} };
 
-/* ========== Constants / Catalogs ========== */
+/* ============================ Catalogs & Defaults ============================ */
 const VOICE_CATALOG = {
   elevenlabs: ['Alloy','Callum','Rachel','Adam','Domi'],
   openai:     ['Alloy','Verse','Sol','Breeze'],
   azure:      ['en-US-GuyNeural','en-US-JennyNeural','en-US-ChristopherNeural'],
   google:     ['en-US-Neural2-J','en-US-Standard-B','en-US-Wavenet-D']
 };
-const US_TZ = [
-  { id: 'America/New_York', label: 'US/Eastern' },
-  { id: 'America/Chicago', label: 'US/Central' },
-  { id: 'America/Denver', label: 'US/Mountain' },
-  { id: 'America/Los_Angeles', label: 'US/Pacific' },
-  { id: 'America/Anchorage', label: 'US/Alaska' },
-  { id: 'Pacific/Honolulu', label: 'US/Hawaii' }
-];
 const MARKET_OPTIONS = {
   "Insurance":    ['Life','Term','Final Expense','Medicare','Business Liability','Health','Debt Free'],
   "Real Estate":  ['Buyer Leads','Seller Leads','Open House','Investors','Rentals'],
@@ -122,38 +152,16 @@ const STATUS_LABELS = [
   'App Submitted','Pending','Approved','Paid','Declined'
 ];
 const STATUS_ADVANCED = new Set(['App Submitted','Pending','Approved','Paid','Declined']);
-const PROMPT_TEMPLATES = {
-  "Insurance": {
-    "Life": [
-      { h:"Protect Your Family—Rates Most People Miss", c:"Quick 60-sec quote for {{CITY}} families. Lock in coverage before rates move again.", cta:"get-quote" },
-      { h:"Life Insurance in {{CITY}} That Fits", c:"Custom options in minutes. No pushy sales.", cta:"learn-more" }
-    ],
-    "Debt Free":[
-      { h:"Crush High-APR Debt Fast", c:"See how policy-backed payoff beats cards at {{APR}}% APR.", cta:"learn-more" }
-    ]
-  },
-  "Real Estate": {
-    "Buyer Leads":[
-      { h:"New Listings in {{CITY}}—Before They Hit Zillow", c:"Free daily list under {{PRICE}}. Tap for alerts.", cta:"learn-more" }
-    ]
-  }
-};
 
-/* ========== Defaults + Migration ========== */
 function seedWorkspace(){
   return {
     apiSelection: { voiceProvider: 'elevenlabs', smsProvider: 'twilio' },
     credentials: {
-      // voice providers
-      openai: { apiKey:'' },
-      elevenlabs: { apiKey:'' },
-      azure: { subscriptionKey:'', region:'' },
-      google: { jsonKey:'' },
-      // sms providers
+      openai: { apiKey:'' }, elevenlabs: { apiKey:'' },
+      azure: { subscriptionKey:'', region:'' }, google: { jsonKey:'' },
       twilio: { accountSid:'', authToken:'', fromNumber:'' },
       messagebird: { accessKey:'', originator:'' },
       vonage: { apiKey:'', apiSecret:'', fromNumber:'' },
-      // ads
       meta: { accessToken:'', adAccountId:'', pageId:'', pixelId:'' }
     },
     routing: {
@@ -172,58 +180,24 @@ function seedWorkspace(){
         adsImage: { channel: 'ads-image' },
       }
     },
-    automation: {
-      autoStartOnMeta: true,
-      immediateRetryOnNoAnswer: true,
-      immediateRetryOnVoicemail: false
-    },
+    automation: { autoStartOnMeta:true, immediateRetryOnNoAnswer:true, immediateRetryOnVoicemail:false },
     voiceSettings: {
-      provider: 'elevenlabs',
-      voice: 'Alloy',
-      style: 'professional',
-      speed: 'normal',
-      callAttempts: 2,
-      immediateAttempts: 1,
-      callInterval: 30, // minutes (1440 = 1 day)
-      immediateCallbackOnNoAnswer: false,
-      immediateCallbackOnVoicemail: false,
-      voicemailBehavior: 'leave_message', // hangup | leave_message
-      voicemailScript: 'Sorry I missed you—this is LeadFlow Pro. I’ll text details as well.',
-      scripts: {
-        generic: 'Hi, this is LeadFlow Pro about your request. Do you have a minute?'
-      },
-      businessHours: { start:'09:00', end:'17:00' },
-      workingDays: ['monday','tuesday','wednesday','thursday','friday'],
-      timezone: 'America/Denver'
+      provider: 'elevenlabs', voice: 'Alloy', style:'professional', speed:'normal',
+      callAttempts:2, immediateAttempts:1, callInterval:30,
+      immediateCallbackOnNoAnswer:false, immediateCallbackOnVoicemail:false,
+      voicemailBehavior:'leave_message',
+      voicemailScript:'Sorry I missed you—this is LeadFlow Pro. I’ll text details as well.',
+      scripts:{ generic:'Hi, this is LeadFlow Pro about your request. Do you have a minute?' },
+      businessHours:{ start:'09:00', end:'17:00' }, workingDays:['monday','tuesday','wednesday','thursday','friday'],
+      timezone:'America/Denver'
     },
     smsSettings: {
-      provider: 'twilio',
-      autoRespond: true,
-      followUpDelay: 15, // minutes default
-      scripts: {
-        day0:'Hey {{name}}, it’s Josh — got your request. 2 quick questions?',
-        day1:'Been trying to reach you — want a ballpark quote?',
-        day3:'Still here when you are.',
-        day5:'Final ping for now — want a 60-sec summary?'
-      },
-      scriptVariants: {
-        noAnswer:'Missed you, {{name}}.',
-        voicemailDrop:'Left a voicemail — text works great if easier.'
-      },
-      businessHours: { start:'09:00', end:'17:00' }
+      provider:'twilio', autoRespond:true, followUpDelay:15,
+      scripts:{ day0:'Hey {{name}}, it’s Josh — got your request. 2 quick questions?', day1:'Been trying to reach you — want a ballpark quote?', day3:'Still here when you are.', day5:'Final ping for now — want a 60-sec summary?' },
+      scriptVariants:{ noAnswer:'Missed you, {{name}}.', voicemailDrop:'Left a voicemail — text works great if easier.' },
+      businessHours:{ start:'09:00', end:'17:00' }
     },
-    data: {
-      leads: [],
-      campaigns: [],
-      objections: [],
-      analytics: {
-        overview: { totalLeads: 0, totalCampaigns: 0, conversionRate: 0, avgCostPerLead: 0 },
-        performance: { callAnswerRate: 0, smsResponseRate: 0, schedulingRate: 0, revenuePerLead: 0 }
-      },
-      inbound: [],
-      imports: [],
-      adLab: { variants: [], images: [], rotate: false }
-    }
+    data: { leads:[], campaigns:[], objections:[], analytics:{ overview:{}, performance:{} }, inbound:[], imports:[], adLab:{ variants:[], images:[], rotate:false } }
   };
 }
 const isObj=(o)=> o && typeof o==='object' && !Array.isArray(o);
@@ -241,25 +215,31 @@ function mergeDeep(base, patch){
 function migrateWorkspace(raw){
   const d = seedWorkspace();
   const m = mergeDeep(d, raw || {});
-  // keep providers mirrored
   m.voiceSettings.provider = m.apiSelection.voiceProvider || 'elevenlabs';
   m.smsSettings.provider   = m.apiSelection.smsProvider   || 'twilio';
   return m;
 }
 
-/* ========== Bootstrap Admin ========== */
+/* ============================ Bootstrap Admin ============================ */
+const ADMIN_EMAIL = 'Joshua.kollar@me.com';
+const ADMIN_PLAIN = 'Allglorytogod12!';
+
 async function ensureAdmin(){
-  let users = loadUsers();
-  let found = users.some(u => emailEq(u.email, ADMIN_EMAIL));
-  if (!found){
-    const hash = await sha256(ADMIN_PLAIN);
-    users.push({ email: ADMIN_EMAIL, passHash: hash, isAdmin: true, locked: false, createdAt: new Date().toISOString(), lastLogin: null });
-    saveUsers(users);
-    if (!loadWorkspace(ADMIN_EMAIL)) saveWorkspace(ADMIN_EMAIL, seedWorkspace());
+  try{
+    let users = loadUsers();
+    if (!users.some(u=> emailEq(u.email, ADMIN_EMAIL))) {
+      const hash = await sha256(ADMIN_PLAIN);
+      users.push({ email: ADMIN_EMAIL, passHash: hash, isAdmin: true, locked: false, createdAt: new Date().toISOString(), lastLogin: null });
+      saveUsers(users);
+      if (!loadWorkspace(ADMIN_EMAIL)) saveWorkspace(ADMIN_EMAIL, seedWorkspace());
+    }
+  } catch (e) {
+    // if storage is completely blocked, at least avoid crashing
+    console.warn('Storage unavailable; admin seeding skipped');
   }
 }
 
-/* ========== Login ========== */
+/* ============================ Login ============================ */
 function LoginView({onLoggedIn}){
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -318,7 +298,7 @@ function LoginView({onLoggedIn}){
   );
 }
 
-/* ========== Users Admin ========== */
+/* ============================ Users Admin ============================ */
 function UsersAdmin({ me, onImpersonate }){
   const [users, setUsers] = useState(loadUsers());
   const [form, setForm] = useState({ email:'', password:'', isAdmin:false });
@@ -397,32 +377,29 @@ function UsersAdmin({ me, onImpersonate }){
   );
 }
 
-/* ========== App ========== */
+/* ============================ App ============================ */
 function LeadFlowApp({ me, onLogout, onImpersonate }){
-  // workspace
-  const ws0 = migrateWorkspace(loadWorkspace(me.email));
-  const [apiSelection, setApiSelection] = useState(ws0.apiSelection);
-  const [credentials, setCredentials]   = useState(ws0.credentials);
-  const [routing, setRouting]           = useState(ws0.routing);
-  const [automation, setAutomation]     = useState(ws0.automation);
+  // workspace (harden against undefined/null)
+  const loaded = migrateWorkspace(loadWorkspace(me.email) || {});
+  const [apiSelection, setApiSelection] = useState(loaded.apiSelection);
+  const [credentials, setCredentials]   = useState(loaded.credentials);
+  const [routing, setRouting]           = useState(loaded.routing);
+  const [automation, setAutomation]     = useState(loaded.automation);
 
-  const [voiceSettings, setVoiceSettings] = useState({ ...ws0.voiceSettings, provider: ws0.apiSelection.voiceProvider });
-  const [smsSettings, setSmsSettings]     = useState({ ...ws0.smsSettings,   provider: ws0.apiSelection.smsProvider });
+  const [voiceSettings, setVoiceSettings] = useState({ ...loaded.voiceSettings, provider: loaded.apiSelection.voiceProvider });
+  const [smsSettings, setSmsSettings]     = useState({ ...loaded.smsSettings,   provider: loaded.apiSelection.smsProvider });
 
-  const [leads, setLeadsState]       = useState(ws0.data.leads || []);
-  const [campaigns, setCampaigns]    = useState(ws0.data.campaigns || []);
-  const [objections, setObjections]  = useState(ws0.data.objections || []);
-  const [analyticsData, setAnalytics]= useState(ws0.data.analytics || null);
-  const [inboundEvents, setInbound]  = useState(ws0.data.inbound || []);
-  const [imports, setImports]        = useState(ws0.data.imports || []);
-  const [adLab, setAdLab]            = useState(ws0.data.adLab || { variants:[], images:[], rotate:false });
+  const [leads, setLeadsState]       = useState(loaded.data.leads || []);
+  const [campaigns, setCampaigns]    = useState(loaded.data.campaigns || []);
+  const [objections, setObjections]  = useState(loaded.data.objections || []);
+  const [analyticsData, setAnalytics]= useState(loaded.data.analytics || null);
+  const [inboundEvents, setInbound]  = useState(loaded.data.inbound || []);
+  const [imports, setImports]        = useState(loaded.data.imports || []);
+  const [adLab, setAdLab]            = useState(loaded.data.adLab || { variants:[], images:[], rotate:false });
 
   const [activeTab, setActiveTab] = useState('dashboard');
-
-  // mobile menu state (fixed: correct setter)
   const [showMobileMenu, setShowMobileMenu] = useState(false);
 
-  // persist
   const saveNow = (patch={})=>{
     const wsOut = migrateWorkspace({
       apiSelection, credentials, routing, automation,
@@ -434,7 +411,7 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
         ...(patch.data||{})
       }
     });
-    saveWorkspace(me.email, wsOut);
+    try { saveWorkspace(me.email, wsOut); } catch(e) { /* ignore storage issues */ }
   };
   const setLeads = (next)=>{ const out = typeof next==='function' ? next(leads) : next; setLeadsState(out); saveNow({ data:{ leads: out }}); };
 
@@ -460,7 +437,6 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
     });
   }, [leads, analyticsData]);
 
-  /* Optional initial fetch (won't crash if missing) */
   useEffect(()=>{
     Promise.allSettled([
       fetch('/api/leads').then(r=>r.json()),
@@ -476,7 +452,7 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
     // eslint-disable-next-line
   },[]);
 
-  /* UI: Mobile Nav (fixed and wired) */
+  /* ---------------- Mobile Nav ---------------- */
   const MobileNav = () => (
     <div className="lg:hidden bg-white shadow-lg p-4">
       <div className="flex items-center justify-between">
@@ -552,7 +528,7 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
     </div>
   );
 
-  /* ========== Dashboard (no recent leads) ========== */
+  /* ---------------- Dashboard (no recent leads) ---------------- */
   const Dashboard = () => (
     <div className="space-y-6 fade-in">
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-6">
@@ -596,7 +572,7 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
     </div>
   );
 
-  /* ========== Ad Creator (unchanged logic) ========== */
+  /* ---------------- Ad Creator (variants, images, rotate) ---------------- */
   const AdCreator = () => {
     const [adForm, setAdForm] = useState({
       market: 'Insurance', subType: '', targetLocations: '', minAge: '', maxAge: '', dailyBudget: '',
@@ -606,6 +582,22 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
     const [images, setImages] = useState(adLab.images || []);
     useEffect(()=>{ setAdForm(prev=>({...prev, subType:''})); }, [adForm.market]);
 
+    const PROMPT_TEMPLATES = {
+      "Insurance": {
+        "Life": [
+          { h:"Protect Your Family—Rates Most People Miss", c:"Quick 60-sec quote for {{CITY}} families. Lock in coverage before rates move again.", cta:"get-quote" },
+          { h:"Life Insurance in {{CITY}} That Fits", c:"Custom options in minutes. No pushy sales.", cta:"learn-more" }
+        ],
+        "Debt Free":[
+          { h:"Crush High-APR Debt Fast", c:"See how policy-backed payoff beats cards at {{APR}}% APR.", cta:"learn-more" }
+        ]
+      },
+      "Real Estate": {
+        "Buyer Leads":[
+          { h:"New Listings in {{CITY}}—Before They Hit Zillow", c:"Free daily list under {{PRICE}}. Tap for alerts.", cta:"learn-more" }
+        ]
+      }
+    };
     const tplList = (PROMPT_TEMPLATES[adForm.market] || {})[adForm.subType] || [];
     const applyTemplate = (tpl)=>{
       setAdForm(prev=>({
@@ -856,7 +848,7 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
     );
   };
 
-  /* ========== Lead Management (editor modal, statuses, APV, notes, recordings) ========== */
+  /* ---------------- Lead Management (editor, delete, notes, APV) ---------------- */
   const LeadManagement = () => {
     const [searchTerm, setSearchTerm] = useState('');
     const [filterMarket, setFilterMarket] = useState('');
@@ -917,7 +909,6 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
       const created = { ...lead, id: Date.now(), time: new Date().toLocaleString(), callLogs: [], isClient: lead.status==='Paid' };
       setLeads(prev => [created, ...prev]);
     };
-    const updateLead = (lead)=> setLeads(prev => prev.map(l => l.id===lead.id ? lead : l));
     const deleteLead = (leadId)=>{ if (!confirm('Delete this lead?')) return; setLeads(prev => prev.filter(l=>l.id!==leadId)); };
 
     return (
@@ -1044,6 +1035,7 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
         )}
 
         {/* Editor */}
+        {/* eslint-disable-next-line */}
         {editingLead && (
           <LeadEditorModal
             initialLead={editingLead}
@@ -1279,7 +1271,7 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
     );
   }
 
-  /* ========== Voice + SMS Config ========== */
+  /* ---------------- Voice + SMS Config ---------------- */
   const VoiceAI = () => {
     const [local, setLocal] = useState({ ...voiceSettings, provider: apiSelection.voiceProvider });
     useEffect(()=>{ setLocal(prev=>({ ...prev, provider: apiSelection.voiceProvider })); }, [apiSelection.voiceProvider]);
@@ -1438,7 +1430,7 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
     );
   }
 
-  /* ========== Objections ========== */
+  /* ---------------- Objections ---------------- */
   const ObjectionHandling = () => {
     const [newObjection, setNewObjection] = useState({ objection:'', response:'' });
     const addObjection = () => {
@@ -1475,7 +1467,7 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
     );
   };
 
-  /* ========== Campaigns ========== */
+  /* ---------------- Campaigns (view/edit/delete) ---------------- */
   const CampaignManager = () => {
     const [editing, setEditing] = useState(null);
     const onDelete = (id)=>{
@@ -1594,7 +1586,7 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
     );
   }
 
-  /* ========== Analytics ========== */
+  /* ---------------- Analytics ---------------- */
   const Analytics = () => {
     const a = analyticsData || { overview:{avgCostPerLead:0}, performance:{callAnswerRate:0,schedulingRate:0,revenuePerLead:0} };
     const statusCounts = STATUS_LABELS.reduce((acc,s)=> (acc[s]=leads.filter(l=>l.status===s).length, acc), {});
@@ -1638,7 +1630,7 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
     );
   };
 
-  /* ========== Inbound Center (receive calls/SMS) ========== */
+  /* ---------------- Inbound Center ---------------- */
   const InboundCenter = () => {
     const [autoMatchUnknown, setAutoMatchUnknown] = useState(true);
     const [testing, setTesting] = useState(false);
@@ -1712,10 +1704,10 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
     );
   };
 
-  /* ========== Imports Placeholder ========== */
+  /* ---------------- Imports Placeholder ---------------- */
   const Imports = () => <div className="bg-white rounded-2xl p-6 shadow-lg fade-in">Use the imports flow from Leads.</div>;
 
-  /* ========== Settings ========== */
+  /* ---------------- Settings (providers dropdowns map to credentials) ---------------- */
   const Settings = () => {
     const [tab, setTab] = useState('apis');
 
@@ -2004,7 +1996,7 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
     );
   };
 
-  /* ========== Render switch ========== */
+  /* ---------------- Render switch ---------------- */
   function renderContent(tab){
     switch(tab){
       case 'dashboard': return <Dashboard/>;
@@ -2024,7 +2016,6 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-purple-50 to-pink-50">
-      {/* Mobile top bar + menu */}
       <MobileNav/>
       <div className="flex flex-col lg:flex-row">
         <Sidebar/>
@@ -2052,7 +2043,7 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
   );
 }
 
-/* ========== App Wrapper ========== */
+/* ============================ App Wrapper ============================ */
 function AppWrapper(){
   const [me, setMe] = useState(null);
   useEffect(()=>{ (async ()=>{ await ensureAdmin(); const sess = loadSession(); if (sess) setMe(sess); })(); },[]);
@@ -2062,7 +2053,7 @@ function AppWrapper(){
   return <LeadFlowApp me={me} onLogout={logout} onImpersonate={impersonate}/>;
 }
 
-/* ========== Mount ========== */
+/* ============================ Mount ============================ */
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(<ErrorBoundary><AppWrapper/></ErrorBoundary>);
 </script>
