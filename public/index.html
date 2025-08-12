@@ -660,7 +660,7 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
     </div>
   );
 
-   /* ---------- Ad Creator (market/sub) ---------- */
+    /* ---------- Ad Creator (market/sub) ---------- */
   const AdCreator = () => {
     const [adForm, setAdForm] = useState({
       market: 'Insurance',
@@ -1315,7 +1315,7 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
     );
   }
 
-    /* ---------- Voice + SMS ---------- */
+  /* ---------- Voice + SMS ---------- */
   const VoiceAI = () => {
     const [local, setLocal] = useState(voiceSettings);
     useEffect(()=>{ setLocal(voiceSettings); }, [voiceSettings]);
