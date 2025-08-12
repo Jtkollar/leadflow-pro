@@ -67,21 +67,278 @@
       setTimeout(check, 0);
     })();
   </script>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
   <style>
-    body { font-family: 'Inter', system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
-    .fade-in { animation: fadeIn .25s ease-in; }
-    @keyframes fadeIn { from { opacity:.001; transform: translateY(6px);} to { opacity:1; transform: translateY(0);} }
-    .toggle-switch { position: relative; width: 48px; height: 24px; background: #ccc; border-radius: 12px; cursor: pointer; transition: background .2s; }
-    .toggle-switch.active { background: #667eea; }
-    .toggle-slider { position:absolute; top:2px; left:2px; width:20px; height:20px; background:#fff; border-radius:50%; transition: transform .2s; }
-    .toggle-switch.active .toggle-slider { transform: translateX(24px); }
-    .badge { padding: 2px 8px; border-radius: 999px; font-size: 12px; }
-    .card { background: white; border-radius: 16px; box-shadow: 0 10px 20px rgba(0,0,0,.06); }
-    code.inline { background:#f9fafb; padding:2px 6px; border-radius:6px; border:1px solid #e5e7eb; }
+    body { 
+      font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; 
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      margin: 0;
+      padding: 0;
+    }
+    .fade-in { 
+      animation: fadeIn 0.5s ease-in-out; 
+    }
+    @keyframes fadeIn { 
+      from { opacity: 0; transform: translateY(20px); } 
+      to { opacity: 1; transform: translateY(0); } 
+    }
+    .slide-in { 
+      animation: slideIn 0.3s ease-out; 
+    }
+    @keyframes slideIn { 
+      from { opacity: 0; transform: translateX(-20px); } 
+      to { opacity: 1; transform: translateX(0); } 
+    }
+    .toggle-switch { 
+      position: relative; width: 56px; height: 28px; 
+      background: linear-gradient(135deg, #e5e7eb 0%, #d1d5db 100%); 
+      border-radius: 14px; cursor: pointer; 
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      box-shadow: inset 0 2px 4px rgba(0,0,0,0.1);
+    }
+    .toggle-switch.active { 
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      box-shadow: inset 0 2px 4px rgba(0,0,0,0.2), 0 0 0 2px rgba(102, 126, 234, 0.2);
+    }
+    .toggle-slider { 
+      position: absolute; top: 2px; left: 2px; width: 24px; height: 24px; 
+      background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%); 
+      border-radius: 50%; 
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      box-shadow: 0 2px 6px rgba(0,0,0,0.15), 0 1px 2px rgba(0,0,0,0.1);
+    }
+    .toggle-switch.active .toggle-slider { 
+      transform: translateX(28px);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.2), 0 2px 4px rgba(0,0,0,0.1);
+    }
+    .badge { 
+      padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.5px;
+      display: inline-flex; align-items: center; gap: 4px;
+    }
+    .card { 
+      background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%); 
+      border-radius: 20px; 
+      box-shadow: 0 20px 40px rgba(0,0,0,0.08), 0 8px 16px rgba(0,0,0,0.04);
+      border: 1px solid rgba(255,255,255,0.2);
+      backdrop-filter: blur(10px);
+      position: relative;
+      overflow: hidden;
+    }
+    .card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.8), transparent);
+    }
+    .glass-effect {
+      background: rgba(255, 255, 255, 0.95);
+      backdrop-filter: blur(20px);
+      border: 1px solid rgba(255, 255, 255, 0.3);
+    }
+    .btn-primary {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      border: none;
+      border-radius: 12px;
+      padding: 12px 24px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+      position: relative;
+      overflow: hidden;
+    }
+    .btn-primary::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: -100%;
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+      transition: left 0.5s;
+    }
+    .btn-primary:hover::before {
+      left: 100%;
+    }
+    .btn-primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 24px rgba(102, 126, 234, 0.4);
+    }
+    .btn-secondary {
+      background: linear-gradient(135deg, #6b7280 0%, #4b5563 100%);
+      color: white;
+      border: none;
+      border-radius: 12px;
+      padding: 12px 24px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      box-shadow: 0 4px 12px rgba(107, 114, 128, 0.3);
+    }
+    .btn-secondary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 24px rgba(107, 114, 128, 0.4);
+    }
+    .btn-danger {
+      background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+      color: white;
+      border: none;
+      border-radius: 12px;
+      padding: 12px 24px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
+    }
+    .btn-danger:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 24px rgba(239, 68, 68, 0.4);
+    }
+    .input-field {
+      background: rgba(255, 255, 255, 0.9);
+      border: 2px solid rgba(255, 255, 255, 0.3);
+      border-radius: 12px;
+      padding: 14px 18px;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      backdrop-filter: blur(10px);
+    }
+    .input-field:focus {
+      outline: none;
+      border-color: #667eea;
+      background: rgba(255, 255, 255, 1);
+      box-shadow: 0 0 0 4px rgba(102, 126, 234, 0.1);
+      transform: translateY(-1px);
+    }
+    .sidebar-gradient {
+      background: linear-gradient(180deg, #667eea 0%, #764ba2 100%);
+    }
+    .stat-card {
+      background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%);
+      border-radius: 18px;
+      padding: 24px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.05), 0 4px 12px rgba(0,0,0,0.03);
+      border: 1px solid rgba(255,255,255,0.5);
+      position: relative;
+      overflow: hidden;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    .stat-card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 3px;
+      background: linear-gradient(90deg, #667eea, #764ba2);
+    }
+    .stat-card:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 20px 40px rgba(0,0,0,0.08), 0 8px 16px rgba(0,0,0,0.04);
+    }
+    .shortcut-btn {
+      border-radius: 16px;
+      padding: 20px;
+      color: white;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      text-align: center;
+      position: relative;
+      overflow: hidden;
+    }
+    .shortcut-btn::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: -100%;
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+      transition: left 0.5s;
+    }
+    .shortcut-btn:hover::before {
+      left: 100%;
+    }
+    .shortcut-btn:hover {
+      transform: translateY(-3px) scale(1.02);
+    }
+    .table-header {
+      background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+      border-bottom: 2px solid rgba(102, 126, 234, 0.1);
+    }
+    .table-row:hover {
+      background: linear-gradient(135deg, rgba(102, 126, 234, 0.02) 0%, rgba(118, 75, 162, 0.02) 100%);
+    }
+    .modal-overlay {
+      background: rgba(0, 0, 0, 0.6);
+      backdrop-filter: blur(8px);
+    }
+    .modal-content {
+      background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%);
+      border-radius: 24px;
+      box-shadow: 0 25px 50px rgba(0,0,0,0.15);
+      border: 1px solid rgba(255,255,255,0.3);
+    }
+    .nav-item {
+      border-radius: 12px;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      position: relative;
+      overflow: hidden;
+    }
+    .nav-item.active {
+      background: linear-gradient(135deg, rgba(255,255,255,0.2) 0%, rgba(255,255,255,0.1) 100%);
+      color: white;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    }
+    .nav-item:hover:not(.active) {
+      background: rgba(255,255,255,0.1);
+      transform: translateX(4px);
+    }
+    .gradient-text {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .loading-spinner {
+      border: 3px solid rgba(102, 126, 234, 0.3);
+      border-top: 3px solid #667eea;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+    .floating-element {
+      animation: float 3s ease-in-out infinite;
+    }
+    @keyframes float {
+      0%, 100% { transform: translateY(0px); }
+      50% { transform: translateY(-10px); }
+    }
+    .status-new { background: linear-gradient(135deg, #f3f4f6 0%, #e5e7eb 100%); color: #374151; }
+    .status-contacted { background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%); color: #1d4ed8; }
+    .status-qualified { background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%); color: #92400e; }
+    .status-paid { background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%); color: #065f46; }
+    .status-declined { background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%); color: #991b1b; }
+    .glow-effect {
+      box-shadow: 0 0 20px rgba(102, 126, 234, 0.3);
+    }
+    .glass-card {
+      background: rgba(255, 255, 255, 0.25);
+      backdrop-filter: blur(20px);
+      border: 1px solid rgba(255, 255, 255, 0.3);
+      border-radius: 20px;
+    }
   </style>
 </head>
-<body>
+<body class="min-h-screen">
 <div id="lfp-error"></div>
 <div id="root"></div>
 
@@ -97,28 +354,30 @@ class ErrorBoundary extends React.Component {
   render() {
     if (this.state.hasError) {
       return (
-        <div className="min-h-screen p-6 bg-red-50 text-red-900">
-          <div className="max-w-3xl mx-auto">
-            <h1 className="text-2xl font-bold mb-2">Something broke in the UI</h1>
-            <pre className="p-3 bg-white rounded border overflow-auto">{String(this.state.error)}</pre>
-            {this.state.errorInfo && (
-              <pre className="mt-3 p-3 bg-white rounded border overflow-auto">{this.state.errorInfo.componentStack}</pre>
-            )}
-            <div className="mt-4">
-              <button
-                onClick={() => {
-                  try {
-                    Object.keys(localStorage).forEach(k => {
-                      if (k.startsWith('lfp:')) localStorage.removeItem(k);
-                    });
-                  } catch(e) {}
-                  location.reload();
-                }}
-                className="px-4 py-2 rounded bg-green-600 text-white"
-              >
-                Reset App Storage
-              </button>
+        <div className="min-h-screen p-6 bg-gradient-to-br from-red-50 to-red-100 text-red-900 flex items-center justify-center">
+          <div className="card max-w-3xl mx-auto p-8">
+            <h1 className="text-2xl font-bold mb-4 gradient-text">Something broke in the UI</h1>
+            <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-4">
+              <pre className="text-sm overflow-auto">{String(this.state.error)}</pre>
             </div>
+            {this.state.errorInfo && (
+              <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-4">
+                <pre className="text-sm overflow-auto">{this.state.errorInfo.componentStack}</pre>
+              </div>
+            )}
+            <button
+              onClick={() => {
+                try {
+                  Object.keys(localStorage).forEach(k => {
+                    if (k.startsWith('lfp:')) localStorage.removeItem(k);
+                  });
+                } catch(e) {}
+                location.reload();
+              }}
+              className="btn-primary"
+            >
+              Reset App Storage
+            </button>
           </div>
         </div>
       );
@@ -410,70 +669,95 @@ function LoginView({ onLoggedIn }) {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 via-purple-50 to-pink-50 p-6">
-      <div className="card w-full max-w-md p-8">
-        <div className="flex items-center gap-3 mb-6">
-          <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-500 to-purple-600 text-white font-bold flex items-center justify-center">
-            LF
+    <div className="min-h-screen flex items-center justify-center p-6" style={{
+      background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'
+    }}>
+      <div className="floating-element">
+        <div className="glass-card w-full max-w-md p-8 fade-in">
+          <div className="flex items-center gap-4 mb-8">
+            <div className="w-16 h-16 rounded-2xl flex items-center justify-center text-white font-bold text-2xl glow-effect" style={{
+              background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'
+            }}>
+              LF
+            </div>
+            <div>
+              <div className="text-2xl font-bold gradient-text">LeadFlow Pro</div>
+              <div className="text-sm text-gray-600">Secure AI-Powered CRM</div>
+            </div>
           </div>
-          <div>
-            <div className="text-xl font-bold">LeadFlow Pro</div>
-            <div className="text-xs text-gray-500">Secure login</div>
+
+          <div className="flex gap-2 mb-6">
+            <button
+              onClick={() => {
+                try {
+                  Object.keys(localStorage).forEach(k => {
+                    if (k.startsWith('lfp:')) localStorage.removeItem(k);
+                  });
+                } catch(e) {}
+                alert('✅ Storage cleared. Sign in again.');
+              }}
+              className="px-4 py-2 text-sm rounded-lg bg-white bg-opacity-20 text-white hover:bg-opacity-30 transition-all"
+            >
+              🔄 Reset Storage
+            </button>
+          </div>
+
+          <form onSubmit={login} className="space-y-6">
+            <div>
+              <label className="block text-sm font-semibold mb-2 text-gray-700">Email Address</label>
+              <input
+                type="email"
+                className="input-field w-full"
+                value={email}
+                onChange={e => setEmail(e.target.value)}
+                placeholder="joshua.kollar@me.com"
+                required
+                autoComplete="email"
+              />
+            </div>
+            
+            <div>
+              <label className="block text-sm font-semibold mb-2 text-gray-700">Password</label>
+              <input
+                type="password"
+                className="input-field w-full"
+                value={password}
+                onChange={e => setPassword(e.target.value)}
+                placeholder="••••••••••••"
+                required
+                autoComplete="current-password"
+              />
+            </div>
+
+            {error && (
+              <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-red-700 text-sm">
+                {error}
+              </div>
+            )}
+
+            <button
+              disabled={busy}
+              className="btn-primary w-full text-lg font-semibold"
+              style={{ height: '52px' }}
+            >
+              {busy ? (
+                <div className="flex items-center justify-center gap-3">
+                  <div className="loading-spinner w-5 h-5"></div>
+                  Signing In...
+                </div>
+              ) : (
+                "🚀 Sign In to LeadFlow"
+              )}
+            </button>
+          </form>
+
+          <div className="mt-6 text-center text-sm text-gray-600">
+            <div className="flex items-center gap-2 justify-center">
+              <span>🔒</span>
+              <span>Secured with 256-bit encryption</span>
+            </div>
           </div>
         </div>
-
-        <div className="flex gap-2 mb-4">
-          <button
-            onClick={() => {
-              try {
-                Object.keys(localStorage).forEach(k => {
-                  if (k.startsWith('lfp:')) localStorage.removeItem(k);
-                });
-              } catch(e) {}
-              alert('✅ Storage cleared. Sign in again.');
-            }}
-            className="px-3 py-2 text-sm rounded bg-gray-100"
-          >
-            Reset App Storage
-          </button>
-        </div>
-
-        <form onSubmit={login} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium mb-1">Email</label>
-            <input
-              type="email"
-              className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500"
-              value={email}
-              onChange={e => setEmail(e.target.value)}
-              placeholder="you@domain.com"
-              required
-            />
-          </div>
-          
-          <div>
-            <label className="block text-sm font-medium mb-1">Password</label>
-            <input
-              type="password"
-              className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500"
-              value={password}
-              onChange={e => setPassword(e.target.value)}
-              placeholder="••••••••"
-              required
-            />
-          </div>
-
-          {error && (
-            <div className="text-sm text-red-600">{error}</div>
-          )}
-
-          <button
-            disabled={busy}
-            className="w-full p-3 bg-gradient-to-r from-blue-500 to-purple-600 text-white rounded-xl font-semibold hover:shadow-lg transition-all"
-          >
-            {busy ? "Signing in…" : "Sign In"}
-          </button>
-        </form>
       </div>
     </div>
   );
@@ -500,63 +784,74 @@ function LeadFlowApp({ me, onLogout, onImpersonate }) {
 
   if (!ws) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full mx-auto mb-4"></div>
-          <div>Loading workspace...</div>
+      <div className="min-h-screen flex items-center justify-center" style={{
+        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'
+      }}>
+        <div className="text-center glass-card p-8 rounded-2xl">
+          <div className="loading-spinner w-12 h-12 mx-auto mb-4"></div>
+          <div className="text-white text-lg font-semibold">Loading your workspace...</div>
+          <div className="text-white text-opacity-80 text-sm mt-2">Setting up your AI-powered CRM</div>
         </div>
       </div>
     );
   }
 
   const renderSidebar = () => (
-    <div className="w-64 bg-white border-r h-screen overflow-y-auto">
-      <div className="p-6 border-b">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-blue-500 to-purple-600 text-white font-bold flex items-center justify-center">
+    <div className="w-72 h-screen overflow-y-auto sidebar-gradient">
+      <div className="p-6 border-b border-white border-opacity-20">
+        <div className="flex items-center gap-4">
+          <div className="w-12 h-12 rounded-xl bg-white bg-opacity-20 text-white font-bold flex items-center justify-center text-lg backdrop-filter backdrop-blur-sm">
             LF
           </div>
           <div>
-            <div className="font-bold">LeadFlow Pro</div>
-            <div className="text-xs text-gray-500">{me.email}</div>
+            <div className="font-bold text-white text-lg">LeadFlow Pro</div>
+            <div className="text-xs text-white text-opacity-70">{me.email.split('@')[0]}</div>
           </div>
         </div>
       </div>
 
       <nav className="p-4 space-y-2">
         {[
-          { id: "dashboard", label: "Dashboard", icon: "📊" },
-          { id: "leads", label: "Lead Management", icon: "👥" },
-          { id: "campaigns", label: "Campaign Manager", icon: "📢" },
-          { id: "ads", label: "Ad Creator", icon: "🎨" },
-          { id: "inbound", label: "Inbound Center", icon: "📞" },
-          { id: "imports", label: "Import Data", icon: "📂" },
-          { id: "analytics", label: "Analytics", icon: "📈" },
-          { id: "settings", label: "Settings", icon: "⚙️" },
-          ...(me.isAdmin ? [{ id: "users", label: "User Admin", icon: "👤" }] : [])
+          { id: "dashboard", label: "Dashboard", icon: "📊", desc: "Overview & Stats" },
+          { id: "leads", label: "Lead Management", icon: "👥", desc: "Manage Prospects" },
+          { id: "campaigns", label: "Campaign Manager", icon: "📢", desc: "Marketing Campaigns" },
+          { id: "ads", label: "Ad Creator", icon: "🎨", desc: "AI-Generated Ads" },
+          { id: "inbound", label: "Inbound Center", icon: "📞", desc: "Call & SMS Hub" },
+          { id: "imports", label: "Import Data", icon: "📂", desc: "CSV & Integrations" },
+          { id: "analytics", label: "Analytics", icon: "📈", desc: "Performance Insights" },
+          { id: "settings", label: "Settings", icon: "⚙️", desc: "AI & API Config" },
+          ...(me.isAdmin ? [{ id: "users", label: "User Admin", icon: "👤", desc: "Manage Team" }] : [])
         ].map(item => (
           <button
             key={item.id}
             onClick={() => setView(item.id)}
-            className={`w-full text-left p-3 rounded-lg transition-colors ${
-              view === item.id 
-                ? "bg-blue-50 text-blue-600 border border-blue-200" 
-                : "hover:bg-gray-50"
+            className={`nav-item w-full text-left p-4 ${
+              view === item.id ? "active" : ""
             }`}
           >
-            <span className="mr-3">{item.icon}</span>
-            {item.label}
+            <div className="flex items-center gap-3">
+              <span className="text-xl">{item.icon}</span>
+              <div className="flex-1">
+                <div className="font-semibold text-white">{item.label}</div>
+                <div className="text-xs text-white text-opacity-70">{item.desc}</div>
+              </div>
+            </div>
           </button>
         ))}
       </nav>
 
-      <div className="p-4 border-t mt-auto">
+      <div className="p-4 border-t border-white border-opacity-20 mt-auto">
         <button
           onClick={onLogout}
-          className="w-full p-3 text-left rounded-lg hover:bg-red-50 text-red-600"
+          className="nav-item w-full p-4 text-left hover:bg-red-500 hover:bg-opacity-20"
         >
-          <span className="mr-3">🚪</span>
-          Sign Out
+          <div className="flex items-center gap-3">
+            <span className="text-xl">🚪</span>
+            <div>
+              <div className="font-semibold text-white">Sign Out</div>
+              <div className="text-xs text-white text-opacity-70">Exit Safely</div>
+            </div>
+          </div>
         </button>
       </div>
     </div>
@@ -570,53 +865,79 @@ function LeadFlowApp({ me, onLogout, onImpersonate }) {
       .reduce((sum, l) => sum + (parseFloat(l.apvAmount) || 0), 0);
 
     const shortcuts = [
-      { label: "Add Lead", action: () => setView("leads"), icon: "➕", color: "bg-green-500" },
-      { label: "Create Campaign", action: () => setView("campaigns"), icon: "📢", color: "bg-blue-500" },
-      { label: "Voice Settings", action: () => setView("settings"), icon: "🎤", color: "bg-purple-500" },
-      { label: "SMS Config", action: () => setView("settings"), icon: "💬", color: "bg-orange-500" },
-      { label: "Import Data", action: () => setView("imports"), icon: "📂", color: "bg-indigo-500" },
-      { label: "Analytics", action: () => setView("analytics"), icon: "📊", color: "bg-pink-500" }
+      { label: "Add Lead", action: () => setView("leads"), icon: "➕", color: "linear-gradient(135deg, #10b981 0%, #059669 100%)", desc: "New Prospect" },
+      { label: "Create Campaign", action: () => setView("campaigns"), icon: "📢", color: "linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%)", desc: "Marketing" },
+      { label: "Voice Settings", action: () => setView("settings"), icon: "🎤", color: "linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)", desc: "AI Calls" },
+      { label: "SMS Config", action: () => setView("settings"), icon: "💬", color: "linear-gradient(135deg, #f59e0b 0%, #d97706 100%)", desc: "Text Messages" },
+      { label: "Import Data", action: () => setView("imports"), icon: "📂", color: "linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)", desc: "Upload CSV" },
+      { label: "Analytics", action: () => setView("analytics"), icon: "📊", color: "linear-gradient(135deg, #ec4899 0%, #db2777 100%)", desc: "Insights" }
     ];
 
     return (
-      <div className="p-6 space-y-6">
+      <div className="p-8 space-y-8 bg-gradient-to-br from-gray-50 to-blue-50 min-h-screen">
         <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-bold">Dashboard</h1>
-          <div className="text-sm text-gray-500">
-            Welcome back, {me.email.split('@')[0]}
+          <div>
+            <h1 className="text-4xl font-bold gradient-text">Dashboard</h1>
+            <p className="text-gray-600 mt-2">Welcome back, {me.email.split('@')[0]}! Here's your AI-powered overview.</p>
+          </div>
+          <div className="text-right">
+            <div className="text-sm text-gray-500">Last updated</div>
+            <div className="text-lg font-semibold text-gray-700">{new Date().toLocaleDateString()}</div>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-          <div className="card p-6">
-            <div className="text-3xl font-bold text-blue-600">{totalLeads}</div>
-            <div className="text-sm text-gray-600">Total Leads</div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          <div className="stat-card group">
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-3xl font-bold text-blue-600">{totalLeads}</div>
+                <div className="text-sm text-gray-600 font-medium">Total Leads</div>
+              </div>
+              <div className="text-4xl opacity-20 group-hover:opacity-40 transition-opacity">👥</div>
+            </div>
           </div>
-          <div className="card p-6">
-            <div className="text-3xl font-bold text-green-600">{paidLeads}</div>
-            <div className="text-sm text-gray-600">Paid Clients</div>
+          <div className="stat-card group">
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-3xl font-bold text-green-600">{paidLeads}</div>
+                <div className="text-sm text-gray-600 font-medium">Paid Clients</div>
+              </div>
+              <div className="text-4xl opacity-20 group-hover:opacity-40 transition-opacity">💰</div>
+            </div>
           </div>
-          <div className="card p-6">
-            <div className="text-3xl font-bold text-purple-600">${thisWeekAPV.toLocaleString()}</div>
-            <div className="text-sm text-gray-600">This Week APV</div>
+          <div className="stat-card group">
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-3xl font-bold text-purple-600">${thisWeekAPV.toLocaleString()}</div>
+                <div className="text-sm text-gray-600 font-medium">This Week APV</div>
+              </div>
+              <div className="text-4xl opacity-20 group-hover:opacity-40 transition-opacity">📈</div>
+            </div>
           </div>
-          <div className="card p-6">
-            <div className="text-3xl font-bold text-orange-600">{ws.data.campaigns.length}</div>
-            <div className="text-sm text-gray-600">Active Campaigns</div>
+          <div className="stat-card group">
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-3xl font-bold text-orange-600">{ws.data.campaigns.length}</div>
+                <div className="text-sm text-gray-600 font-medium">Active Campaigns</div>
+              </div>
+              <div className="text-4xl opacity-20 group-hover:opacity-40 transition-opacity">🎯</div>
+            </div>
           </div>
         </div>
 
-        <div className="card p-6">
-          <h2 className="text-lg font-semibold mb-4">Quick Actions</h2>
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+        <div className="card p-8">
+          <h2 className="text-2xl font-bold gradient-text mb-6">Quick Actions</h2>
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
             {shortcuts.map((shortcut, idx) => (
               <button
                 key={idx}
                 onClick={shortcut.action}
-                className={`${shortcut.color} text-white p-4 rounded-lg hover:opacity-90 transition-opacity text-center`}
+                className="shortcut-btn p-6 text-center"
+                style={{ background: shortcut.color }}
               >
-                <div className="text-2xl mb-2">{shortcut.icon}</div>
-                <div className="text-sm font-medium">{shortcut.label}</div>
+                <div className="text-3xl mb-3">{shortcut.icon}</div>
+                <div className="font-semibold text-white mb-1">{shortcut.label}</div>
+                <div className="text-xs text-white text-opacity-80">{shortcut.desc}</div>
               </button>
             ))}
           </div>
@@ -652,7 +973,7 @@ function LeadFlowApp({ me, onLogout, onImpersonate }) {
     };
 
     const deleteLead = (leadId) => {
-      if (confirm("Delete this lead?")) {
+      if (confirm("Delete this lead permanently?")) {
         const updated = { ...ws };
         updated.data.leads = updated.data.leads.filter(l => l.id !== leadId);
         saveWs(updated);
@@ -660,73 +981,109 @@ function LeadFlowApp({ me, onLogout, onImpersonate }) {
     };
 
     return (
-      <div className="p-6">
-        <div className="flex items-center justify-between mb-6">
-          <h1 className="text-2xl font-bold">Lead Management</h1>
+      <div className="p-8 bg-gradient-to-br from-gray-50 to-blue-50 min-h-screen">
+        <div className="flex items-center justify-between mb-8">
+          <div>
+            <h1 className="text-4xl font-bold gradient-text">Lead Management</h1>
+            <p className="text-gray-600 mt-2">Manage your prospects and track their journey</p>
+          </div>
           <button
             onClick={addLead}
-            className="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600"
+            className="btn-primary flex items-center gap-2 px-6 py-3 text-lg"
           >
-            Add Lead
+            <span>➕</span>
+            Add New Lead
           </button>
         </div>
 
         <div className="card overflow-hidden">
+          <div className="table-header p-6">
+            <h3 className="text-xl font-semibold gradient-text">Your Prospects</h3>
+          </div>
           <div className="overflow-x-auto">
             <table className="w-full">
-              <thead className="bg-gray-50">
+              <thead className="table-header">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Contact</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Market</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">APV</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
+                  <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700 uppercase tracking-wider">Lead Info</th>
+                  <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700 uppercase tracking-wider">Contact</th>
+                  <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700 uppercase tracking-wider">Market</th>
+                  <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700 uppercase tracking-wider">Status</th>
+                  <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700 uppercase tracking-wider">APV Value</th>
+                  <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700 uppercase tracking-wider">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
-                {ws.data.leads.map(lead => (
-                  <tr key={lead.id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="font-medium">{lead.name || "Unnamed"}</div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm">{lead.email}</div>
-                      <div className="text-sm text-gray-500">{lead.phone}</div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm">{lead.market}</div>
-                      <div className="text-xs text-gray-500">{lead.sub}</div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`badge ${
-                        lead.status === "Paid" ? "bg-green-100 text-green-800" :
-                        lead.status === "Approved" ? "bg-blue-100 text-blue-800" :
-                        lead.status === "Declined" ? "bg-red-100 text-red-800" :
-                        "bg-gray-100 text-gray-800"
-                      }`}>
-                        {lead.status}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      {lead.apvAmount ? `$${parseFloat(lead.apvAmount).toLocaleString()}` : "-"}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm">
-                      <button
-                        onClick={() => setEditingLead(lead)}
-                        className="text-blue-600 hover:text-blue-800 mr-3"
-                      >
-                        Edit
-                      </button>
-                      <button
-                        onClick={() => deleteLead(lead.id)}
-                        className="text-red-600 hover:text-red-800"
-                      >
-                        Delete
-                      </button>
+                {ws.data.leads.length === 0 ? (
+                  <tr>
+                    <td colSpan="6" className="px-6 py-12 text-center">
+                      <div className="text-gray-500">
+                        <div className="text-4xl mb-4">🎯</div>
+                        <div className="text-lg font-semibold">No leads yet</div>
+                        <div className="text-sm">Click "Add New Lead" to get started!</div>
+                      </div>
                     </td>
                   </tr>
-                ))}
+                ) : (
+                  ws.data.leads.map(lead => (
+                    <tr key={lead.id} className="table-row hover:shadow-sm transition-all">
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-full bg-gradient-to-r from-blue-400 to-purple-500 flex items-center justify-center text-white font-semibold">
+                            {(lead.name || "?")[0].toUpperCase()}
+                          </div>
+                          <div>
+                            <div className="font-semibold text-gray-900">{lead.name || "Unnamed Lead"}</div>
+                            <div className="text-sm text-gray-500">ID: {lead.id.slice(-6)}</div>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="text-sm">
+                          <div className="font-medium text-gray-900">{lead.email}</div>
+                          <div className="text-gray-500">{lead.phone}</div>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="text-sm">
+                          <div className="font-medium text-gray-900">{lead.market}</div>
+                          <div className="text-gray-500">{lead.sub}</div>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className={`badge ${
+                          lead.status === "Paid" ? "status-paid" :
+                          lead.status === "Approved" ? "bg-blue-100 text-blue-800" :
+                          lead.status === "Declined" ? "status-declined" :
+                          lead.status === "Contacted" ? "status-contacted" :
+                          "status-new"
+                        }`}>
+                          {lead.status}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="font-semibold text-gray-900">
+                          {lead.apvAmount ? `$${parseFloat(lead.apvAmount).toLocaleString()}` : "—"}
+                        </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => setEditingLead(lead)}
+                            className="px-3 py-1 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors text-sm font-medium"
+                          >
+                            ✏️ Edit
+                          </button>
+                          <button
+                            onClick={() => deleteLead(lead.id)}
+                            className="px-3 py-1 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition-colors text-sm font-medium"
+                          >
+                            🗑️ Delete
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           </div>
@@ -784,47 +1141,58 @@ function LeadFlowApp({ me, onLogout, onImpersonate }) {
     };
 
     return (
-      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-        <div className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-y-auto">
-          <div className="p-6 border-b">
-            <h2 className="text-xl font-bold">
-              {lead.id ? "Edit Lead" : "Add New Lead"}
-            </h2>
+      <div className="modal-overlay fixed inset-0 flex items-center justify-center p-4 z-50">
+        <div className="modal-content w-full max-w-5xl max-h-[95vh] overflow-y-auto">
+          <div className="p-8 border-b border-gray-200">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 rounded-xl bg-gradient-to-r from-blue-500 to-purple-600 flex items-center justify-center text-white font-bold text-xl">
+                {lead.id ? "✏️" : "➕"}
+              </div>
+              <div>
+                <h2 className="text-2xl font-bold gradient-text">
+                  {lead.id ? "Edit Lead" : "Add New Lead"}
+                </h2>
+                <p className="text-gray-600">Manage prospect information and status</p>
+              </div>
+            </div>
           </div>
 
-          <div className="p-6 space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="p-8 space-y-8">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
-                <label className="block text-sm font-medium mb-1">Name</label>
+                <label className="block text-sm font-semibold mb-2 text-gray-700">👤 Full Name</label>
                 <input
                   type="text"
-                  className="w-full p-3 border rounded-lg"
+                  className="input-field w-full"
                   value={formData.name || ""}
                   onChange={e => updateField("name", e.target.value)}
+                  placeholder="John Smith"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1">Email</label>
+                <label className="block text-sm font-semibold mb-2 text-gray-700">📧 Email Address</label>
                 <input
                   type="email"
-                  className="w-full p-3 border rounded-lg"
+                  className="input-field w-full"
                   value={formData.email || ""}
                   onChange={e => updateField("email", e.target.value)}
+                  placeholder="john@example.com"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1">Phone</label>
+                <label className="block text-sm font-semibold mb-2 text-gray-700">📱 Phone Number</label>
                 <input
                   type="tel"
-                  className="w-full p-3 border rounded-lg"
+                  className="input-field w-full"
                   value={formData.phone || ""}
                   onChange={e => updateField("phone", e.target.value)}
+                  placeholder="+1 (555) 123-4567"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1">Status</label>
+                <label className="block text-sm font-semibold mb-2 text-gray-700">📊 Status</label>
                 <select
-                  className="w-full p-3 border rounded-lg"
+                  className="input-field w-full"
                   value={formData.status || "New"}
                   onChange={e => updateField("status", e.target.value)}
                 >
@@ -835,11 +1203,11 @@ function LeadFlowApp({ me, onLogout, onImpersonate }) {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
-                <label className="block text-sm font-medium mb-1">Market</label>
+                <label className="block text-sm font-semibold mb-2 text-gray-700">🏢 Market</label>
                 <select
-                  className="w-full p-3 border rounded-lg"
+                  className="input-field w-full"
                   value={formData.market || "Insurance"}
                   onChange={e => {
                     updateField("market", e.target.value);
@@ -852,9 +1220,9 @@ function LeadFlowApp({ me, onLogout, onImpersonate }) {
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1">Sub Category</label>
+                <label className="block text-sm font-semibold mb-2 text-gray-700">🎯 Sub Category</label>
                 <select
-                  className="w-full p-3 border rounded-lg"
+                  className="input-field w-full"
                   value={formData.sub || ""}
                   onChange={e => updateField("sub", e.target.value)}
                 >
@@ -866,136 +1234,149 @@ function LeadFlowApp({ me, onLogout, onImpersonate }) {
             </div>
 
             {STATUS_ADVANCED.has(formData.status) && (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium mb-1">APV Amount</label>
-                  <input
-                    type="number"
-                    className="w-full p-3 border rounded-lg"
-                    value={formData.apvAmount || ""}
-                    onChange={e => updateField("apvAmount", e.target.value)}
-                    placeholder="0.00"
-                  />
-                </div>
-                {formData.market === "Insurance" && (
+              <div className="card p-6">
+                <h3 className="text-lg font-semibold gradient-text mb-4">💰 Advanced Status Information</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div>
-                    <label className="block text-sm font-medium mb-1">Insurance Carrier</label>
+                    <label className="block text-sm font-semibold mb-2 text-gray-700">💵 APV Amount ($)</label>
                     <input
-                      type="text"
-                      className="w-full p-3 border rounded-lg"
-                      value={formData.insuranceCarrier || ""}
-                      onChange={e => updateField("insuranceCarrier", e.target.value)}
+                      type="number"
+                      className="input-field w-full"
+                      value={formData.apvAmount || ""}
+                      onChange={e => updateField("apvAmount", e.target.value)}
+                      placeholder="5000.00"
                     />
                   </div>
-                )}
+                  {formData.market === "Insurance" && (
+                    <div>
+                      <label className="block text-sm font-semibold mb-2 text-gray-700">🏛️ Insurance Carrier</label>
+                      <input
+                        type="text"
+                        className="input-field w-full"
+                        value={formData.insuranceCarrier || ""}
+                        onChange={e => updateField("insuranceCarrier", e.target.value)}
+                        placeholder="State Farm, Allstate, etc."
+                      />
+                    </div>
+                  )}
+                </div>
               </div>
             )}
 
             {formData.sub === "Debt Free" && (
-              <div className="space-y-4">
-                <h3 className="text-lg font-semibold">Debt Details</h3>
-                
-                {["creditCards", "mortgages", "cars", "other"].map(category => (
-                  <div key={category} className="border rounded-lg p-4">
-                    <div className="flex items-center justify-between mb-3">
-                      <h4 className="font-medium capitalize">
-                        {category === "creditCards" ? "Credit Cards" : category}
-                      </h4>
-                      <button
-                        onClick={() => addDebtItem(category)}
-                        className="bg-blue-500 text-white px-3 py-1 rounded text-sm"
-                      >
-                        +
-                      </button>
-                    </div>
-                    
-                    {(formData.debtDetails?.[category] || []).map((item, index) => (
-                      <div key={index} className="grid grid-cols-3 gap-2 mb-2">
-                        <input
-                          type="number"
-                          placeholder="Amount"
-                          className="p-2 border rounded"
-                          value={item.amount || ""}
-                          onChange={e => updateDebtItem(category, index, "amount", e.target.value)}
-                        />
-                        <input
-                          type="number"
-                          placeholder="APR %"
-                          className="p-2 border rounded"
-                          value={item.apr || ""}
-                          onChange={e => updateDebtItem(category, index, "apr", e.target.value)}
-                        />
-                        <input
-                          type="text"
-                          placeholder="Description"
-                          className="p-2 border rounded"
-                          value={item.description || ""}
-                          onChange={e => updateDebtItem(category, index, "description", e.target.value)}
-                        />
+              <div className="card p-6">
+                <h3 className="text-lg font-semibold gradient-text mb-4">💳 Debt Details Worksheet</h3>
+                <div className="space-y-6">
+                  {["creditCards", "mortgages", "cars", "other"].map(category => (
+                    <div key={category} className="border border-gray-200 rounded-lg p-4">
+                      <div className="flex items-center justify-between mb-4">
+                        <h4 className="font-semibold text-gray-700 capitalize">
+                          {category === "creditCards" ? "💳 Credit Cards" : 
+                           category === "mortgages" ? "🏠 Mortgages" :
+                           category === "cars" ? "🚗 Car Loans" : "📄 Other Debts"}
+                        </h4>
+                        <button
+                          onClick={() => addDebtItem(category)}
+                          className="btn-primary px-4 py-2 text-sm"
+                        >
+                          + Add Item
+                        </button>
                       </div>
-                    ))}
-                  </div>
-                ))}
+                      
+                      {(formData.debtDetails?.[category] || []).map((item, index) => (
+                      <div key={index} className="grid grid-cols-3 gap-3 mb-3">
+                          <input
+                            type="number"
+                            placeholder="$0.00"
+                            className="input-field"
+                            value={item.amount || ""}
+                            onChange={e => updateDebtItem(category, index, "amount", e.target.value)}
+                          />
+                          <input
+                            type="number"
+                            placeholder="APR %"
+                            className="input-field"
+                            value={item.apr || ""}
+                            onChange={e => updateDebtItem(category, index, "apr", e.target.value)}
+                          />
+                          <input
+                            type="text"
+                            placeholder="Description"
+                            className="input-field"
+                            value={item.description || ""}
+                            onChange={e => updateDebtItem(category, index, "description", e.target.value)}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
 
             <div>
-              <label className="block text-sm font-medium mb-1">Notes</label>
+              <label className="block text-sm font-semibold mb-2 text-gray-700">📝 Notes & Comments</label>
               <textarea
-                className="w-full p-3 border rounded-lg"
+                className="input-field w-full"
                 rows="4"
                 value={formData.notes || ""}
                 onChange={e => updateField("notes", e.target.value)}
-                placeholder="Add notes about this lead..."
+                placeholder="Add any important notes about this lead..."
               />
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium mb-1">Call Recordings</label>
-                <div className="border rounded-lg p-3 min-h-[100px] bg-gray-50">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="card p-6">
+                <label className="block text-sm font-semibold mb-3 text-gray-700">🎙️ Call Recordings</label>
+                <div className="min-h-[120px] bg-gradient-to-br from-blue-50 to-purple-50 rounded-lg p-4">
                   {formData.recordings?.length > 0 ? (
                     formData.recordings.map((recording, index) => (
-                      <div key={index} className="mb-2 p-2 bg-white rounded border">
-                        <div className="text-sm font-medium">{recording.date}</div>
+                      <div key={index} className="mb-3 p-3 bg-white rounded-lg border">
+                        <div className="text-sm font-semibold text-gray-900">{recording.date}</div>
                         <div className="text-xs text-gray-500">{recording.duration}</div>
                       </div>
                     ))
                   ) : (
-                    <div className="text-gray-500 text-sm">No recordings yet</div>
+                    <div className="text-center text-gray-500 py-8">
+                      <div className="text-2xl mb-2">🎙️</div>
+                      <div className="text-sm">No recordings yet</div>
+                    </div>
                   )}
                 </div>
               </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">Call Transcripts</label>
-                <div className="border rounded-lg p-3 min-h-[100px] bg-gray-50">
+              <div className="card p-6">
+                <label className="block text-sm font-semibold mb-3 text-gray-700">📄 Call Transcripts</label>
+                <div className="min-h-[120px] bg-gradient-to-br from-green-50 to-blue-50 rounded-lg p-4">
                   {formData.transcripts?.length > 0 ? (
                     formData.transcripts.map((transcript, index) => (
-                      <div key={index} className="mb-2 p-2 bg-white rounded border">
-                        <div className="text-sm font-medium">{transcript.date}</div>
+                      <div key={index} className="mb-3 p-3 bg-white rounded-lg border">
+                        <div className="text-sm font-semibold text-gray-900">{transcript.date}</div>
                         <div className="text-xs text-gray-500">{transcript.summary}</div>
                       </div>
                     ))
                   ) : (
-                    <div className="text-gray-500 text-sm">No transcripts yet</div>
+                    <div className="text-center text-gray-500 py-8">
+                      <div className="text-2xl mb-2">📄</div>
+                      <div className="text-sm">No transcripts yet</div>
+                    </div>
                   )}
                 </div>
               </div>
             </div>
           </div>
 
-          <div className="p-6 border-t flex gap-3 justify-end">
+          <div className="p-8 border-t border-gray-200 flex gap-4 justify-end">
             <button
               onClick={onCancel}
-              className="px-4 py-2 border rounded-lg hover:bg-gray-50"
+              className="btn-secondary px-8 py-3"
             >
               Cancel
             </button>
             <button
               onClick={() => onSave(formData)}
-              className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600"
+              className="btn-primary px-8 py-3"
             >
-              Save Lead
+              💾 Save Lead
             </button>
           </div>
         </div>
@@ -1024,17 +1405,20 @@ function LeadFlowApp({ me, onLogout, onImpersonate }) {
     };
 
     return (
-      <div className="p-6 space-y-8">
-        <h1 className="text-2xl font-bold">Settings</h1>
+      <div className="p-8 space-y-8 bg-gradient-to-br from-gray-50 to-blue-50 min-h-screen">
+        <div>
+          <h1 className="text-4xl font-bold gradient-text">⚙️ Settings</h1>
+          <p className="text-gray-600 mt-2">Configure your AI-powered automation and integrations</p>
+        </div>
 
-        <div className="card p-6">
-          <h2 className="text-lg font-semibold mb-4">API Settings</h2>
+        <div className="card p-8">
+          <h2 className="text-2xl font-bold gradient-text mb-6">🔌 API Configuration</h2>
           
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
             <div>
-              <label className="block text-sm font-medium mb-2">Voice Provider</label>
+              <label className="block text-sm font-semibold mb-3 text-gray-700">🎤 Voice AI Provider</label>
               <select
-                className="w-full p-3 border rounded-lg"
+                className="input-field w-full"
                 value={ws.apiSelection.voiceProvider}
                 onChange={e => {
                   const updated = { ...ws };
@@ -1043,17 +1427,17 @@ function LeadFlowApp({ me, onLogout, onImpersonate }) {
                   saveWs(updated);
                 }}
               >
-                <option value="elevenlabs">ElevenLabs</option>
-                <option value="openai">OpenAI</option>
-                <option value="azure">Azure</option>
-                <option value="google">Google</option>
+                <option value="elevenlabs">🎭 ElevenLabs (Premium)</option>
+                <option value="openai">🤖 OpenAI Voices</option>
+                <option value="azure">☁️ Azure Cognitive</option>
+                <option value="google">🌐 Google Cloud</option>
               </select>
             </div>
 
             <div>
-              <label className="block text-sm font-medium mb-2">SMS Provider</label>
+              <label className="block text-sm font-semibold mb-3 text-gray-700">💬 SMS Provider</label>
               <select
-                className="w-full p-3 border rounded-lg"
+                className="input-field w-full"
                 value={ws.apiSelection.smsProvider}
                 onChange={e => {
                   const updated = { ...ws };
@@ -1062,100 +1446,106 @@ function LeadFlowApp({ me, onLogout, onImpersonate }) {
                   saveWs(updated);
                 }}
               >
-                <option value="twilio">Twilio</option>
-                <option value="messagebird">MessageBird</option>
-                <option value="vonage">Vonage</option>
+                <option value="twilio">📱 Twilio (Recommended)</option>
+                <option value="messagebird">🐦 MessageBird</option>
+                <option value="vonage">📞 Vonage</option>
               </select>
             </div>
           </div>
 
-          <div className="mt-6 space-y-4">
-            <h3 className="text-md font-medium">API Credentials</h3>
+          <div className="space-y-6">
+            <h3 className="text-xl font-semibold gradient-text">🔑 API Credentials</h3>
             
-            <div>
-              <label className="block text-sm font-medium mb-1">OpenAI API Key</label>
-              <input
-                type="password"
-                className="w-full p-3 border rounded-lg"
-                value={ws.credentials.openai?.apiKey || ""}
-                onChange={e => updateCredentials("openai", "apiKey", e.target.value)}
-                placeholder="sk-..."
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium mb-1">ElevenLabs API Key</label>
-              <input
-                type="password"
-                className="w-full p-3 border rounded-lg"
-                value={ws.credentials.elevenlabs?.apiKey || ""}
-                onChange={e => updateCredentials("elevenlabs", "apiKey", e.target.value)}
-                placeholder="..."
-              />
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <div>
-                <label className="block text-sm font-medium mb-1">Twilio Account SID</label>
+                <label className="block text-sm font-semibold mb-2 text-gray-700">🤖 OpenAI API Key</label>
                 <input
                   type="password"
-                  className="w-full p-3 border rounded-lg"
+                  className="input-field w-full"
+                  value={ws.credentials.openai?.apiKey || ""}
+                  onChange={e => updateCredentials("openai", "apiKey", e.target.value)}
+                  placeholder="sk-proj-..."
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold mb-2 text-gray-700">🎭 ElevenLabs API Key</label>
+                <input
+                  type="password"
+                  className="input-field w-full"
+                  value={ws.credentials.elevenlabs?.apiKey || ""}
+                  onChange={e => updateCredentials("elevenlabs", "apiKey", e.target.value)}
+                  placeholder="sk_..."
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              <div>
+                <label className="block text-sm font-semibold mb-2 text-gray-700">📱 Twilio Account SID</label>
+                <input
+                  type="password"
+                  className="input-field w-full"
                   value={ws.credentials.twilio?.accountSid || ""}
                   onChange={e => updateCredentials("twilio", "accountSid", e.target.value)}
+                  placeholder="AC..."
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1">Twilio Auth Token</label>
+                <label className="block text-sm font-semibold mb-2 text-gray-700">🔐 Twilio Auth Token</label>
                 <input
                   type="password"
-                  className="w-full p-3 border rounded-lg"
+                  className="input-field w-full"
                   value={ws.credentials.twilio?.authToken || ""}
                   onChange={e => updateCredentials("twilio", "authToken", e.target.value)}
+                  placeholder="Auth Token"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1">From Number</label>
+                <label className="block text-sm font-semibold mb-2 text-gray-700">📞 From Number</label>
                 <input
                   type="text"
-                  className="w-full p-3 border rounded-lg"
+                  className="input-field w-full"
                   value={ws.credentials.twilio?.fromNumber || ""}
                   onChange={e => updateCredentials("twilio", "fromNumber", e.target.value)}
-                  placeholder="+1234567890"
+                  placeholder="+1 (555) 123-4567"
                 />
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <div>
-                <label className="block text-sm font-medium mb-1">Meta Access Token</label>
+                <label className="block text-sm font-semibold mb-2 text-gray-700">📘 Meta Access Token</label>
                 <input
                   type="password"
-                  className="w-full p-3 border rounded-lg"
+                  className="input-field w-full"
                   value={ws.credentials.meta?.accessToken || ""}
                   onChange={e => updateCredentials("meta", "accessToken", e.target.value)}
+                  placeholder="EAAx..."
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1">Ad Account ID</label>
+                <label className="block text-sm font-semibold mb-2 text-gray-700">🎯 Ad Account ID</label>
                 <input
                   type="text"
-                  className="w-full p-3 border rounded-lg"
+                  className="input-field w-full"
                   value={ws.credentials.meta?.adAccountId || ""}
                   onChange={e => updateCredentials("meta", "adAccountId", e.target.value)}
+                  placeholder="act_..."
                 />
               </div>
             </div>
           </div>
         </div>
 
-        <div className="card p-6">
-          <h2 className="text-lg font-semibold mb-4">Voice AI Configuration</h2>
+        <div className="card p-8">
+          <h2 className="text-2xl font-bold gradient-text mb-6">🎤 Voice AI Configuration</h2>
           
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
             <div>
-              <label className="block text-sm font-medium mb-1">Voice Selection</label>
+              <label className="block text-sm font-semibold mb-2 text-gray-700">🗣️ Voice Selection</label>
               <select
-                className="w-full p-3 border rounded-lg"
+                className="input-field w-full"
                 value={ws.voiceSettings.voice}
                 onChange={e => updateVoiceSettings("voice", e.target.value)}
               >
@@ -1166,9 +1556,9 @@ function LeadFlowApp({ me, onLogout, onImpersonate }) {
             </div>
 
             <div>
-              <label className="block text-sm font-medium mb-1">Time Zone</label>
+              <label className="block text-sm font-semibold mb-2 text-gray-700">🌍 Time Zone</label>
               <select
-                className="w-full p-3 border rounded-lg"
+                className="input-field w-full"
                 value={ws.voiceSettings.timezone}
                 onChange={e => updateVoiceSettings("timezone", e.target.value)}
               >
@@ -1179,33 +1569,33 @@ function LeadFlowApp({ me, onLogout, onImpersonate }) {
             </div>
 
             <div>
-              <label className="block text-sm font-medium mb-1">Call Attempts</label>
+              <label className="block text-sm font-semibold mb-2 text-gray-700">📞 Call Attempts</label>
               <input
                 type="number"
                 min="1"
                 max="5"
-                className="w-full p-3 border rounded-lg"
+                className="input-field w-full"
                 value={ws.voiceSettings.callAttempts}
                 onChange={e => updateVoiceSettings("callAttempts", parseInt(e.target.value))}
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium mb-1">Immediate Attempts</label>
+              <label className="block text-sm font-semibold mb-2 text-gray-700">⚡ Immediate Attempts</label>
               <select
-                className="w-full p-3 border rounded-lg"
+                className="input-field w-full"
                 value={ws.voiceSettings.immediateAttempts}
                 onChange={e => updateVoiceSettings("immediateAttempts", parseInt(e.target.value))}
               >
-                <option value="1">1</option>
-                <option value="2">2</option>
+                <option value="1">1 Attempt</option>
+                <option value="2">2 Attempts</option>
               </select>
             </div>
 
             <div>
-              <label className="block text-sm font-medium mb-1">Time Between Calls</label>
+              <label className="block text-sm font-semibold mb-2 text-gray-700">⏱️ Time Between Calls</label>
               <select
-                className="w-full p-3 border rounded-lg"
+                className="input-field w-full"
                 value={ws.voiceSettings.callInterval}
                 onChange={e => updateVoiceSettings("callInterval", parseInt(e.target.value))}
               >
@@ -1217,26 +1607,26 @@ function LeadFlowApp({ me, onLogout, onImpersonate }) {
             </div>
 
             <div>
-              <label className="block text-sm font-medium mb-1">Voicemail Behavior</label>
+              <label className="block text-sm font-semibold mb-2 text-gray-700">📧 Voicemail Behavior</label>
               <select
-                className="w-full p-3 border rounded-lg"
+                className="input-field w-full"
                 value={ws.voiceSettings.voicemailBehavior}
                 onChange={e => updateVoiceSettings("voicemailBehavior", e.target.value)}
               >
-                <option value="hang_up">Hang Up</option>
-                <option value="leave_message">Leave Message</option>
+                <option value="hang_up">🔇 Hang Up</option>
+                <option value="leave_message">💬 Leave Message</option>
               </select>
             </div>
           </div>
 
-          <div className="mt-6">
-            <h3 className="text-md font-medium mb-3">Voice Scripts</h3>
-            <div className="space-y-4">
+          <div className="space-y-6">
+            <h3 className="text-xl font-semibold gradient-text">📝 Voice Scripts</h3>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <div>
-                <label className="block text-sm font-medium mb-1">Generic Script</label>
+                <label className="block text-sm font-semibold mb-2 text-gray-700">🎯 Generic Script</label>
                 <textarea
-                  className="w-full p-3 border rounded-lg"
-                  rows="3"
+                  className="input-field w-full"
+                  rows="4"
                   value={ws.voiceSettings.scripts?.generic || ""}
                   onChange={e => updateVoiceSettings("scripts", { 
                     ...ws.voiceSettings.scripts, 
@@ -1247,10 +1637,10 @@ function LeadFlowApp({ me, onLogout, onImpersonate }) {
               </div>
 
               <div>
-                <label className="block text-sm font-medium mb-1">Voicemail Script</label>
+                <label className="block text-sm font-semibold mb-2 text-gray-700">📧 Voicemail Script</label>
                 <textarea
-                  className="w-full p-3 border rounded-lg"
-                  rows="3"
+                  className="input-field w-full"
+                  rows="4"
                   value={ws.voiceSettings.voicemailScript || ""}
                   onChange={e => updateVoiceSettings("voicemailScript", e.target.value)}
                   placeholder="Sorry I missed you—this is LeadFlow Pro..."
@@ -1260,52 +1650,62 @@ function LeadFlowApp({ me, onLogout, onImpersonate }) {
           </div>
         </div>
 
-        <div className="card p-6">
-          <h2 className="text-lg font-semibold mb-4">SMS Configuration</h2>
+        <div className="card p-8">
+          <h2 className="text-2xl font-bold gradient-text mb-6">💬 SMS Configuration</h2>
           
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
             <div>
-              <label className="block text-sm font-medium mb-1">Follow-up Delay</label>
+              <label className="block text-sm font-semibold mb-2 text-gray-700">⏰ Follow-up Delay</label>
               <select
-                className="w-full p-3 border rounded-lg"
+                className="input-field w-full"
                 value={ws.smsSettings.followUpDelay}
                 onChange={e => updateSmsSettings("followUpDelay", parseInt(e.target.value))}
               >
-                <option value="15">15 minutes</option>
-                <option value="60">1 hour</option>
-                <option value="1440">1 day</option>
-                <option value="2880">2 days</option>
-                <option value="10080">1 week</option>
+                <option value="15">⚡ 15 minutes</option>
+                <option value="60">🕐 1 hour</option>
+                <option value="1440">📅 1 day</option>
+                <option value="2880">📅📅 2 days</option>
+                <option value="10080">📆 1 week</option>
               </select>
             </div>
 
             <div>
-              <label className="block text-sm font-medium mb-1">Auto Respond</label>
-              <div
-                className={`toggle-switch ${ws.smsSettings.autoRespond ? "active" : ""}`}
-                onClick={() => updateSmsSettings("autoRespond", !ws.smsSettings.autoRespond)}
-              >
-                <div className="toggle-slider"></div>
+              <label className="block text-sm font-semibold mb-2 text-gray-700">🤖 Auto Respond</label>
+              <div className="flex items-center gap-3">
+                <div
+                  className={`toggle-switch ${ws.smsSettings.autoRespond ? "active" : ""}`}
+                  onClick={() => updateSmsSettings("autoRespond", !ws.smsSettings.autoRespond)}
+                >
+                  <div className="toggle-slider"></div>
+                </div>
+                <span className="text-sm text-gray-600">
+                  {ws.smsSettings.autoRespond ? "Enabled" : "Disabled"}
+                </span>
               </div>
             </div>
           </div>
 
-          <div className="mt-6">
-            <h3 className="text-md font-medium mb-3">SMS Scripts</h3>
-            <div className="space-y-4">
+          <div className="space-y-6">
+            <h3 className="text-xl font-semibold gradient-text">📱 SMS Scripts</h3>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               {Object.entries(ws.smsSettings.scripts || {}).map(([key, script]) => (
                 <div key={key}>
-                  <label className="block text-sm font-medium mb-1 capitalize">
-                    {key.replace(/([A-Z])/g, ' $1').trim()}
+                  <label className="block text-sm font-semibold mb-2 text-gray-700 capitalize">
+                    {key === "day0" ? "📅 Day 0 - Initial" :
+                     key === "day1" ? "📅 Day 1 - Follow-up" :
+                     key === "day3" ? "📅 Day 3 - Check-in" :
+                     key === "day5" ? "📅 Day 5 - Final" :
+                     key.replace(/([A-Z])/g, ' $1').trim()}
                   </label>
                   <textarea
-                    className="w-full p-3 border rounded-lg"
-                    rows="2"
+                    className="input-field w-full"
+                    rows="3"
                     value={script}
                     onChange={e => updateSmsSettings("scripts", {
                       ...ws.smsSettings.scripts,
                       [key]: e.target.value
                     })}
+                    placeholder="Enter your SMS message template..."
                   />
                 </div>
               ))}
@@ -1326,16 +1726,25 @@ function LeadFlowApp({ me, onLogout, onImpersonate }) {
         return renderSettings();
       default:
         return (
-          <div className="p-6 text-center">
-            <h1 className="text-2xl font-bold mb-4">Feature Coming Soon</h1>
-            <p className="text-gray-600">This feature is under development.</p>
+          <div className="p-8 text-center bg-gradient-to-br from-gray-50 to-blue-50 min-h-screen flex items-center justify-center">
+            <div className="card p-12">
+              <div className="text-6xl mb-6">🚧</div>
+              <h1 className="text-3xl font-bold gradient-text mb-4">Feature Coming Soon</h1>
+              <p className="text-gray-600 text-lg">This amazing feature is under development and will be available soon!</p>
+              <button
+                onClick={() => setView("dashboard")}
+                className="btn-primary mt-6 px-8 py-3"
+              >
+                🏠 Back to Dashboard
+              </button>
+            </div>
           </div>
         );
     }
   };
 
   return (
-    <div className="flex h-screen bg-gray-50">
+    <div className="flex h-screen overflow-hidden">
       {renderSidebar()}
       <div className="flex-1 overflow-y-auto">
         {renderCurrentView()}
