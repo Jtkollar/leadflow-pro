@@ -25,10 +25,10 @@
 <body>
 <div id="root"></div>
 
-<!-- IMPORTANT: add Babel presets so the browser compiles JSX reliably -->
+<!-- NOTE: explicit Babel presets so JSX compiles in-browser -->
 <script type="text/babel" data-presets="env,react">
 /* =========================
-   SMALL ERROR BOUNDARY (so blank pages become readable errors)
+   ERROR BOUNDARY
    ========================= */
 class ErrorBoundary extends React.Component {
   constructor(props){ super(props); this.state = { error: null, info: null }; }
@@ -49,14 +49,14 @@ class ErrorBoundary extends React.Component {
   }
 }
 
-const { useState, useEffect, useMemo } = React;
+const { useState, useEffect } = React;
 
 /* =========================
-   PERSISTENCE / AUTH
+   STORAGE / AUTH
    ========================= */
-const STORAGE_USERS = 'lfp:users';
+const STORAGE_USERS   = 'lfp:users';
 const STORAGE_SESSION = 'lfp:session';
-const WORKSPACE_PREFIX = 'lfp:workspace:'; // + email
+const WORKSPACE_PREFIX= 'lfp:workspace:'; // + email
 
 const ADMIN_EMAIL = 'Joshua.kollar@me.com';
 const ADMIN_PLAIN = 'Allglorytogod12!';
@@ -77,6 +77,7 @@ function clearSession(){ localStorage.removeItem(STORAGE_SESSION); }
 function wsKey(email){ return WORKSPACE_PREFIX + (email||'').trim().toLowerCase(); }
 function loadWorkspace(email){ try{ return JSON.parse(localStorage.getItem(wsKey(email))) || null; } catch { return null; } }
 function saveWorkspace(email, data){ localStorage.setItem(wsKey(email), JSON.stringify(data)); }
+
 async function ensureAdmin(){
   let users = loadUsers();
   const hasAdmin = users.some(u => emailEq(u.email, ADMIN_EMAIL));
@@ -89,7 +90,7 @@ async function ensureAdmin(){
 }
 
 /* =========================
-   CATALOGS / CONSTANTS
+   CONSTANTS / CATALOGS
    ========================= */
 const VOICE_CATALOG = {
   elevenlabs: ['Alloy','Callum','Rachel','Adam','Domi'],
@@ -97,7 +98,6 @@ const VOICE_CATALOG = {
   azure:      ['en-US-GuyNeural','en-US-JennyNeural','en-US-ChristopherNeural'],
   google:     ['en-US-Neural2-J','en-US-Standard-B','en-US-Wavenet-D']
 };
-
 const US_TZ = [
   { id: 'America/New_York', label: 'US/Eastern' },
   { id: 'America/Chicago', label: 'US/Central' },
@@ -106,8 +106,6 @@ const US_TZ = [
   { id: 'America/Anchorage', label: 'US/Alaska' },
   { id: 'Pacific/Honolulu', label: 'US/Hawaii' }
 ];
-
-// Markets with subs (includes Debt Free; Real Estate added; names capped)
 const MARKET_OPTIONS = {
   "Insurance":    ['Life','Term','Final Expense','Medicare','Business Liability','Health','Debt Free'],
   "Real Estate":  ['Buyer Leads','Seller Leads','Open House','Investors','Rentals'],
@@ -116,30 +114,22 @@ const MARKET_OPTIONS = {
   "Legal":        ['Injury','Disability','Estate','Criminal Defense'],
   "Other":        ['Generic','Event','SaaS']
 };
-
 const STATUS_LABELS = [
   'New','Contacted','Qualified','Scheduled',
   'App Submitted','Pending','Approved','Paid','Declined'
 ];
 const STATUS_ADVANCED = new Set(['App Submitted','Pending','Approved','Paid','Declined']);
-
-/* =========================
-   PROMPT EXAMPLES (short)
-   ========================= */
 const PROMPT_TEMPLATES = {
   "Insurance": { "Life": [{ h:"Protect Your Family—Rates Most People Miss", c:"Quick 60-sec quote for {{CITY}} families. Lock in coverage before rates move again.", cta:"get-quote" }] },
   "Real Estate": { "Buyer Leads": [{ h:"New Listings in {{CITY}}—Before They Hit Zillow", c:"Free daily list under {{PRICE}}. Tap for alerts.", cta:"learn-more" }] }
 };
 
 /* =========================
-   DEFAULT WORKSPACE
+   DEFAULT WORKSPACE + MIGRATION
    ========================= */
 function seedWorkspace(){
   return {
-    apiSelection: { // centralized provider selection (no text boxes here)
-      voiceProvider: 'elevenlabs',
-      smsProvider: 'twilio'
-    },
+    apiSelection: { voiceProvider: 'elevenlabs', smsProvider: 'twilio' },
     routing: {
       callsModel: 'gpt-5-mini',
       callsEscalationModel: 'gpt-5',
@@ -162,7 +152,7 @@ function seedWorkspace(){
       immediateRetryOnVoicemail: false
     },
     voiceSettings: {
-      provider: 'elevenlabs', // mirrored from apiSelection
+      provider: 'elevenlabs',
       voice: 'Alloy',
       style: 'professional',
       speed: 'normal',
@@ -179,7 +169,7 @@ function seedWorkspace(){
       timezone: 'America/Denver'
     },
     smsSettings: {
-      provider: 'twilio', // mirrored from apiSelection
+      provider: 'twilio',
       autoRespond: true,
       followUpDelay: 15,
       scripts: { day0:'Hey {{name}}, it’s Josh — got your request. 2 quick questions?', day1:'Been trying to reach you — want a ballpark quote?', day3:'Still here when you are.', day5:'Final ping for now — want a 60-sec summary?' },
@@ -200,13 +190,27 @@ function seedWorkspace(){
     }
   };
 }
-
-/* =========================
-   HELPERS
-   ========================= */
-function startOfWeek(d){ const x = new Date(d); const day = (x.getDay()+6)%7; x.setHours(0,0,0,0); x.setDate(x.getDate()-day); return x; }
-function startOfMonth(d){ const x = new Date(d); x.setDate(1); x.setHours(0,0,0,0); return x; }
-function startOfYear(d){ const x = new Date(d); x.setMonth(0,1); x.setHours(0,0,0,0); return x; }
+const isObj = (o)=> o && typeof o==='object' && !Array.isArray(o);
+function mergeDeep(base, patch){
+  const out = Array.isArray(base) ? [...base] : { ...base };
+  if (!isObj(patch) && !Array.isArray(patch)) return out;
+  for (const k of Object.keys(patch)){
+    const b = base ? base[k] : undefined;
+    const p = patch[k];
+    if (isObj(b) && isObj(p)) out[k] = mergeDeep(b, p);
+    else if (Array.isArray(p)) out[k] = p.slice();
+    else if (p !== undefined) out[k] = p;
+  }
+  return out;
+}
+function migrateWorkspace(raw){
+  const defaults = seedWorkspace();
+  const merged = mergeDeep(defaults, raw || {});
+  // ensure mirrors
+  merged.voiceSettings.provider = merged.apiSelection.voiceProvider || 'elevenlabs';
+  merged.smsSettings.provider   = merged.apiSelection.smsProvider || 'twilio';
+  return merged;
+}
 
 /* =========================
    LOGIN
@@ -266,7 +270,7 @@ function LoginView({onLoggedIn}){
 }
 
 /* =========================
-   USERS ADMIN (unchanged)
+   USERS ADMIN
    ========================= */
 function UsersAdmin({ me, onImpersonate }){
   const [users, setUsers] = useState(loadUsers());
@@ -347,76 +351,68 @@ function UsersAdmin({ me, onImpersonate }){
 }
 
 /* =========================
-   APP
+   WHOLE APP
    ========================= */
 function LeadFlowApp({ me, onLogout, onImpersonate }){
-  const ws0 = loadWorkspace(me.email) || seedWorkspace();
+  // MIGRATED workspace (prevents undefined errors)
+  const wsSaved = migrateWorkspace(loadWorkspace(me.email));
+  const [apiSelection, setApiSelection] = useState(wsSaved.apiSelection);
+  const [routing, setRouting]         = useState(wsSaved.routing);
+  const [automation, setAutomation]   = useState(wsSaved.automation);
 
-  const [activeTab, setActiveTab] = useState('dashboard');
-  const [showMobileMenu, setShowMobileMenu] = useState(false);
-
-  // CENTRAL selections
-  const [apiSelection, setApiSelection] = useState(ws0.apiSelection);
-  const [routing, setRouting] = useState(ws0.routing);
-  const [automation, setAutomation] = useState(ws0.automation || { autoStartOnMeta:true, immediateRetryOnNoAnswer:true, immediateRetryOnVoicemail:false });
-
-  // these mirror apiSelection provider
-  const [voiceSettings, setVoiceSettings] = useState({ ...ws0.voiceSettings, provider: ws0.apiSelection.voiceProvider });
-  const [smsSettings, setSmsSettings] = useState({ ...ws0.smsSettings, provider: ws0.apiSelection.smsProvider });
+  // mirror providers to feature settings
+  const [voiceSettings, setVoiceSettings] = useState({ ...wsSaved.voiceSettings, provider: wsSaved.apiSelection.voiceProvider || 'elevenlabs' });
+  const [smsSettings, setSmsSettings]     = useState({ ...wsSaved.smsSettings,   provider: wsSaved.apiSelection.smsProvider   || 'twilio' });
 
   // data
-  const [leads, _setLeads] = useState(ws0.data.leads || []);
-  const [campaigns, setCampaigns] = useState(ws0.data.campaigns || []);
-  const [objections, setObjections] = useState(ws0.data.objections || []);
-  const [analyticsData, setAnalyticsData] = useState(ws0.data.analytics || null);
-  const [inboundEvents, setInboundEvents] = useState(ws0.data.inbound || []);
-  const [imports, setImports] = useState(ws0.data.imports || []);
-  const [adLab, setAdLab] = useState(ws0.data.adLab || { variants:[], images:[], rotate:false });
+  const [leads, setLeadsState]         = useState(wsSaved.data.leads || []);
+  const [campaigns, setCampaigns]      = useState(wsSaved.data.campaigns || []);
+  const [objections, setObjections]    = useState(wsSaved.data.objections || []);
+  const [analyticsData, setAnalytics]  = useState(wsSaved.data.analytics || null);
+  const [inboundEvents, setInbound]    = useState(wsSaved.data.inbound || []);
+  const [imports, setImports]          = useState(wsSaved.data.imports || []);
+  const [adLab, setAdLab]              = useState(wsSaved.data.adLab || { variants:[], images:[], rotate:false });
 
-  const saveNow = (next) => {
-    // always mirror providers to voice/sms settings
-    const mirroredVoice = { ...voiceSettings, provider: apiSelection.voiceProvider };
-    const mirroredSms   = { ...smsSettings, provider: apiSelection.smsProvider };
-    saveWorkspace(me.email, {
+  const [activeTab, setActiveTab]      = useState('dashboard');
+  const [showMobileMenu, setShowMobileMenu] = useState(false);
+  const [editor, setEditor] = useState(null);
+
+  // persist helper
+  const saveNow = (patch={})=>{
+    const wsOut = migrateWorkspace({
       apiSelection,
       routing,
       automation,
-      voiceSettings: mirroredVoice,
-      smsSettings: mirroredSms,
+      voiceSettings: { ...voiceSettings, provider: apiSelection.voiceProvider },
+      smsSettings:   { ...smsSettings,   provider: apiSelection.smsProvider },
       data: {
-        leads: next?.leads ?? leads,
-        campaigns: next?.campaigns ?? campaigns,
-        objections: next?.objections ?? objections,
-        analytics: next?.analytics ?? analyticsData,
-        inbound: next?.inbound ?? inboundEvents,
-        imports: next?.imports ?? imports,
-        adLab: next?.adLab ?? adLab
+        leads, campaigns, objections, analytics: analyticsData,
+        inbound: inboundEvents, imports, adLab,
+        ...patch.data
       }
     });
+    saveWorkspace(me.email, wsOut);
   };
-  const setLeads = (fnOrArr) => { const v = typeof fnOrArr==='function'? fnOrArr(leads):fnOrArr; _setLeads(v); saveNow({leads:v}); };
-  const setAdLabPersist = (updater) => { const v = typeof updater==='function' ? updater(adLab) : updater; setAdLab(v); saveNow({ adLab: v }); };
+  const setLeads = (updater)=>{
+    const next = typeof updater==='function' ? updater(leads) : updater;
+    setLeadsState(next);
+    saveNow({ data: { leads: next }});
+  };
 
-  /* ---------- Stats & APV ---------- */
+  /* ======= DASHBOARD STATS / APV ======= */
+  const startOfWeek=(d)=>{ const x = new Date(d); const day=(x.getDay()+6)%7; x.setHours(0,0,0,0); x.setDate(x.getDate()-day); return x; };
+  const startOfMonth=(d)=>{ const x=new Date(d); x.setDate(1); x.setHours(0,0,0,0); return x; };
+  const startOfYear=(d)=>{ const x=new Date(d); x.setMonth(0,1); x.setHours(0,0,0,0); return x; };
   const computeAPVStats = (list)=>{
-    const now = new Date();
-    const w0 = startOfWeek(now), m0 = startOfMonth(now), y0 = startOfYear(now);
+    const now = new Date(); const w0=startOfWeek(now), m0=startOfMonth(now), y0=startOfYear(now);
     let week=0, month=0, year=0;
-    list.forEach(l=>{
-      const apv = Number(l.apv||0);
-      if (!apv) return;
-      const dt = l.apvDate ? new Date(l.apvDate) : new Date();
-      if (dt >= w0) week += apv;
-      if (dt >= m0) month += apv;
-      if (dt >= y0) year += apv;
-    });
-    return { week: Math.round(week*100)/100, month: Math.round(month*100)/100, year: Math.round(year*100)/100 };
+    list.forEach(l=>{ const apv=Number(l.apv||0); if(!apv) return; const dt=l.apvDate? new Date(l.apvDate): new Date(); if(dt>=w0) week+=apv; if(dt>=m0) month+=apv; if(dt>=y0) year+=apv; });
+    return { week, month, year };
   };
-  const apvStats = computeAPVStats(leads);
-
+  const apv = computeAPVStats(leads);
   const [stats, setStats] = useState({
-    totalLeads: analyticsData?.overview?.totalLeads ?? (leads?.length || 0),
-    scheduledToday: (leads||[]).filter(l=>l.status==='Scheduled').length,
+    totalLeads: leads.length,
+    scheduledToday: leads.filter(l=>l.status==='Scheduled').length,
     adSpend: 2450,
     conversionRate: Math.round(analyticsData?.overview?.conversionRate ?? 34)
   });
@@ -429,7 +425,7 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
     });
   }, [leads, analyticsData]);
 
-  /* ---------- Optional backend fetch (safe no-throw) ---------- */
+  /* ======= OPTIONAL INITIAL FETCH (safe) ======= */
   useEffect(()=>{
     Promise.allSettled([
       fetch('/api/leads').then(r=>r.json()),
@@ -438,14 +434,14 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
       fetch('/api/analytics').then(r=>r.json())
     ]).then(([leadsRes, campRes, objRes, anaRes])=>{
       if (leadsRes.status==='fulfilled' && Array.isArray(leadsRes.value)) setLeads(leadsRes.value);
-      if (campRes.status==='fulfilled' && Array.isArray(campRes.value)) { setCampaigns(campRes.value); saveNow({campaigns: campRes.value}); }
-      if (objRes.status==='fulfilled' && Array.isArray(objRes.value)) { setObjections(objRes.value); saveNow({objections: objRes.value}); }
-      if (anaRes.status==='fulfilled' && anaRes.value) { setAnalyticsData(anaRes.value); saveNow({analytics: anaRes.value}); }
+      if (campRes.status==='fulfilled' && Array.isArray(campRes.value)) { setCampaigns(campRes.value); saveNow({ data:{ campaigns: campRes.value }}); }
+      if (objRes.status==='fulfilled' && Array.isArray(objRes.value))   { setObjections(objRes.value); saveNow({ data:{ objections: objRes.value }}); }
+      if (anaRes.status==='fulfilled' && anaRes.value)                  { setAnalytics(anaRes.value);  saveNow({ data:{ analytics:  anaRes.value }}); }
     }).catch(()=>{});
     // eslint-disable-next-line
   },[]);
 
-  /* ---------- Nav ---------- */
+  /* ======= NAV ======= */
   const MobileNav = () => (
     <div className="lg:hidden bg-white shadow-lg p-4">
       <div className="flex items-center justify-between">
@@ -518,7 +514,7 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
     </div>
   );
 
-  /* ---------- Dashboard (no Recent Leads) ---------- */
+  /* ======= DASHBOARD (no recent leads) ======= */
   const Dashboard = () => (
     <div className="space-y-6 fade-in">
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-6">
@@ -536,23 +532,21 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
         ))}
       </div>
 
-      {/* APV Totals */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="bg-white rounded-2xl p-4 shadow-lg text-center">
           <div className="text-xs text-gray-500">APV This Week</div>
-          <div className="text-2xl font-bold">${apvStats.week.toLocaleString()}</div>
+          <div className="text-2xl font-bold">${apv.week.toLocaleString()}</div>
         </div>
         <div className="bg-white rounded-2xl p-4 shadow-lg text-center">
           <div className="text-xs text-gray-500">APV This Month</div>
-          <div className="text-2xl font-bold">${apvStats.month.toLocaleString()}</div>
+          <div className="text-2xl font-bold">${apv.month.toLocaleString()}</div>
         </div>
         <div className="bg-white rounded-2xl p-4 shadow-lg text-center">
           <div className="text-xs text-gray-500">APV This Year</div>
-          <div className="text-2xl font-bold">${apvStats.year.toLocaleString()}</div>
+          <div className="text-2xl font-bold">${apv.year.toLocaleString()}</div>
         </div>
       </div>
 
-      {/* Quick Actions */}
       <div className="bg-white rounded-2xl p-4 lg:p-6 shadow-lg">
         <h3 className="text-lg lg:text-xl font-bold mb-4">Quick Actions</h3>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -564,27 +558,16 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
     </div>
   );
 
-  /* ---------- Ad Creator (with Creative Preview) ---------- */
+  /* ======= AD CREATOR (with creative preview, variants, images) ======= */
   const AdCreator = () => {
     const [adForm, setAdForm] = useState({
-      market: 'Insurance',
-      subType: '',
-      targetLocations: '',
-      minAge: '',
-      maxAge: '',
-      dailyBudget: '',
-      headline: '',
-      copy: '',
-      cta: 'learn-more'
+      market: 'Insurance', subType: '', targetLocations: '', minAge: '', maxAge: '', dailyBudget: '', headline: '', copy: '', cta: 'learn-more'
     });
-
     const [localVariants, setLocalVariants] = useState(adLab.variants || []);
-    const [rotate, setRotate] = useState(adLab.rotate || false);
-    const [images, setImages] = useState(adLab.images || []); // {id,url}
-
+    const [images, setImages] = useState(adLab.images || []);
     useEffect(()=>{ setAdForm(prev=>({...prev, subType:''})); }, [adForm.market]);
 
-    const currentTemplates = (PROMPT_TEMPLATES[adForm.market] || {})[adForm.subType] || [];
+    const tplList = (PROMPT_TEMPLATES[adForm.market] || {})[adForm.subType] || [];
     const applyTemplate = (tpl)=>{
       setAdForm(prev=>({
         ...prev,
@@ -594,59 +577,56 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
       }));
     };
 
-    const addVariantFromCurrent = ()=>{
-      if (!adForm.headline || !adForm.copy) { alert('Set headline and copy first'); return; }
+    const addVariant = ()=>{
+      if (!adForm.headline || !adForm.copy) { alert('Set headline & copy first'); return; }
       const v = { id: Date.now(), headline: adForm.headline, copy: adForm.copy, cta: adForm.cta, impressions: 0, clicks: 0, imageId: images[0]?.id || null };
       const next = [v, ...localVariants];
       setLocalVariants(next);
-      setAdLabPersist({ ...adLab, variants: next, rotate, images });
+      setAdLab({ ...adLab, variants: next, images });
+      saveNow({ data:{ adLab: { ...adLab, variants: next, images } }});
     };
-
     const uploadImage = (file)=>{
       if (!file) return;
       const url = URL.createObjectURL(file);
       const img = { id: Date.now(), url };
       const next = [img, ...images];
       setImages(next);
-      setAdLabPersist({ ...adLab, images: next, variants: localVariants, rotate });
+      setAdLab({ ...adLab, images: next });
+      saveNow({ data:{ adLab: { ...adLab, images: next, variants: localVariants } }});
     };
-
     const generatePlaceholder = ()=>{
-      // front-end only placeholder
       const canv = document.createElement('canvas'); canv.width=800; canv.height=450;
       const ctx = canv.getContext('2d'); ctx.fillStyle='#e5e7eb'; ctx.fillRect(0,0,800,450);
       ctx.fillStyle='#111827'; ctx.font='28px Inter'; ctx.fillText(adForm.subType || 'Ad Creative', 30, 60);
       ctx.font='20px Inter'; ctx.fillText(adForm.headline || 'Headline goes here', 30, 110);
       const url = canv.toDataURL('image/png');
-      const img = { id: Date.now(), url };
-      const next = [img, ...images];
-      setImages(next);
-      setAdLabPersist({ ...adLab, images: next, variants: localVariants, rotate });
+      uploadImage(dataURLtoFile(url, 'placeholder.png'));
     };
-
-    const linkImageToVariant = (variantId, imageId)=>{
+    const dataURLtoFile=(dataurl, filename)=>{
+      const arr = dataurl.split(','), mime = arr[0].match(/:(.*?);/)[1], bstr = atob(arr[1]); let n = bstr.length; const u8arr = new Uint8Array(n);
+      while(n--){ u8arr[n] = bstr.charCodeAt(n); }
+      return new File([u8arr], filename, {type:mime});
+    }
+    const linkImage = (variantId, imageId)=>{
       const next = localVariants.map(v=> v.id===variantId ? { ...v, imageId } : v);
       setLocalVariants(next);
-      setAdLabPersist({ ...adLab, variants: next, images, rotate });
+      setAdLab({ ...adLab, variants: next, images });
+      saveNow({ data:{ adLab: { ...adLab, variants: next, images } }});
     };
-
-    const launchCampaign = async () => {
+    const launchCampaign = async ()=>{
       if (!adForm.headline || !adForm.copy || !adForm.targetLocations || !adForm.subType) { alert('Fill headline, copy, locations, and sub-type'); return; }
-      try{
-        const body = {
-          name: `${adForm.market}/${adForm.subType} - ${adForm.targetLocations}`,
-          market: adForm.market, type: adForm.subType,
-          budget: parseInt(adForm.dailyBudget) || 100,
-          adContent: { headline: adForm.headline, copy: adForm.copy, cta: adForm.cta },
-          targeting: { locations: adForm.targetLocations.split(',').map(s=>s.trim()).filter(Boolean), ageMin: parseInt(adForm.minAge)||25, ageMax: parseInt(adForm.maxAge)||65 },
-          variants: localVariants,
-          images
-        };
-        await fetch('/api/launch-campaign', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) }).catch(()=>{});
-        const newCamp = { id:'c'+Date.now(), name: body.name, market: body.market, type: body.type, budget: body.budget, status:'active', leads:0, costPerLead:0, variants: localVariants, images };
-        setCampaigns(prev => [newCamp, ...prev]); saveNow({ campaigns: [newCamp, ...campaigns], adLab: { ...adLab, variants: localVariants, images } });
-        alert('🚀 Campaign launched (simulated).');
-      } catch { alert('❌ Launch failed.'); }
+      const body = {
+        name: `${adForm.market}/${adForm.subType} - ${adForm.targetLocations}`,
+        market: adForm.market, type: adForm.subType,
+        budget: parseInt(adForm.dailyBudget) || 100,
+        adContent: { headline: adForm.headline, copy: adForm.copy, cta: adForm.cta },
+        targeting: { locations: adForm.targetLocations.split(',').map(s=>s.trim()).filter(Boolean), ageMin: parseInt(adForm.minAge)||25, ageMax: parseInt(adForm.maxAge)||65 },
+        variants: localVariants, images
+      };
+      await fetch('/api/launch-campaign', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) }).catch(()=>{});
+      const newCamp = { id:'c'+Date.now(), name: body.name, market: body.market, type: body.type, budget: body.budget, status:'active', leads:0, costPerLead:0, variants: localVariants, images };
+      setCampaigns(prev=>[newCamp, ...prev]); saveNow({ data:{ campaigns: [newCamp, ...campaigns] }});
+      alert('🚀 Campaign launched (simulated).');
     };
 
     const bestVariant = localVariants.reduce((b,v)=> ((v.clicks/(v.impressions||1)) > (b?.clicks/(b?.impressions||1) || 0) ? v : b), null);
@@ -672,12 +652,10 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
                   </select>
                 </div>
               </div>
-
               <div>
                 <label className="block font-medium mb-2 text-sm lg:text-base">Target Locations</label>
                 <input type="text" className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500" placeholder="FL, TX, CA" value={adForm.targetLocations} onChange={(e)=>setAdForm(prev=>({...prev, targetLocations:e.target.value}))}/>
               </div>
-
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block font-medium mb-2 text-sm lg:text-base">Min Age</label>
@@ -688,7 +666,6 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
                   <input type="number" className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500" placeholder="65" value={adForm.maxAge} onChange={(e)=>setAdForm(prev=>({...prev, maxAge:e.target.value}))}/>
                 </div>
               </div>
-
               <div>
                 <label className="block font-medium mb-2 text-sm lg:text-base">Daily Budget ($)</label>
                 <input type="number" className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500" placeholder="150" value={adForm.dailyBudget} onChange={(e)=>setAdForm(prev=>({...prev, dailyBudget:e.target.value}))}/>
@@ -702,15 +679,14 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
               <div className="bg-gray-50 p-3 rounded-xl">
                 <div className="text-sm font-semibold mb-2">Prompt Examples for {adForm.market}{adForm.subType? ' / '+adForm.subType:''}</div>
                 <div className="flex flex-wrap gap-2">
-                  {currentTemplates.length===0 && <div className="text-xs text-gray-500">Select Market and Sub-type to see examples.</div>}
-                  {currentTemplates.map((tpl, i)=>(
+                  {tplList.length===0 && <div className="text-xs text-gray-500">Select Market and Sub-type to see examples.</div>}
+                  {tplList.map((tpl, i)=>(
                     <button key={i} onClick={()=>applyTemplate(tpl)} className="px-3 py-2 text-xs bg-white border rounded-lg hover:bg-blue-50">
                       “{tpl.h}”
                     </button>
                   ))}
                 </div>
               </div>
-
               <div>
                 <label className="block font-medium mb-2 text-sm lg:text-base">Headline</label>
                 <input type="text" className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500" placeholder="Your compelling headline..." value={adForm.headline} onChange={(e)=>setAdForm(prev=>({...prev, headline:e.target.value}))}/>
@@ -728,29 +704,26 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
                   <option value="apply-now">Apply Now</option>
                 </select>
               </div>
-
               <div className="flex gap-2">
-                <button onClick={addVariantFromCurrent} className="px-3 py-2 bg-purple-100 text-purple-700 rounded-lg">➕ Add Variant</button>
+                <button onClick={addVariant} className="px-3 py-2 bg-purple-100 text-purple-700 rounded-lg">➕ Add Variant</button>
                 <button onClick={launchCampaign} className="px-3 py-2 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-lg">🚀 Launch Campaign</button>
               </div>
             </div>
           </div>
         </div>
 
-        {/* Creative Preview */}
         <div className="bg-white rounded-2xl p-4 lg:p-6 shadow-lg">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-lg lg:text-xl font-bold">Creative Preview</h3>
             <div className="flex items-center gap-3">
               <span className="text-sm">Rotate Variants</span>
-              <div className={`toggle-switch ${adLab.rotate ? 'active' : ''}`} onClick={()=>{ const nv = !adLab.rotate; setRotate(nv); setAdLabPersist({ ...adLab, rotate: nv }); }}>
+              <div className={`toggle-switch ${adLab.rotate ? 'active' : ''}`} onClick={()=>{ const nv = !adLab.rotate; setAdLab({...adLab, rotate:nv}); saveNow({ data:{ adLab: { ...adLab, rotate:nv }}}); }}>
                 <div className="toggle-slider"></div>
               </div>
             </div>
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* image gallery */}
             <div>
               <div className="flex items-center gap-3 mb-2">
                 <label className="px-3 py-2 bg-gray-100 rounded cursor-pointer">
@@ -769,7 +742,6 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
               </div>
             </div>
 
-            {/* live ad card */}
             <div className="border rounded-2xl p-4">
               <div className="border rounded-xl overflow-hidden mb-3">
                 {images[0] ? <img src={images[0].url} alt="preview" className="w-full h-48 object-cover"/> : <div className="h-48 bg-gray-100 flex items-center justify-center text-gray-500">Add an image</div>}
@@ -780,7 +752,6 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
             </div>
           </div>
 
-          {/* variants table */}
           <div className="mt-6 overflow-auto border rounded-xl">
             <table className="min-w-full text-sm">
               <thead className="bg-gray-50">
@@ -794,37 +765,28 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
                 </tr>
               </thead>
               <tbody>
-                {localVariants.map(v=>{
-                  const linked = images.find(i=>i.id===v.imageId);
-                  return (
-                    <tr key={v.id} className="border-t">
-                      <td className="px-3 py-2">
-                        <select className="p-2 border rounded" value={v.imageId || ''} onChange={(e)=>linkImageToVariant(v.id, e.target.value ? Number(e.target.value): null)}>
-                          <option value="">None</option>
-                          {images.map(i=> <option key={i.id} value={i.id}>{i.id}</option>)}
-                        </select>
-                      </td>
-                      <td className="px-3 py-2 max-w-xs">
-                        <input className="w-full p-2 border rounded" value={v.headline} onChange={(e)=>{ const nv = localVariants.map(x=>x.id===v.id? {...x, headline:e.target.value}:x); setLocalVariants(nv); setAdLabPersist({ ...adLab, variants:nv, images }); }}/>
-                      </td>
-                      <td className="px-3 py-2">
-                        <textarea className="w-full p-2 border rounded h-16" value={v.copy} onChange={(e)=>{ const nv = localVariants.map(x=>x.id===v.id? {...x, copy:e.target.value}:x); setLocalVariants(nv); setAdLabPersist({ ...adLab, variants:nv, images }); }}/>
-                      </td>
-                      <td className="px-3 py-2">
-                        <select className="p-2 border rounded" value={v.cta} onChange={(e)=>{ const nv = localVariants.map(x=>x.id===v.id? {...x, cta:e.target.value}:x); setLocalVariants(nv); setAdLabPersist({ ...adLab, variants:nv, images }); }}>
-                          <option value="learn-more">Learn More</option>
-                          <option value="get-quote">Get Free Quote</option>
-                          <option value="call-now">Call Now</option>
-                          <option value="apply-now">Apply Now</option>
-                        </select>
-                      </td>
-                      <td className="px-3 py-2">Impr {v.impressions} • Clicks {v.clicks}</td>
-                      <td className="px-3 py-2">
-                        <button onClick={()=>{ const nv=localVariants.filter(x=>x.id!==v.id); setLocalVariants(nv); setAdLabPersist({ ...adLab, variants:nv, images }); }} className="px-2 py-1 bg-gray-100 rounded">Delete</button>
-                      </td>
-                    </tr>
-                  );
-                })}
+                {localVariants.map(v=>(
+                  <tr key={v.id} className="border-t">
+                    <td className="px-3 py-2">
+                      <select className="p-2 border rounded" value={v.imageId || ''} onChange={(e)=>linkImage(v.id, e.target.value ? Number(e.target.value): null)}>
+                        <option value="">None</option>
+                        {images.map(i=> <option key={i.id} value={i.id}>{i.id}</option>)}
+                      </select>
+                    </td>
+                    <td className="px-3 py-2 max-w-xs"><input className="w-full p-2 border rounded" value={v.headline} onChange={(e)=>{ const nv=localVariants.map(x=>x.id===v.id? {...x, headline:e.target.value}:x); setLocalVariants(nv); setAdLab({...adLab, variants:nv}); saveNow({ data:{ adLab:{...adLab, variants:nv}}}); }}/></td>
+                    <td className="px-3 py-2"><textarea className="w-full p-2 border rounded h-16" value={v.copy} onChange={(e)=>{ const nv=localVariants.map(x=>x.id===v.id? {...x, copy:e.target.value}:x); setLocalVariants(nv); setAdLab({...adLab, variants:nv}); saveNow({ data:{ adLab:{...adLab, variants:nv}}}); }}/></td>
+                    <td className="px-3 py-2">
+                      <select className="p-2 border rounded" value={v.cta} onChange={(e)=>{ const nv=localVariants.map(x=>x.id===v.id? {...x, cta:e.target.value}:x); setLocalVariants(nv); setAdLab({...adLab, variants:nv}); saveNow({ data:{ adLab:{...adLab, variants:nv}}}); }}>
+                        <option value="learn-more">Learn More</option>
+                        <option value="get-quote">Get Free Quote</option>
+                        <option value="call-now">Call Now</option>
+                        <option value="apply-now">Apply Now</option>
+                      </select>
+                    </td>
+                    <td className="px-3 py-2">Impr {v.impressions} • Clicks {v.clicks}</td>
+                    <td className="px-3 py-2"><button onClick={()=>{ const nv=localVariants.filter(x=>x.id!==v.id); setLocalVariants(nv); setAdLab({...adLab, variants:nv}); saveNow({ data:{ adLab:{...adLab, variants:nv}}}); }} className="px-2 py-1 bg-gray-100 rounded">Delete</button></td>
+                  </tr>
+                ))}
                 {localVariants.length===0 && <tr><td className="px-3 py-4 text-center text-gray-500" colSpan="6">No variants yet. Add one above.</td></tr>}
               </tbody>
             </table>
@@ -836,11 +798,7 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
     );
   };
 
-  /* ---------- Leads (unchanged from last except no dashboard recent) ---------- */
-  // ... (same as previous answer—you still have full CRUD, editor modal, imports, etc.)
-  // For brevity in this message, I’m keeping the Leads/Editor/Imports code identical to the prior working version.
-  // ↓↓↓ I am including them so your file is complete.
-
+  /* ======= LEADS (editor modal included) ======= */
   const LeadManagement = () => {
     const [searchTerm, setSearchTerm] = useState('');
     const [filterMarket, setFilterMarket] = useState('');
@@ -884,14 +842,14 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
         const rows = parseCSV(text).slice(0, 200);
         const imp = { id: Date.now(), filename: file.name, createdAt: new Date().toISOString(), rows, mapped: {}, dropPlaceholders: true };
         const next = [imp, ...imports];
-        setImports(next); saveNow({ imports: next });
+        setImports(next); saveNow({ data:{ imports: next }});
         alert(`✅ CSV loaded (${rows.length} preview rows). Go to Imports to map.`);
         setShowImportModal(false); setActiveTab('imports');
       } else {
         alert('🔍 PDF scanning simulated (connect OCR later).');
         const imp = { id: Date.now(), filename: file.name, createdAt: new Date().toISOString(), rows: [], mapped: {}, dropPlaceholders: true };
         const next = [imp, ...imports];
-        setImports(next); saveNow({ imports: next });
+        setImports(next); saveNow({ data:{ imports: next }});
         setShowImportModal(false); setActiveTab('imports');
       }
     };
@@ -902,6 +860,13 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
     };
     const updateLead = (lead)=> setLeads(prev => prev.map(l => l.id===lead.id ? lead : l));
     const deleteLead = async (leadId) => { if (!confirm('Delete this lead?')) return; setLeads(prev => prev.filter(l=>l.id!==leadId)); };
+
+    function openLeadEditor(lead){
+      setEditor(<LeadEditorModal initialLead={lead} onClose={()=>setEditor(null)} onSave={(updated)=>{ 
+        if (updated.id==='new') addLead(updated); else updateLead(updated);
+        setEditor(null);
+      }}/>);
+    }
 
     return (
       <div className="space-y-6 fade-in">
@@ -950,9 +915,7 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
                     <button onClick={()=>{ if(confirm('Delete this lead?')) deleteLead(lead.id); }} className="px-2 py-1 text-sm bg-gray-100 rounded">🗑️</button>
                   </div>
                 </div>
-                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-                  <div className="text-sm text-gray-600">{lead.market}/{lead.type} • {lead.location || '—'} • {lead.time || '—'}</div>
-                </div>
+                <div className="text-sm text-gray-600">{lead.market}/{lead.type} • {lead.location || '—'} • {lead.time || '—'}</div>
                 {lead.apv ? <div className="mt-2 text-xs text-gray-700">APV: <strong>${Number(lead.apv).toLocaleString()}</strong> {lead.carrier? `• Carrier: ${lead.carrier}`:''}</div> : null}
               </div>
             ))}
@@ -960,7 +923,6 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
           </div>
         </div>
 
-        {/* Import Modal */}
         {showImportModal && (
           <div className="fixed inset-0 bg-black bg-opacity-50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
             <div className="bg-white rounded-2xl p-6 max-w-md w-full">
@@ -988,7 +950,6 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
           </div>
         )}
 
-        {/* Test Modal (simulated) */}
         {showTestModal && (
           <div className="fixed inset-0 bg-black bg-opacity-50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
             <div className="bg-white rounded-2xl p-6 max-w-md w-full">
@@ -1011,16 +972,16 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
           </div>
         )}
 
-        {/* Add Lead Modal */}
         {showAddLead && (
           <LeadEditorModal
             initialLead={{ id: 'new', market:'Insurance', type:'Life', source:'Manual', name:'', phone:'', email:'', location:'', status:'New', notes:'' }}
             onClose={()=>setShowAddLead(false)}
             onSave={(lead)=>{
               if (lead.id==='new') {
-                addLead(lead);
+                const created = { ...lead, id: Date.now(), time: new Date().toLocaleString(), callLogs: [], isClient: lead.status==='Paid' };
+                setLeads(prev => [created, ...prev]);
               } else {
-                updateLead(lead);
+                setLeads(prev => prev.map(l => l.id===lead.id ? lead : l));
               }
               setShowAddLead(false);
             }}
@@ -1030,13 +991,12 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
     );
   };
 
-  /* ---------- Lead Editor Modal (short form) ---------- */
   function LeadEditorModal({ initialLead, onClose, onSave }) {
     const [lead, setLead] = useState({ ...initialLead, callLogs: initialLead.callLogs || [], debt: initialLead.debt || { creditCards:[], mortgages:[], cars:[], others:[] } });
     const [tab, setTab] = useState('profile');
 
     const isInsurance = lead.market === 'Insurance';
-    const showAPVSection = isInsurance && STATUS_ADVANCED.has(lead.status);
+    const showAPV = isInsurance && STATUS_ADVANCED.has(lead.status);
 
     const addDebtRow = (key)=> setLead(prev=>({ ...prev, debt: { ...prev.debt, [key]: [ ...(prev.debt[key]||[]), { amount:'', apr:'', label:'' } ] } }));
     const updateDebtRow = (key, idx, field, value)=> {
@@ -1054,7 +1014,7 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
 
     const saveLead = ()=>{
       const isClient = lead.status === 'Paid';
-      const apvDate = showAPVSection && lead.apv && !lead.apvDate ? new Date().toISOString() : lead.apvDate;
+      const apvDate = showAPV && lead.apv && !lead.apvDate ? new Date().toISOString() : lead.apvDate;
       onSave({ ...lead, isClient, apvDate, id: lead.id==='new' ? Date.now() : lead.id });
       onClose();
     };
@@ -1118,11 +1078,11 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
                 </div>
                 <div>
                   <label className="block text-sm font-medium mb-1">Carrier (Insurance)</label>
-                  <input className="w-full p-3 border rounded-xl" value={lead.carrier || ''} onChange={(e)=>setLead(prev=>({...prev, carrier:e.target.value}))} disabled={!showAPVSection}/>
+                  <input className="w-full p-3 border rounded-xl" value={lead.carrier || ''} onChange={(e)=>setLead(prev=>({...prev, carrier:e.target.value}))} disabled={!showAPV}/>
                 </div>
                 <div>
                   <label className="block text-sm font-medium mb-1">APV ($)</label>
-                  <input type="number" className="w-full p-3 border rounded-xl" value={lead.apv || ''} onChange={(e)=>setLead(prev=>({...prev, apv:e.target.value}))} disabled={!showAPVSection}/>
+                  <input type="number" className="w-full p-3 border rounded-xl" value={lead.apv || ''} onChange={(e)=>setLead(prev=>({...prev, apv:e.target.value}))} disabled={!showAPV}/>
                 </div>
               </div>
               <div className="text-xs text-gray-600">When status becomes <strong>Paid</strong>, the lead is marked as a <strong>Client</strong>.</div>
@@ -1213,11 +1173,10 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
     );
   }
 
-  /* ---------- Voice + SMS (providers now controlled in Settings → APIs) ---------- */
+  /* ======= VOICE + SMS (providers controlled in Settings → APIs) ======= */
   const VoiceAI = () => {
     const [local, setLocal] = useState({ ...voiceSettings, provider: apiSelection.voiceProvider });
     useEffect(()=>{ setLocal(prev=>({ ...prev, provider: apiSelection.voiceProvider })); }, [apiSelection.voiceProvider]);
-
     const voices = VOICE_CATALOG[local.provider] || [];
     const saveVoiceSettings = () => { setVoiceSettings(local); saveNow(); alert('✅ Voice settings saved.'); };
 
@@ -1228,19 +1187,14 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
           <p className="text-xs text-gray-600 mb-4">Provider is set in <strong>Settings → API Selection</strong>.</p>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <div className="space-y-4">
-              <div>
-                <label className="block font-medium mb-2">Provider</label>
-                <input className="w-full p-3 border rounded-xl bg-gray-50" value={local.provider} readOnly/>
-              </div>
-              <div>
-                <label className="block font-medium mb-2">Voice</label>
+              <div><label className="block font-medium mb-2">Provider</label><input className="w-full p-3 border rounded-xl bg-gray-50" value={local.provider} readOnly/></div>
+              <div><label className="block font-medium mb-2">Voice</label>
                 <select className="w-full p-3 border rounded-xl" value={local.voice} onChange={(e)=>setLocal(prev=>({...prev, voice:e.target.value}))}>
                   <option value="">Select…</option>
                   {voices.map(v=><option key={v} value={v}>{v}</option>)}
                 </select>
               </div>
-              <div>
-                <label className="block font-medium mb-2">Style</label>
+              <div><label className="block font-medium mb-2">Style</label>
                 <select className="w-full p-3 border rounded-xl" value={local.style} onChange={(e)=>setLocal(prev=>({...prev, style:e.target.value}))}>
                   <option value="professional">Professional</option>
                   <option value="friendly">Friendly</option>
@@ -1248,8 +1202,7 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
                   <option value="conversational">Conversational</option>
                 </select>
               </div>
-              <div>
-                <label className="block font-medium mb-2">Response Speed</label>
+              <div><label className="block font-medium mb-2">Response Speed</label>
                 <select className="w-full p-3 border rounded-xl" value={local.speed} onChange={(e)=>setLocal(prev=>({...prev, speed:e.target.value}))}>
                   <option value="fast">Fast (0.5–1s)</option>
                   <option value="normal">Normal (1–2s)</option>
@@ -1260,8 +1213,7 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
                 <div>
                   <label className="block font-medium mb-2">Immediate Callback Attempts</label>
                   <select className="w-full p-3 border rounded-xl" value={local.immediateAttempts} onChange={(e)=>setLocal(prev=>({...prev, immediateAttempts: parseInt(e.target.value)}))}>
-                    <option value="1">1</option>
-                    <option value="2">2</option>
+                    <option value="1">1</option><option value="2">2</option>
                   </select>
                 </div>
                 <div>
@@ -1334,18 +1286,13 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
         <p className="text-xs text-gray-600 mb-4">Provider is set in <strong>Settings → API Selection</strong>.</p>
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <div className="space-y-4">
-            <div>
-              <label className="block font-medium mb-2">Provider</label>
-              <input className="w-full p-3 border rounded-xl bg-gray-50" value={smsSettings.provider} readOnly/>
-            </div>
+            <div><label className="block font-medium mb-2">Provider</label><input className="w-full p-3 border rounded-xl bg-gray-50" value={smsSettings.provider} readOnly/></div>
             <div className="flex items-center justify-between">
               <div>
                 <label className="font-medium">Auto-Respond</label>
                 <p className="text-sm text-gray-600">AI replies to inbound texts</p>
               </div>
-              <div className={`toggle-switch ${smsSettings.autoRespond ? 'active' : ''}`} onClick={()=>setSmsSettings(prev=>({...prev, autoRespond: !prev.autoRespond}))}>
-                <div className="toggle-slider"></div>
-              </div>
+              <div className={`toggle-switch ${smsSettings.autoRespond ? 'active' : ''}`} onClick={()=>setSmsSettings(prev=>({...prev, autoRespond: !prev.autoRespond}))}><div className="toggle-slider"></div></div>
             </div>
             <div>
               <label className="block font-medium mb-2">Default Follow-Up Delay</label>
@@ -1354,14 +1301,8 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
               </select>
             </div>
             <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block font-medium mb-2">Business Start</label>
-                <input type="time" className="w-full p-3 border rounded-xl" value={smsSettings.businessHours.start} onChange={(e)=>setSmsSettings(prev=>({...prev, businessHours:{...prev.businessHours, start:e.target.value}}))}/>
-              </div>
-              <div>
-                <label className="block font-medium mb-2">Business End</label>
-                <input type="time" className="w-full p-3 border rounded-xl" value={smsSettings.businessHours.end} onChange={(e)=>setSmsSettings(prev=>({...prev, businessHours:{...prev.businessHours, end:e.target.value}}))}/>
-              </div>
+              <div><label className="block font-medium mb-2">Business Start</label><input type="time" className="w-full p-3 border rounded-xl" value={smsSettings.businessHours.start} onChange={(e)=>setSmsSettings(prev=>({...prev, businessHours:{...prev.businessHours, start:e.target.value}}))}/></div>
+              <div><label className="block font-medium mb-2">Business End</label><input type="time" className="w-full p-3 border rounded-xl" value={smsSettings.businessHours.end} onChange={(e)=>setSmsSettings(prev=>({...prev, businessHours:{...prev.businessHours, end:e.target.value}}))}/></div>
             </div>
           </div>
 
@@ -1393,13 +1334,13 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
     );
   }
 
-  /* ---------- Objections ---------- */
+  /* ======= OBJECTIONS ======= */
   const ObjectionHandling = () => {
     const [newObjection, setNewObjection] = useState({ objection:'', response:'' });
     const addObjection = () => {
       if (!newObjection.objection || !newObjection.response) { alert('Fill both fields'); return; }
       const obj = { id: Date.now(), ...newObjection };
-      setObjections(prev=>[...prev, obj]); saveNow({ objections: [...objections, obj] });
+      setObjections(prev=>[...prev, obj]); saveNow({ data:{ objections: [...objections, obj] }});
       setNewObjection({ objection:'', response:'' });
       alert('✅ Objection added.');
     };
@@ -1410,18 +1351,11 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
           <div className="bg-gray-50 p-4 rounded-xl mb-6">
             <h4 className="font-semibold mb-3">Add New Objection</h4>
             <div className="space-y-3">
-              <div>
-                <label className="block text-sm font-medium mb-1">Common Objection</label>
-                <input type="text" className="w-full p-3 border rounded-xl" placeholder="e.g., I can't afford it right now" value={newObjection.objection} onChange={(e)=>setNewObjection(prev=>({...prev, objection:e.target.value}))}/>
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">AI Response</label>
-                <textarea className="w-full p-3 border rounded-xl h-24" placeholder="Write a helpful, empathetic response..." value={newObjection.response} onChange={(e)=>setNewObjection(prev=>({...prev, response:e.target.value}))}/>
-              </div>
+              <div><label className="block text-sm font-medium mb-1">Common Objection</label><input type="text" className="w-full p-3 border rounded-xl" placeholder="e.g., I can't afford it right now" value={newObjection.objection} onChange={(e)=>setNewObjection(prev=>({...prev, objection:e.target.value}))}/></div>
+              <div><label className="block text-sm font-medium mb-1">AI Response</label><textarea className="w-full p-3 border rounded-xl h-24" placeholder="Write a helpful, empathetic response..." value={newObjection.response} onChange={(e)=>setNewObjection(prev=>({...prev, response:e.target.value}))}/></div>
               <button onClick={addObjection} className="px-4 py-2 bg-gradient-to-r from-blue-500 to-purple-600 text-white rounded-xl">➕ Add Objection</button>
             </div>
           </div>
-
           <div className="space-y-3">
             <h4 className="font-semibold">Current Objections ({objections.length})</h4>
             {objections.map(obj=>(
@@ -1437,17 +1371,17 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
     );
   };
 
-  /* ---------- Campaigns (now view/edit creatives) ---------- */
+  /* ======= CAMPAIGNS (view/edit & delete) ======= */
   const CampaignManager = () => {
-    const [editing, setEditing] = useState(null); // campaign object
+    const [editing, setEditing] = useState(null);
     const onDelete = (id)=>{
       if (!confirm('Delete this campaign?')) return;
       const next = campaigns.filter(c=>c.id!==id);
-      setCampaigns(next); saveNow({ campaigns: next });
+      setCampaigns(next); saveNow({ data:{ campaigns: next }});
     };
     const onSave = (camp)=>{
       const next = campaigns.map(c=> c.id===camp.id ? camp : c);
-      setCampaigns(next); saveNow({ campaigns: next });
+      setCampaigns(next); saveNow({ data:{ campaigns: next }});
       setEditing(null);
     };
     return (
@@ -1472,15 +1406,12 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
           ))}
           {campaigns.length===0 && <div className="text-gray-500">No campaigns yet.</div>}
         </div>
-
         {editing && <CampaignEditor campaign={editing} onClose={()=>setEditing(null)} onSave={onSave}/>}
       </div>
     );
   };
-
   function CampaignEditor({ campaign, onClose, onSave }){
     const [draft, setDraft] = useState({ ...campaign, variants: campaign.variants || [], images: campaign.images || [] });
-
     const addImage = (file)=>{
       if (!file) return;
       const url = URL.createObjectURL(file);
@@ -1490,7 +1421,6 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
     const linkImage = (variantId, imageId)=>{
       setDraft(prev=>({ ...prev, variants: prev.variants.map(v=> v.id===variantId ? { ...v, imageId } : v) }));
     };
-
     return (
       <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
         <div className="bg-white rounded-2xl p-6 w-full max-w-5xl">
@@ -1505,7 +1435,6 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
             </select>
             <input type="number" className="p-3 border rounded" value={draft.budget} onChange={(e)=>setDraft(prev=>({...prev,budget:parseInt(e.target.value)||0}))}/>
           </div>
-
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <div>
               <div className="flex items-center gap-3 mb-2">
@@ -1525,14 +1454,7 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
             </div>
             <div className="overflow-auto border rounded-xl">
               <table className="min-w-full text-sm">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-3 py-2 text-left">Image</th>
-                    <th className="px-3 py-2 text-left">Headline</th>
-                    <th className="px-3 py-2 text-left">Copy</th>
-                    <th className="px-3 py-2 text-left">CTA</th>
-                  </tr>
-                </thead>
+                <thead className="bg-gray-50"><tr><th className="px-3 py-2 text-left">Image</th><th className="px-3 py-2 text-left">Headline</th><th className="px-3 py-2 text-left">Copy</th><th className="px-3 py-2 text-left">CTA</th></tr></thead>
                 <tbody>
                   {(draft.variants||[]).map(v=>(
                     <tr key={v.id} className="border-t">
@@ -1559,7 +1481,6 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
               </table>
             </div>
           </div>
-
           <div className="flex gap-3 mt-4">
             <button onClick={()=>onSave(draft)} className="px-4 py-2 bg-blue-600 text-white rounded">Save</button>
             <button onClick={onClose} className="px-4 py-2 border rounded">Cancel</button>
@@ -1569,9 +1490,9 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
     );
   }
 
-  /* ---------- Analytics (same logic as before) ---------- */
+  /* ======= ANALYTICS ======= */
   const Analytics = () => {
-    const a = analyticsData;
+    const a = analyticsData || { overview:{avgCostPerLead:0}, performance:{callAnswerRate:0,schedulingRate:0,revenuePerLead:0} };
     const statusCounts = STATUS_LABELS.reduce((acc,s)=> (acc[s]=leads.filter(l=>l.status===s).length, acc), {});
     const calls = leads.flatMap(l => l.callLogs || []);
     const callsTotal = calls.length;
@@ -1581,19 +1502,17 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
     const noAnswer = calls.filter(c=>c.result==='no_answer').length;
     const voicemail = calls.filter(c=>c.result==='voicemail').length;
     const callbacks = calls.filter(c=>c.result==='call_back').length;
-    const voicemailRate = callsTotal ? Math.round((voicemail/callsTotal)*100) : 0;
-    const clientCount = leads.filter(l=>l.isClient).length;
-    const policySummary = `${voiceSettings.callAttempts} attempts • ${voiceSettings.callInterval===1440?'1 day': voiceSettings.callInterval+' min'} between • immediate ${voiceSettings.immediateAttempts}×`;
+    const policy = `${voiceSettings.callAttempts} attempts • ${voiceSettings.callInterval===1440?'1 day': voiceSettings.callInterval+' min'} between • immediate ${voiceSettings.immediateAttempts}×`;
 
     return (
       <div className="space-y-6 fade-in">
         <div className="bg-white rounded-2xl p-6 shadow-lg">
           <h2 className="text-2xl font-bold mb-6">📊 Analytics & Reporting</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
-            <div className="text-center p-4 bg-blue-50 rounded-xl"><div className="text-2xl font-bold text-blue-600">${a?.overview?.avgCostPerLead || 0}</div><div className="text-sm text-blue-800">Avg CPL</div></div>
-            <div className="text-center p-4 bg-green-50 rounded-xl"><div className="text-2xl font-bold text-green-600">{a?.performance?.callAnswerRate || 0}%</div><div className="text-sm text-green-800">Call Answer Rate</div></div>
-            <div className="text-center p-4 bg-purple-50 rounded-xl"><div className="text-2xl font-bold text-purple-600">{a?.performance?.schedulingRate || 0}%</div><div className="text-sm text-purple-800">Scheduling Rate</div></div>
-            <div className="text-center p-4 bg-orange-50 rounded-xl"><div className="text-2xl font-bold text-orange-600">${a?.performance?.revenuePerLead || 0}</div><div className="text-sm text-orange-800">Revenue / Lead</div></div>
+            <div className="text-center p-4 bg-blue-50 rounded-xl"><div className="text-2xl font-bold text-blue-600">${a.overview.avgCostPerLead || 0}</div><div className="text-sm text-blue-800">Avg CPL</div></div>
+            <div className="text-center p-4 bg-green-50 rounded-xl"><div className="text-2xl font-bold text-green-600">{a.performance.callAnswerRate || 0}%</div><div className="text-sm text-green-800">Call Answer Rate</div></div>
+            <div className="text-center p-4 bg-purple-50 rounded-xl"><div className="text-2xl font-bold text-purple-600">{a.performance.schedulingRate || 0}%</div><div className="text-sm text-purple-800">Scheduling Rate</div></div>
+            <div className="text-center p-4 bg-orange-50 rounded-xl"><div className="text-2xl font-bold text-orange-600">${a.performance.revenuePerLead || 0}</div><div className="text-sm text-orange-800">Revenue / Lead</div></div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -1607,7 +1526,7 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
               <h4 className="font-semibold mb-2">Calls</h4>
               <div className="text-sm">Total: <strong>{callsTotal}</strong> • Inbound: <strong>{callsInbound}</strong> • Outbound: <strong>{callsOutbound}</strong></div>
               <div className="text-sm">Answered: <strong>{answered}</strong> • No Answer: <strong>{noAnswer}</strong> • Voicemail: <strong>{voicemail}</strong> • Callbacks: <strong>{callbacks}</strong></div>
-              <div className="text-xs text-gray-600 mt-1">Policy: {policySummary}</div>
+              <div className="text-xs text-gray-600 mt-1">Policy: {policy}</div>
             </div>
           </div>
         </div>
@@ -1615,7 +1534,7 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
     );
   };
 
-  /* ---------- Inbound Center (same) ---------- */
+  /* ======= INBOUND CENTER ======= */
   const InboundCenter = () => {
     const [autoMatchUnknown, setAutoMatchUnknown] = useState(true);
     const [testing, setTesting] = useState(false);
@@ -1629,7 +1548,7 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
         if (!matched) askName = true;
       }
       const record = { id: Date.now(), ...evt, time: new Date().toLocaleString(), matchedLeadId: matched?.id, status:'received', askName };
-      setInboundEvents(prev => [record, ...prev]); saveNow({ inbound: [record, ...inboundEvents] });
+      setInbound(prev => [record, ...prev]); saveNow({ data:{ inbound: [record, ...inboundEvents] }});
     };
     useEffect(()=>{
       let stop=false;
@@ -1689,14 +1608,13 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
     );
   };
 
-  /* ---------- Imports page is same as before (kept minimal) ---------- */
+  /* ======= IMPORTS (placeholder page; mapping flow is in Leads) ======= */
   const Imports = () => <div className="bg-white rounded-2xl p-6 shadow-lg fade-in">Use the imports flow from Leads.</div>;
 
-  /* ---------- Settings (API Selection centralizes providers) ---------- */
+  /* ======= SETTINGS (central API selection) ======= */
   const Settings = () => {
     const [tab, setTab] = useState('apis');
     const saveAll = () => { 
-      // mirror providers across voice/sms settings
       setVoiceSettings(prev=>({ ...prev, provider: apiSelection.voiceProvider }));
       setSmsSettings(prev=>({ ...prev, provider: apiSelection.smsProvider }));
       saveNow(); 
@@ -1736,7 +1654,7 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
                   </select>
                 </div>
               </div>
-              <p className="text-xs text-gray-600 mt-3">These selections automatically flow to Voice AI and SMS pages.</p>
+              <p className="text-xs text-gray-600 mt-3">Selections flow automatically to Voice AI and SMS pages.</p>
             </>
           )}
 
@@ -1788,10 +1706,7 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
               <div className="bg-gray-50 p-4 rounded-xl mt-4">
                 <h4 className="font-semibold mb-2">Spend Tracking Metadata</h4>
                 {[
-                  ['call','call'],
-                  ['sms','sms'],
-                  ['adsCopy','ads-copy'],
-                  ['adsImage','ads-image']
+                  ['call','call'],['sms','sms'],['adsCopy','ads-copy'],['adsImage','ads-image']
                 ].map(([key,def])=>(
                   <div key={key} className="mb-3">
                     <div className="text-sm font-medium mb-1">{key}</div>
@@ -1866,28 +1781,9 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
     );
   };
 
-  /* ---------- Utility actions ---------- */
-  const getLeadFollowUp = (lead) => ({ enabled: true, followUpDelay: smsSettings.followUpDelay, scripts: smsSettings.scripts });
-  const followUpLabel = (mins)=>{ const n = Number(mins)||0; if (n < 120) return `${n} minutes`; if (n < 24*60) return `${Math.round(n/60)} hours`; if (n % (7*24*60) === 0) return `${n/(7*24*60)} week`; return `${Math.round(n/1440)} day(s)`; };
-  const initiateContact = async (lead, method) => {
-    try {
-      const f = getLeadFollowUp(lead);
-      await fetch('/api/ai-call', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ leadId: lead.id, phoneNumber: lead.phone, method, routing, followUp: f }) }).catch(()=>{});
-      alert(`✅ ${method==='call'?'Call':'SMS'} initiated (sim).\nFollow-up: ${f.enabled ? followUpLabel(f.followUpDelay) : 'OFF'}`);
-    } catch { alert(`❌ ${method==='call'?'Call':'SMS'} failed.`); }
-  };
-
-  /* ---------- Mount helpers ---------- */
-  function openLeadEditor(lead){
-    const onClose = ()=>{ setEditor(null); };
-    const onSave = (updated)=>{ setLeads(prev => prev.map(l => l.id===updated.id ? updated : l)); };
-    setEditor(<LeadEditorModal initialLead={lead} onClose={onClose} onSave={onSave}/>);
-  }
-  const [editor, setEditor] = useState(null);
-
-  /* ---------- Render ---------- */
-  const renderContent = () => {
-    switch(activeTab) {
+  /* ======= RENDER SWITCH ======= */
+  function renderContent(tab){
+    switch(tab){
       case 'dashboard': return <Dashboard/>;
       case 'ad-creator': return <AdCreator/>;
       case 'leads': return <LeadManagement/>;
@@ -1901,7 +1797,7 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
       case 'admin-users': return <UsersAdmin me={me} onImpersonate={(email)=>{ saveSession({ email, isAdmin: loadUsers().find(u=>emailEq(u.email,email))?.isAdmin || false }); onImpersonate(email); }}/>;
       default: return <Dashboard/>;
     }
-  };
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-purple-50 to-pink-50">
@@ -1925,10 +1821,9 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
             </h1>
             <p className="text-sm lg:text-base text-gray-600">Multi-tenant workspace • Logged in as {me.email}</p>
           </div>
-          {renderContent()}
+          {renderContent(activeTab)}
         </div>
       </div>
-      {editor}
     </div>
   );
 }
