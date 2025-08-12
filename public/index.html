@@ -257,6 +257,28 @@ function startOfWeek(d){ const x = new Date(d); const day = (x.getDay()+6)%7; x.
 function startOfMonth(d){ const x = new Date(d); x.setDate(1); x.setHours(0,0,0,0); return x; }
 function startOfYear(d){ const x = new Date(d); x.setMonth(0,1); x.setHours(0,0,0,0); return x; }
 
+/* ======= ADDED: deep-merge defaults so old localStorage never breaks UI ======= */
+function mergeDefaults(base, incoming) {
+  if (incoming == null) return JSON.parse(JSON.stringify(base));
+  if (Array.isArray(base)) return Array.isArray(incoming) ? incoming : base;
+  if (typeof base !== 'object' || base === null) return incoming ?? base;
+
+  const out = { ...base };
+  for (const k of Object.keys(base)) {
+    const b = base[k];
+    const i = incoming[k];
+    if (b && typeof b === 'object' && !Array.isArray(b)) {
+      out[k] = mergeDefaults(b, i ?? {});
+    } else {
+      out[k] = (i === undefined ? b : i);
+    }
+  }
+  for (const k of Object.keys(incoming)) {
+    if (out[k] === undefined) out[k] = incoming[k];
+  }
+  return out;
+}
+
 /* =========================
    LOGIN
    ========================= */
@@ -401,7 +423,8 @@ function UsersAdmin({ me, onImpersonate }){
    APP
    ========================= */
 function LeadFlowApp({ me, onLogout, onImpersonate }){
-  const ws0 = loadWorkspace(me.email) || seedWorkspace();
+  /* ======= UPDATED: merge stored workspace with current defaults ======= */
+  const ws0 = mergeDefaults(seedWorkspace(), loadWorkspace(me.email));
 
   const [activeTab, setActiveTab] = useState('dashboard');
   const [showMobileMenu, setShowMobileMenu] = useState(false);
