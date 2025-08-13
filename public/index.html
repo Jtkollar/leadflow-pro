@@ -721,1236 +721,428 @@ const Dashboard = () => {
       </div>
     </div>
   );
-};/* ---------- Ad Creator (market/sub) ---------- */
-const AdCreator = () => {
-  const [adForm, setAdForm] = useState({
-    market: '',
-    subType: '',
-    targetLocations: '',
-    minAge: '',
-    maxAge: '',
-    dailyBudget: '',
-    headline: '',
-    copy: '',
-    cta: 'learn-more',
-    genPrompt: ''
-  });
-
-  // Persisted variants/rotation (uses your existing adLab + setAdLabPersist)
-  const [localVariants, setLocalVariants] = useState(adLab.variants || []);
-  const [rotate, setRotate] = useState(adLab.rotate || false);
-
-  // Creative library + selection + preview
-  const [assets, setAssets] = useState([]);
-  const [selectedAssetIds, setSelectedAssetIds] = useState([]);
-  const [previewAd, setPreviewAd] = useState(null); // Live ad preview
-  const [isTestingAd, setIsTestingAd] = useState(false);
-
-  const [err, setErr] = useState('');
-  const [busy, setBusy] = useState({ text: false, upload: false, genImg: false, genVid: false });
-
-  // Reset sub-type when market changes
-  useEffect(() => { 
-    setAdForm(prev => ({ ...prev, subType: '' })); 
-  }, [adForm.market]);
-
-  // Load existing creative library
-  useEffect(() => {
-    let stop = false;
-    (async () => {
-      try {
-        const r = await fetch('/api/creative/list').catch(() => null);
-        if (!r || stop) return;
-        const j = await r.json();
-        const list = Array.isArray(j) ? j : (j.assets || []);
-        if (!stop && list?.length) setAssets(list);
-      } catch (error) {
-        console.log('Creative library will load when backend ready');
-      }
-    })();
-    return () => { stop = true; };
-  }, []);
-
-  // Auto-generate preview when form changes
-  useEffect(() => {
-    if (adForm.headline && adForm.copy) {
-      const selectedAssets = assets.filter(a => selectedAssetIds.includes(a.id));
-      const primaryAsset = selectedAssets[0];
-      
-      setPreviewAd({
-        headline: adForm.headline,
-        copy: adForm.copy,
-        cta: adForm.cta,
-        asset: primaryAsset,
-        market: adForm.market,
-        subType: adForm.subType,
-        targeting: {
-          locations: adForm.targetLocations,
-          ageMin: adForm.minAge,
-          ageMax: adForm.maxAge
-        },
-        budget: adForm.dailyBudget
-      });
-    } else {
-      setPreviewAd(null);
-    }
-  }, [adForm, selectedAssetIds, assets]);
-
-  // Templates (from PROMPT_TEMPLATES)
-  const currentTemplates = (PROMPT_TEMPLATES[adForm.market] || {})[adForm.subType] || [];
-  
-  const applyTemplate = (tpl) => {
-    if (!tpl) return;
-    setAdForm(prev => ({
-      ...prev,
-      headline: tpl.h.replace('{{CITY}}', 'your area').replace('{{STATE}}', 'your state').replace('{{LOW_PRICE}}', '15'),
-      copy: tpl.c.replace('{{CITY}}', 'your area').replace('{{STATE}}', 'your state').replace('{{PRICE}}', '500k').replace('{{INDUSTRY}}', 'your industry'),
-      cta: tpl.cta || prev.cta
-    }));
-  };
-
-  /* === AI GENERATION (Single Prompt → Text + Images + Video) === */
-  async function generateFromPrompt() {
-    if (!adForm.genPrompt.trim()) { 
-      alert('Enter a prompt first.'); 
-      return; 
-    }
-    
-    setBusy({ text: true, genImg: true, genVid: true, upload: false }); 
-    setErr('');
-    
-    try {
-      const body = { 
-        prompt: adForm.genPrompt, 
-        market: adForm.market, 
-        subType: adForm.subType || undefined,
-        generateText: true,
-        generateImages: true,
-        generateVideo: true,
-        imageCount: 6
-      };
-      
-      // Try real backend first
-      const r = await fetch('/api/generate-complete-ad', { 
-        method: 'POST', 
-        headers: { 'Content-Type': 'application/json' }, 
-        body: JSON.stringify(body) 
-      });
-      
-      if (r.ok) {
-        const j = await r.json();
-        
-        // Update text content
-        if (j.text) {
-          setAdForm(prev => ({
-            ...prev,
-            headline: j.text.headline || prev.headline,
-            copy: j.text.copy || prev.copy,
-            cta: j.text.cta || prev.cta
-          }));
-        }
-        
-        // Add generated assets
-        if (j.assets && j.assets.length) {
-          setAssets(prev => [...j.assets, ...prev]);
-        }
-        
-      } else {
-        throw new Error('Backend not ready');
-      }
-    } catch (error) { 
-      console.log('Backend not ready, using simulation');
-      
-      // Simulate AI generation
-      setTimeout(() => {
-        // Generate text
-        setAdForm(prev => ({
-          ...prev,
-          headline: `${adForm.market} Solution: ${adForm.genPrompt.substring(0, 30)}...`,
-          copy: `Transform your ${adForm.market.toLowerCase()} results with our proven system. This ad copy is AI-generated based on: "${adForm.genPrompt}"`,
-          cta: 'learn-more'
-        }));
-        
-        // Generate demo assets
-        const newAssets = [
-          { id: Date.now(), url: `https://via.placeholder.com/600x400/4F46E5/white?text=AI+Generated+Image`, type: 'image', prompt: adForm.genPrompt },
-          { id: Date.now() + 1, url: `https://via.placeholder.com/600x400/7C3AED/white?text=AI+Generated+Video`, type: 'video', prompt: adForm.genPrompt },
-          { id: Date.now() + 2, url: `https://via.placeholder.com/600x400/10B981/white?text=Variation+1`, type: 'image', prompt: adForm.genPrompt }
-        ];
-        setAssets(prev => [...newAssets, ...prev]);
-        
-        setBusy({ text: false, genImg: false, genVid: false, upload: false });
-      }, 3000);
-      return;
-    }
-    
-    setBusy({ text: false, genImg: false, genVid: false, upload: false });
-  }
-
-  /* === Individual generation functions (kept for backwards compatibility) === */
-  async function generateTextFromPrompt() {
-    if (!adForm.genPrompt.trim()) { alert('Enter a prompt first.'); return; }
-    setBusy(b => ({ ...b, text: true })); setErr('');
-    
-    try {
-      const body = { prompt: adForm.genPrompt, market: adForm.market, subType: adForm.subType || undefined };
-      const r = await fetch('/api/generate-ad', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-      
-      if (r.ok) {
-        const j = await r.json();
-        setAdForm(prev => ({
-          ...prev,
-          headline: j.headline || prev.headline,
-          copy: j.copy || prev.copy,
-          cta: j.cta || prev.cta
-        }));
-      } else {
-        throw new Error('Backend not ready');
-      }
-    } catch { 
-      // Fallback simulation
-      setTimeout(() => {
-        setAdForm(prev => ({
-          ...prev,
-          headline: `AI: ${adForm.genPrompt.substring(0, 40)}...`,
-          copy: `Generated copy for ${adForm.market}: ${adForm.genPrompt}`,
-          cta: 'learn-more'
-        }));
-        setBusy(b => ({ ...b, text: false }));
-      }, 2000);
-      return;
-    }
-    setBusy(b => ({ ...b, text: false }));
-  }
-
-  async function generateImages(extraPrompt) {
-    const prompt = (extraPrompt ?? adForm.genPrompt || '').trim();
-    if (!prompt) { alert('Enter a prompt first.'); return; }
-    setBusy(b => ({ ...b, genImg: true })); setErr('');
-    
-    try {
-      const r = await fetch('/api/creative/generate', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt, count: 6, market: adForm.market, subType: adForm.subType || undefined })
-      });
-      
-      if (r.ok) {
-        const j = await r.json();
-        const gen = Array.isArray(j) ? j : (j.assets || []);
-        if (gen.length) setAssets(prev => [...gen, ...prev]);
-      } else {
-        throw new Error('Backend not ready');
-      }
-    } catch { 
-      setTimeout(() => {
-        const newImages = Array.from({ length: 3 }, (_, i) => ({
-          id: Date.now() + i,
-          url: `https://via.placeholder.com/400x300/4F46E5/white?text=Generated+${i + 1}`,
-          type: 'image'
-        }));
-        setAssets(prev => [...newImages, ...prev]);
-        setBusy(b => ({ ...b, genImg: false }));
-      }, 2000);
-      return;
-    }
-    setBusy(b => ({ ...b, genImg: false }));
-  }
-
-  async function generateVideo(extraPrompt) {
-    const prompt = (extraPrompt ?? adForm.genPrompt || '').trim();
-    if (!prompt) { alert('Enter a prompt first.'); return; }
-    setBusy(b => ({ ...b, genVid: true })); setErr('');
-    
-    try {
-      const r = await fetch('/api/creative/generate-video', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt, market: adForm.market, subType: adForm.subType || undefined })
-      });
-      
-      if (r.ok) {
-        const j = await r.json();
-        const vids = Array.isArray(j) ? j : (j.assets || []);
-        if (vids.length) setAssets(prev => [...vids, ...prev]);
-      } else {
-        throw new Error('Backend not ready');
-      }
-    } catch { 
-      setTimeout(() => {
-        const newVideo = { 
-          id: Date.now(), 
-          url: `https://via.placeholder.com/400x300/7C3AED/white?text=AI+Video`, 
-          type: 'video' 
-        };
-        setAssets(prev => [newVideo, ...prev]);
-        setBusy(b => ({ ...b, genVid: false }));
-      }, 3000);
-      return;
-    }
-    setBusy(b => ({ ...b, genVid: false }));
-  }
-
-  /* === Upload (images/videos + manual ads) === */
-  async function onUploadFiles(fileList) {
-    const files = Array.from(fileList || []);
-    if (!files.length) return;
-    setBusy(b => ({ ...b, upload: true })); setErr('');
-    
-    try {
-      const fd = new FormData();
-      files.forEach(f => fd.append('files', f));
-      const r = await fetch('/api/creative/upload', { method: 'POST', body: fd });
-      
-      if (r.ok) {
-        const j = await r.json();
-        const newAssets = Array.isArray(j) ? j : (j.assets || []);
-        if (newAssets.length) setAssets(prev => [...newAssets, ...prev]);
-      } else {
-        throw new Error('Backend not ready');
-      }
-    } catch { 
-      // Simulate upload with local URLs
-      const uploadedAssets = files.map((file, index) => ({
-        id: Date.now() + index,
-        url: URL.createObjectURL(file),
-        type: file.type.startsWith('video/') ? 'video' : 'image',
-        uploaded: true
-      }));
-      setAssets(prev => [...uploadedAssets, ...prev]);
-    }
-    setBusy(b => ({ ...b, upload: false }));
-  }
-
-  /* === Test Ad Function === */
-  async function testAd() {
-    if (!previewAd) {
-      alert('Complete the ad content first to test');
-      return;
-    }
-    
-    setIsTestingAd(true);
-    
-    try {
-      const r = await fetch('/api/test-ad', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ad: previewAd,
-          testType: 'preview', // Can be 'preview', 'a-b-test', etc.
-          market: adForm.market,
-          targeting: previewAd.targeting
-        })
-      });
-      
-      if (r.ok) {
-        const result = await r.json();
-        alert(`✅ Ad test successful!\nExpected CTR: ${result.expectedCTR}%\nReach estimate: ${result.reachEstimate}`);
-      } else {
-        throw new Error('Backend not ready');
-      }
-    } catch {
-      // Simulate test results
-      setTimeout(() => {
-        const mockResults = {
-          expectedCTR: (Math.random() * 3 + 1).toFixed(2),
-          reachEstimate: Math.floor(Math.random() * 10000 + 5000),
-          score: Math.floor(Math.random() * 30 + 70)
-        };
-        alert(`🧪 Ad Test Results (Simulated):\nExpected CTR: ${mockResults.expectedCTR}%\nReach Estimate: ${mockResults.reachEstimate.toLocaleString()}\nQuality Score: ${mockResults.score}/100`);
-        setIsTestingAd(false);
-      }, 2000);
-      return;
-    }
-    
-    setIsTestingAd(false);
-  }
-
-  /* === Variants (persist via adLab) === */
-  function addVariantFromCurrent() {
-    if (!adForm.headline || !adForm.copy) { 
-      alert('Set headline and copy first'); 
-      return; 
-    }
-    const v = { 
-      id: Date.now(), 
-      headline: adForm.headline, 
-      copy: adForm.copy, 
-      cta: adForm.cta, 
-      impressions: 0, 
-      clicks: 0,
-      assets: selectedAssetIds
-    };
-    const next = [v, ...localVariants];
-    setLocalVariants(next);
-    setAdLabPersist({ ...adLab, variants: next, rotate });
-  }
-  
-  function deleteVariant(id) {
-    const next = localVariants.filter(v => v.id !== id);
-    setLocalVariants(next);
-    setAdLabPersist({ ...adLab, variants: next, rotate });
-  }
-  
-  function toggleRotate() {
-    const nv = !rotate;
-    setRotate(nv);
-    setAdLabPersist({ ...adLab, rotate: nv, variants: localVariants });
-  }
-
-  /* === Select creatives for campaign === */
-  function toggleSelectAsset(id) {
-    setSelectedAssetIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
-  }
-
-  /* === Launch (attaches selected creatives) === */
-  async function launchCampaign() {
-    if (!adForm.market || !adForm.headline || !adForm.copy || !adForm.targetLocations || !adForm.subType) {
-      alert('Select a market and fill headline, copy, locations, and sub-type'); 
-      return;
-    }
-    
-    try {
-      const body = {
-        name: `${adForm.market}/${adForm.subType} - ${adForm.targetLocations}`,
-        market: adForm.market, 
-        type: adForm.subType,
-        budget: parseInt(adForm.dailyBudget) || 100,
-        adContent: { 
-          headline: adForm.headline, 
-          copy: adForm.copy, 
-          cta: adForm.cta 
-        },
-        targeting: {
-          locations: adForm.targetLocations.split(',').map(s => s.trim()).filter(Boolean),
-          ageMin: parseInt(adForm.minAge) || 25, 
-          ageMax: parseInt(adForm.maxAge) || 65
-        },
-        creative: { assetIds: selectedAssetIds },
-        preview: previewAd,
-        routing,
-        metadata: routing.metadata.adsCopy
-      };
-      
-      const r = await fetch('/api/launch-campaign', { 
-        method: 'POST', 
-        headers: { 'Content-Type': 'application/json' }, 
-        body: JSON.stringify(body) 
-      });
-      
-      if (r.ok) {
-        const result = await r.json();
-        const newCamp = { 
-          id: result.campaignId || 'c' + Date.now(), 
-          name: body.name, 
-          market: body.market, 
-          type: body.type, 
-          budget: body.budget, 
-          status: 'active', 
-          leads: 0, 
-          costPerLead: 0,
-          preview: previewAd
-        };
-        setCampaigns(prev => [newCamp, ...prev]); 
-        saveNow({ campaigns: [newCamp, ...campaigns] });
-        alert('🚀 Campaign launched successfully!');
-      } else {
-        throw new Error('Backend not ready');
-      }
-    } catch { 
-      // Simulate launch
-      const newCamp = { 
-        id: 'c' + Date.now(), 
-        name: `${adForm.market}/${adForm.subType} - ${adForm.targetLocations}`,
-        market: adForm.market, 
-        type: adForm.subType, 
-        budget: parseInt(adForm.dailyBudget) || 100, 
-        status: 'active', 
-        leads: 0, 
-        costPerLead: 0,
-        preview: previewAd
-      };
-      setCampaigns(prev => [newCamp, ...prev]); 
-      saveNow({ campaigns: [newCamp, ...campaigns] });
-      alert('🚀 Campaign launched (simulated).');
-    }
-  }
-
-  const Money = (n) => `$${new Intl.NumberFormat().format(Number(n || 0))}`;
-  const isGenerating = busy.text || busy.genImg || busy.genVid;
-
-  return (
-    <div className="space-y-6 fade-in">
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 lg:gap-6">
-        {/* Left Column: Category & Targeting */}
-        <div className="bg-white rounded-2xl p-4 lg:p-6 shadow-lg">
-          <h3 className="text-lg lg:text-xl font-bold mb-4">Category & Targeting</h3>
-          <div className="space-y-4">
-            <div className="grid grid-cols-1 gap-3">
-              <div>
-                <label className="block font-medium mb-2 text-sm lg:text-base">Market</label>
-                <select className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500"
-                        value={adForm.market}
-                        onChange={(e) => setAdForm(prev => ({ ...prev, market: e.target.value, subType: '' }))}>
-                  <option value="">Choose…</option>
-                  {Object.keys(MARKET_OPTIONS).map(m => <option key={m} value={m}>{m}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="block font-medium mb-2 text-sm lg:text-base">Sub-Type</label>
-                <select className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500"
-                        value={adForm.subType}
-                        onChange={(e) => setAdForm(prev => ({ ...prev, subType: e.target.value }))}>
-                  <option value="">Choose…</option>
-                  {(MARKET_OPTIONS[adForm.market] || []).map(s => <option key={s} value={s}>{s}</option>)}
-                </select>
-              </div>
-            </div>
-
-            <div>
-              <label className="block font-medium mb-2 text-sm lg:text-base">Target Locations</label>
-              <input type="text" className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500"
-                     placeholder="FL, TX, CA"
-                     value={adForm.targetLocations}
-                     onChange={(e) => setAdForm(prev => ({ ...prev, targetLocations: e.target.value }))} />
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block font-medium mb-2 text-sm lg:text-base">Min Age</label>
-                <input type="number" className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500"
-                       placeholder="25"
-                       value={adForm.minAge}
-                       onChange={(e) => setAdForm(prev => ({ ...prev, minAge: e.target.value }))} />
-              </div>
-              <div>
-                <label className="block font-medium mb-2 text-sm lg:text-base">Max Age</label>
-                <input type="number" className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500"
-                       placeholder="65"
-                       value={adForm.maxAge}
-                       onChange={(e) => setAdForm(prev => ({ ...prev, maxAge: e.target.value }))} />
-              </div>
-            </div>
-
-            <div>
-              <label className="block font-medium mb-2 text-sm lg:text-base">Daily Budget ($)</label>
-              <input type="number" className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500"
-                     placeholder="150"
-                     value={adForm.dailyBudget}
-                     onChange={(e) => setAdForm(prev => ({ ...prev, dailyBudget: e.target.value }))} />
-              <p className="text-xs text-gray-500 mt-1">Estimated budget: <strong>{Money(adForm.dailyBudget || 0)}/day</strong></p>
-            </div>
-          </div>
-        </div>
-
-        {/* Middle Column: AI Generation & Content */}
-        <div className="bg-white rounded-2xl p-4 lg:p-6 shadow-lg">
-          <h3 className="text-lg lg:text-xl font-bold mb-4">AI Generation</h3>
-
-          <div className="bg-gradient-to-r from-blue-50 to-purple-50 p-4 rounded-xl mb-4 border border-blue-200">
-            <div className="text-sm font-semibold mb-2 text-blue-800">🚀 Single Prompt → Complete Ad</div>
-            <textarea className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500 h-20 resize-none"
-                      placeholder="Describe your offer, audience, vibe… AI will generate copy, images, and video!"
-                      value={adForm.genPrompt}
-                      onChange={(e) => setAdForm(prev => ({ ...prev, genPrompt: e.target.value }))} />
-            
-            <div className="flex gap-2 mt-3">
-              <button onClick={generateFromPrompt}
-                      className="flex-1 px-4 py-3 bg-gradient-to-r from-blue-500 to-purple-600 text-white rounded-xl font-semibold disabled:opacity-60 hover:shadow-lg transition-all"
-                      disabled={isGenerating}>
-                {isGenerating ? '⚡ Generating Complete Ad...' : '🎯 Generate Complete Ad'}
-              </button>
-            </div>
-          </div>
-
-          {/* Individual Generation (Legacy Support) */}
-          <div className="bg-gray-50 p-3 rounded-xl mb-4">
-            <div className="text-sm font-medium mb-2 text-gray-700">Or generate individually:</div>
-            <div className="flex flex-wrap gap-2">
-              <button onClick={generateTextFromPrompt}
-                      className="px-3 py-2 bg-blue-100 text-blue-700 rounded-lg text-sm disabled:opacity-60"
-                      disabled={busy.text}>
-                {busy.text ? 'Generating…' : '📝 Text Only'}
-              </button>
-              <button onClick={() => generateImages()}
-                      className="px-3 py-2 bg-green-100 text-green-700 rounded-lg text-sm disabled:opacity-60"
-                      disabled={busy.genImg}>
-                {busy.genImg ? 'Generating…' : '🖼️ Images Only'}
-              </button>
-              <button onClick={() => generateVideo()}
-                      className="px-3 py-2 bg-purple-100 text-purple-700 rounded-lg text-sm disabled:opacity-60"
-                      disabled={busy.genVid}>
-                {busy.genVid ? 'Generating…' : '🎬 Video Only'}
-              </button>
-            </div>
-          </div>
-
-          {/* Templates */}
-          {currentTemplates.length > 0 && (
-            <div className="bg-gray-50 p-3 rounded-xl mb-4">
-              <div className="text-xs text-gray-600 mb-2">Quick start templates:</div>
-              <div className="flex flex-wrap gap-2">
-                {currentTemplates.map((tpl, i) => (
-                  <button key={i} onClick={() => applyTemplate(tpl)} 
-                          className="px-3 py-2 text-xs bg-white border rounded-lg hover:bg-blue-50">
-                    "{tpl.h.substring(0, 25)}..."
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Manual Content */}
-          <div className="space-y-4">
-            <div>
-              <label className="block font-medium mb-2 text-sm lg:text-base">Headline</label>
-              <input type="text" className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500"
-                     placeholder="Your compelling headline…"
-                     value={adForm.headline}
-                     onChange={(e) => setAdForm(prev => ({ ...prev, headline: e.target.value }))} />
-            </div>
-            <div>
-              <label className="block font-medium mb-2 text-sm lg:text-base">Ad Copy</label>
-              <textarea className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500 h-24 resize-none"
-                        placeholder="Write your ad copy here…"
-                        value={adForm.copy}
-                        onChange={(e) => setAdForm(prev => ({ ...prev, copy: e.target.value }))} />
-            </div>
-            <div>
-              <label className="block font-medium mb-2 text-sm lg:text-base">Call-to-Action</label>
-              <select className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500"
-                      value={adForm.cta}
-                      onChange={(e) => setAdForm(prev => ({ ...prev, cta: e.target.value }))}>
-                <option value="learn-more">Learn More</option>
-                <option value="get-quote">Get Free Quote</option>
-                <option value="call-now">Call Now</option>
-                <option value="apply-now">Apply Now</option>
-              </select>
-            </div>
-
-            {/* Upload */}
-            <div className="border-2 border-dashed border-gray-300 rounded-xl p-4 text-center">
-              <label className="cursor-pointer">
-                <div className="text-gray-600 mb-2">📁 Upload Manual Assets</div>
-                <div className="text-sm text-gray-500">Drop images/videos or click to browse</div>
-                <input type="file" accept="image/*,video/*" multiple className="hidden" 
-                       onChange={(e) => onUploadFiles(e.target.files)} />
-              </label>
-            </div>
-
-            {err && <div className="text-sm text-red-600">{err}</div>}
-          </div>
-        </div>
-
-        {/* Right Column: Live Preview */}
-        <div className="bg-white rounded-2xl p-4 lg:p-6 shadow-lg">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg lg:text-xl font-bold">Live Preview</h3>
-            {previewAd && (
-              <button onClick={testAd}
-                      className="px-3 py-2 bg-orange-100 text-orange-700 rounded-lg text-sm hover:bg-orange-200 disabled:opacity-60"
-                      disabled={isTestingAd}>
-                {isTestingAd ? '🧪 Testing...' : '🧪 Test Ad'}
-              </button>
-            )}
-          </div>
-          
-          {previewAd ? (
-            <div className="border rounded-xl overflow-hidden">
-              {/* Ad Preview Frame */}
-              <div className="bg-gray-100 p-3 border-b">
-                <div className="text-xs text-gray-600">📱 Preview: Facebook/Instagram Feed</div>
-              </div>
-              
-              <div className="p-4">
-                {/* Asset Preview */}
-                {previewAd.asset && (
-                  <div className="mb-3 rounded-lg overflow-hidden">
-                    {previewAd.asset.type === 'video' ? (
-                      <video src={previewAd.asset.url} className="w-full h-48 object-cover" controls />
-                    ) : (
-                      <img src={previewAd.asset.url} className="w-full h-48 object-cover" alt="Ad visual" />
-                    )}
-                  </div>
-                )}
-                
-                {/* Ad Content */}
-                <div className="space-y-2">
-                  <div className="font-bold text-lg">{previewAd.headline}</div>
-                  <div className="text-gray-700 text-sm leading-relaxed">{previewAd.copy}</div>
-                  
-                  {/* CTA Button */}
-                  <div className="mt-3">
-                    <button className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-all">
-                      {previewAd.cta.replace('-', ' ').replace(/\b\w/g, l => l.toUpperCase())}
-                    </button>
-                  </div>
-                  
-                  {/* Ad Info */}
-                  <div className="mt-3 pt-3 border-t text-xs text-gray-500">
-                    <div>Target: {previewAd.targeting.locations || 'All locations'}</div>
-                    <div>Age: {previewAd.targeting.ageMin || 25}-{previewAd.targeting.ageMax || 65}</div>
-                    <div>Budget: {Money(previewAd.budget || 0)}/day</div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          ) : (
-            <div className="border-2 border-dashed border-gray-300 rounded-xl p-8 text-center text-gray-500">
-              <div className="text-4xl mb-2">📱</div>
-              <div className="font-medium mb-1">Live Ad Preview</div>
-              <div className="text-sm">Add headline and copy to see preview</div>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Creative Library with Selection */}
-      <div className="bg-white rounded-2xl p-4 lg:p-6 shadow-lg">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg lg:text-xl font-bold">Creative Library</h3>
-          <div className="text-sm text-gray-600">{selectedAssetIds.length} selected • {assets.length} total</div>
-        </div>
-        
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-          {assets.map(a => (
-            <button key={a.id}
-                    onClick={() => toggleSelectAsset(a.id)}
-                    className={`relative border rounded-xl overflow-hidden transition-all ${
-                      selectedAssetIds.includes(a.id) 
-                        ? 'ring-2 ring-purple-500 border-purple-300 shadow-lg' 
-                        : 'border-gray-200 hover:border-blue-300 hover:shadow-md'
-                    }`}>
-              {a.type === 'video' ? (
-                <video src={a.url} className="w-full h-24 object-cover" />
-              ) : (
-                <img src={a.url} className="w-full h-24 object-cover" alt="creative" />
-              )}
-              
-              {/* Selection Indicator */}
-              <div className={`absolute top-1 right-1 w-4 h-4 rounded-full border ${
-                selectedAssetIds.includes(a.id) 
-                  ? 'bg-purple-600 border-purple-600' 
-                  : 'bg-white border-gray-400'
-              }`}>
-                {selectedAssetIds.includes(a.id) && (
-                  <div className="text-white text-xs flex items-center justify-center h-full">✓</div>
-                )}
-              </div>
-              
-              {/* Asset Type Badge */}
-              <div className="absolute bottom-1 left-1 px-1 py-0.5 bg-black bg-opacity-75 text-white text-xs rounded">
-                {a.type === 'video' ? '🎬' : '🖼️'}
-              </div>
-              
-              {/* Upload Badge */}
-              {a.uploaded && (
-                <div className="absolute top-1 left-1 px-1 py-0.5 bg-green-600 text-white text-xs rounded">
-                  Uploaded
-                </div>
-              )}
-            </button>
-          ))}
-          
-          {assets.length === 0 && (
-            <div className="col-span-full text-center py-8 text-gray-500">
-              <div className="text-4xl mb-2">🎨</div>
-              <div className="font-medium mb-1">No assets yet</div>
-              <div className="text-sm">Generate or upload to get started</div>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Ad Variants & Rotation */}
-      <div className="bg-white rounded-2xl p-4 lg:p-6 shadow-lg">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg lg:text-xl font-bold">Ad Variants & A/B Testing</h3>
-          <div className="flex items-center gap-4">
-            <label className="flex items-center gap-2 text-sm">
-              <span>Auto-rotate variants</span>
-              <input type="checkbox" checked={rotate} onChange={toggleRotate} />
-            </label>
-            <button onClick={addVariantFromCurrent}
-                    className="px-3 py-2 bg-purple-100 text-purple-700 rounded-lg hover:bg-purple-200 transition-all">
-              ➕ Save as Variant
-            </button>
-          </div>
-        </div>
-        
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          {localVariants.map(v => (
-            <div key={v.id} className="border rounded-xl p-4 hover:border-blue-300 transition-all">
-              <div className="font-semibold mb-2 text-blue-600">{v.headline}</div>
-              <div className="text-sm text-gray-700 mb-3 line-clamp-3">{v.copy}</div>
-              
-              <div className="flex items-center justify-between text-xs text-gray-500 mb-3">
-                <span>CTA: {v.cta}</span>
-                <span>{v.assets?.length || 0} assets</span>
-              </div>
-              
-              {/* Variant Performance (simulated) */}
-              <div className="bg-gray-50 p-2 rounded text-xs mb-3">
-                <div className="flex justify-between">
-                  <span>Impressions:</span>
-                  <span>{v.impressions.toLocaleString()}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Clicks:</span>
-                  <span>{v.clicks.toLocaleString()}</span>
-                </div>
-                <div className="flex justify-between font-medium">
-                  <span>CTR:</span>
-                  <span>{v.impressions > 0 ? ((v.clicks / v.impressions) * 100).toFixed(2) : 0}%</span>
-                </div>
-              </div>
-              
-              <div className="flex gap-2">
-                <button onClick={() => {
-                  setAdForm(prev => ({
-                    ...prev,
-                    headline: v.headline,
-                    copy: v.copy,
-                    cta: v.cta
-                  }));
-                  if (v.assets) setSelectedAssetIds(v.assets);
-                }}
-                        className="flex-1 px-2 py-1 bg-blue-100 text-blue-700 rounded text-sm hover:bg-blue-200">
-                  Load
-                </button>
-                <button onClick={() => deleteVariant(v.id)} 
-                        className="px-2 py-1 bg-gray-100 text-gray-700 rounded text-sm hover:bg-gray-200">
-                  Delete
-                </button>
-              </div>
-            </div>
-          ))}
-          
-          {localVariants.length === 0 && (
-            <div className="col-span-full text-center py-6 text-gray-500">
-              <div className="text-2xl mb-2">🔄</div>
-              <div className="font-medium mb-1">No variants yet</div>
-              <div className="text-sm">Create different versions to A/B test performance</div>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Campaign Actions */}
-      <div className="bg-white rounded-2xl p-4 lg:p-6 shadow-lg">
-        <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
-          <div>
-            <h3 className="text-lg font-bold">Ready to Launch?</h3>
-            <p className="text-sm text-gray-600">Your ad will be added to Campaign Manager for tracking</p>
-          </div>
-          
-          <div className="flex gap-3">
-            {previewAd && (
-              <button onClick={testAd}
-                      className="px-6 py-3 bg-orange-500 text-white rounded-xl font-semibold hover:bg-orange-600 disabled:opacity-60 transition-all"
-                      disabled={isTestingAd}>
-                {isTestingAd ? '🧪 Testing Ad...' : '🧪 Test Ad Performance'}
-              </button>
-            )}
-            
-            <button onClick={launchCampaign}
-                    className="px-6 py-3 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-xl font-semibold hover:shadow-lg transition-all">
-              🚀 Launch Campaign
-            </button>
-          </div>
-        </div>
-        
-        {/* Launch Requirements Checklist */}
-        <div className="mt-4 p-3 bg-gray-50 rounded-xl">
-          <div className="text-sm font-medium mb-2">Launch Checklist:</div>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
-            <div className={`flex items-center gap-1 ${adForm.market ? 'text-green-600' : 'text-gray-500'}`}>
-              {adForm.market ? '✅' : '⏳'} Market Selected
-            </div>
-            <div className={`flex items-center gap-1 ${adForm.headline && adForm.copy ? 'text-green-600' : 'text-gray-500'}`}>
-              {adForm.headline && adForm.copy ? '✅' : '⏳'} Ad Content
-            </div>
-            <div className={`flex items-center gap-1 ${selectedAssetIds.length > 0 ? 'text-green-600' : 'text-gray-500'}`}>
-              {selectedAssetIds.length > 0 ? '✅' : '⏳'} Creative Assets
-            </div>
-            <div className={`flex items-center gap-1 ${adForm.targetLocations ? 'text-green-600' : 'text-gray-500'}`}>
-              {adForm.targetLocations ? '✅' : '⏳'} Target Locations
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
 };
-/* ---------- End of AdCreator component ---------- */
+/* ---------- Ad Creator (market/sub) ---------- */
 
-/* ---------- Leads (click to edit + advanced statuses + notes + recordings) ---------- */
-const LeadManagement = () => {
-  const [searchTerm, setSearchTerm] = useState('');
-  const [filterMarket, setFilterMarket] = useState('');
-  const [filterType, setFilterType] = useState('');
-  const [filterStatus, setFilterStatus] = useState('');
-  const [showImportModal, setShowImportModal] = useState(false);
-  const [showTestModal, setShowTestModal] = useState(false);
-  const [showAddLead, setShowAddLead] = useState(false);
-
-  const [newLead, setNewLead] = useState({ 
-    market: 'Insurance', 
-    type: 'Life', 
-    source: 'Manual', 
-    name: '', 
-    phone: '', 
-    email: '', 
-    location: '', 
-    status: 'New', 
-    notes: '',
-    healthConditions: '' // NEW: Health conditions field
-  });
-
-  const filteredLeads = leads.filter(lead => {
-    const term = searchTerm.toLowerCase();
-    const matchesSearch = (lead.name || '').toLowerCase().includes(term) || 
-                         (lead.phone || '').includes(searchTerm) || 
-                         (lead.email || '').toLowerCase().includes(term);
-    const matchesMarket = !filterMarket || lead.market === filterMarket;
-    const matchesType = !filterType || (lead.type || '').toLowerCase() === filterType.toLowerCase();
-    const matchesStatus = !filterStatus || lead.status === filterStatus;
-    return matchesSearch && matchesMarket && matchesType && matchesStatus;
-  });
-
-  const handleFileUpload = async (event, type) => {
-    const file = event.target.files[0]; 
-    if (!file) return;
-    
-    if (type === 'csv') {
-      const text = await file.text();
-      const rows = parseCSV(text).slice(0, 200);
-      const imp = { 
-        id: Date.now(), 
-        filename: file.name, 
-        createdAt: new Date().toISOString(), 
-        rows, 
-        mapped: {}, 
-        dropPlaceholders: true 
-      };
-      const next = [imp, ...imports];
-      setImports(next); 
-      saveNow({ imports: next });
-      alert(`✅ CSV loaded (${rows.length} preview rows). Go to Imports to map.`);
-      setShowImportModal(false); 
-      setActiveTab('imports');
-    } else {
-      alert('🔍 PDF scanning simulated (connect OCR later).');
-      const imp = { 
-        id: Date.now(), 
-        filename: file.name, 
-        createdAt: new Date().toISOString(), 
-        rows: [], 
-        mapped: {}, 
-        dropPlaceholders: true 
-      };
-      const next = [imp, ...imports];
-      setImports(next); 
-      saveNow({ imports: next });
-      setShowImportModal(false); 
-      setActiveTab('imports');
-    }
-  };
-
-  const saveNewLead = async () => {
-    if (!newLead.name || !newLead.phone) { 
-      alert('Name and phone are required'); 
-      return; 
-    }
-    
-    const created = { 
-      ...newLead, 
-      id: Date.now(), 
-      time: new Date().toLocaleString(), 
-      callLogs: [], 
-      isClient: false 
-    };
-    
-    try { 
-      await fetch('/api/leads', { 
-        method: 'POST', 
-        headers: { 'Content-Type': 'application/json' }, 
-        body: JSON.stringify(created) 
-      }).catch(() => {}); 
-    } catch {}
-    
-    setLeads(prev => [created, ...prev]);
-    setShowAddLead(false);
-    setNewLead({ 
-      market: 'Insurance', 
-      type: 'Life', 
-      source: 'Manual', 
-      name: '', 
-      phone: '', 
-      email: '', 
-      location: '', 
-      status: 'New', 
-      notes: '',
-      healthConditions: ''
+  const AdCreator = () => {
+    const [adForm, setAdForm] = useState({
+      market: 'Insurance',
+      subType: '',
+      targetLocations: '',
+      minAge: '',
+      maxAge: '',
+      dailyBudget: '',
+      headline: '',
+      copy: '',
+      cta: 'learn-more'
     });
 
-    // Auto-start outreach if Meta and automation enabled
-    if (created.source === 'Meta' && automation.autoStartOnMeta) {
-      alert('⚡ Auto-start outreach: calling now (sim).');
-      try { 
-        await fetch('/api/ai-call', { 
-          method: 'POST', 
-          headers: { 'Content-Type': 'application/json' }, 
-          body: JSON.stringify({ 
-            leadId: created.id, 
-            phoneNumber: created.phone, 
-            method: 'call', 
-            routing, 
-            metadata: routing.metadata.call 
-          }) 
-        }).catch(() => {}); 
-      } catch {}
-    }
-  };
+    const [localVariants, setLocalVariants] = useState(adLab.variants || []);
+    const [rotate, setRotate] = useState(adLab.rotate || false);
 
-  const deleteLead = async (leadId) => {
-    if (!confirm('Delete this lead?')) return;
-    try { 
-      await fetch(`/api/leads/${leadId}`, { method: 'DELETE' }).catch(() => {}); 
-    } catch {}
-    setLeads(prev => prev.filter(l => l.id !== leadId));
-  };
+    useEffect(()=>{ setAdForm(prev=>({...prev, subType:''})); }, [adForm.market]);
 
-  return (
-    <div className="space-y-6 fade-in">
-      <div className="bg-white rounded-2xl p-4 lg:p-6 shadow-lg">
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
-          <h3 className="text-lg lg:text-xl font-bold">Lead Pipeline</h3>
-          <div className="flex flex-wrap gap-2">
-            <button onClick={() => setShowAddLead(true)} 
-                    className="px-3 py-2 bg-purple-100 text-purple-700 rounded-xl hover:bg-purple-200 transition-all text-sm">
-              ➕ Add Lead
-            </button>
+    const currentTemplates = (PROMPT_TEMPLATES[adForm.market] || {})[adForm.subType] || [];
+    const applyTemplate = (tpl)=>{
+      setAdForm(prev=>({
+        ...prev,
+        headline: tpl.h.replace('{{CITY}}','your area').replace('{{STATE}}','your state').replace('{{LOW_PRICE}}','15'),
+        copy: tpl.c.replace('{{CITY}}','your area').replace('{{STATE}}','your state').replace('{{PRICE}}','500k').replace('{{INDUSTRY}}','your industry'),
+        cta: tpl.cta || prev.cta
+      }));
+    };
 
-            <input type="file" accept=".csv" onChange={(e) => handleFileUpload(e, 'csv')} className="hidden" id="csv-upload-direct" />
-            <label htmlFor="csv-upload-direct" 
-                   className="px-3 py-2 bg-green-100 text-green-700 rounded-xl hover:bg-green-200 transition-all text-sm cursor-pointer">
-              📊 Upload CSV
-            </label>
+    const suggestAI = async () => {
+      try{
+        const payload = { market: adForm.market, subType: adForm.subType, targeting: { locations: adForm.targetLocations }, analytics: analyticsData, routing, metadata: routing.metadata.adsCopy };
+        const res = await fetch('/api/generate-ad', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+        const data = await res.json();
+        setAdForm(prev=>({ ...prev, headline: data.headline || prev.headline, copy: data.copy || prev.copy, cta: data.cta || prev.cta }));
+        alert('✨ AI refreshed your ad content.');
+      }catch{
+        const tpl = currentTemplates[Math.floor(Math.random()*currentTemplates.length)];
+        if (tpl) applyTemplate(tpl); else alert('No templates for this selection.');
+      }
+    };
 
-            <input type="file" accept=".pdf" onChange={(e) => handleFileUpload(e, 'pdf')} className="hidden" id="pdf-upload-direct" />
-            <label htmlFor="pdf-upload-direct" 
-                   className="px-3 py-2 bg-red-100 text-red-700 rounded-xl hover:bg-red-200 transition-all text-sm cursor-pointer">
-              📄 Scan PDF → CSV
-            </label>
+    const addVariant = ()=>{
+      if (!adForm.headline || !adForm.copy) { alert('Set headline and copy first'); return; }
+      const v = { id: Date.now(), headline: adForm.headline, copy: adForm.copy, cta: adForm.cta, impressions: 0, clicks: 0 };
+      const next = [v, ...localVariants];
+      setLocalVariants(next);
+      setAdLabPersist({ ...adLab, variants: next, rotate });
+    };
+    const deleteVariant = (id)=>{
+      const next = localVariants.filter(v=>v.id!==id);
+      setLocalVariants(next);
+      setAdLabPersist({ ...adLab, variants: next, rotate });
+    };
+    const simulateTraffic = (views=200)=>{
+      if (localVariants.length===0) return alert('Add at least one variant.');
+      const next = localVariants.map(v=>{
+        const share = Math.floor(views / localVariants.length);
+        const ctr = 0.02 + Math.random()*0.03;
+        return { ...v, impressions: v.impressions + share, clicks: v.clicks + Math.round(share*ctr) };
+      });
+      setLocalVariants(next);
+      setAdLabPersist({ ...adLab, variants: next, rotate });
+    };
+    const bestVariant = localVariants.reduce((b,v)=> ((v.clicks/(v.impressions||1)) > (b?.clicks/(b?.impressions||1) || 0) ? v : b), null);
 
-            <button onClick={() => setShowImportModal(true)} 
-                    className="px-3 py-2 bg-blue-100 text-blue-700 rounded-xl hover:bg-blue-200 transition-all text-sm">
-              📋 Import Options
-            </button>
-            <button onClick={() => setShowTestModal(true)} 
-                    className="px-3 py-2 bg-amber-100 text-amber-700 rounded-xl hover:bg-amber-200 transition-all text-sm">
-              🧪 Test System
-            </button>
+    const launchCampaign = async () => {
+      if (!adForm.headline || !adForm.copy || !adForm.targetLocations || !adForm.subType) { alert('Fill headline, copy, locations, and sub-type'); return; }
+      try{
+        const body = {
+          name: `${adForm.market}/${adForm.subType} - ${adForm.targetLocations}`,
+          market: adForm.market, type: adForm.subType,
+          budget: parseInt(adForm.dailyBudget) || 100,
+          adContent: { headline: adForm.headline, copy: adForm.copy, cta: adForm.cta },
+          targeting: { locations: adForm.targetLocations.split(',').map(s=>s.trim()).filter(Boolean), ageMin: parseInt(adForm.minAge)||25, ageMax: parseInt(adForm.maxAge)||65 },
+          routing, metadata: routing.metadata.adsCopy, variants: localVariants
+        };
+        await fetch('/api/launch-campaign', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) }).catch(()=>{});
+        const newCamp = { id:'c'+Date.now(), name: body.name, market: body.market, type: body.type, budget: body.budget, status:'active', leads:0, costPerLead:0 };
+        setCampaigns(prev => [newCamp, ...prev]); saveNow({ campaigns: [newCamp, ...campaigns] });
+        alert('🚀 Campaign launched (simulated).');
+      } catch { alert('❌ Launch failed.'); }
+    };
+
+    return (
+      <div className="space-y-6 fade-in">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 lg:gap-6">
+          <div className="bg-white rounded-2xl p-4 lg:p-6 shadow-lg">
+            <h3 className="text-lg lg:text-xl font-bold mb-4">Category</h3>
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-medium mb-2 text-sm lg:text-base">Market</label>
+                  <select className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500" value={adForm.market} onChange={(e)=>setAdForm(prev=>({...prev, market:e.target.value, subType:''}))}>
+                    {Object.keys(MARKET_OPTIONS).map(m=><option key={m} value={m}>{m}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block font-medium mb-2 text-sm lg:text-base">Sub-Type</label>
+                  <select className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500" value={adForm.subType} onChange={(e)=>setAdForm(prev=>({...prev, subType:e.target.value}))}>
+                    <option value="">Choose…</option>
+                    {MARKET_OPTIONS[adForm.market].map(s=><option key={s} value={s}>{s}</option>)}
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-medium mb-2 text-sm lg:text-base">Target Locations</label>
+                <input type="text" className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500" placeholder="FL, TX, CA" value={adForm.targetLocations} onChange={(e)=>setAdForm(prev=>({...prev, targetLocations:e.target.value}))}/>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-medium mb-2 text-sm lg:text-base">Min Age</label>
+                  <input type="number" className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500" placeholder="25" value={adForm.minAge} onChange={(e)=>setAdForm(prev=>({...prev, minAge:e.target.value}))}/>
+                </div>
+                <div>
+                  <label className="block font-medium mb-2 text-sm lg:text-base">Max Age</label>
+                  <input type="number" className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500" placeholder="65" value={adForm.maxAge} onChange={(e)=>setAdForm(prev=>({...prev, maxAge:e.target.value}))}/>
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-medium mb-2 text-sm lg:text-base">Daily Budget ($)</label>
+                <input type="number" className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500" placeholder="150" value={adForm.dailyBudget} onChange={(e)=>setAdForm(prev=>({...prev, dailyBudget:e.target.value}))}/>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-2xl p-4 lg:p-6 shadow-lg">
+            <h3 className="text-lg lg:text-xl font-bold mb-4">Ad Content</h3>
+            <div className="space-y-4">
+              <div className="bg-gray-50 p-3 rounded-xl">
+                <div className="text-sm font-semibold mb-2">Prompt Examples for {adForm.market}{adForm.subType? ' / '+adForm.subType:''}</div>
+                <div className="flex flex-wrap gap-2">
+                  {currentTemplates.length===0 && <div className="text-xs text-gray-500">Select Market and Sub-type to see examples.</div>}
+                  {currentTemplates.map((tpl, i)=>(
+                    <button key={i} onClick={()=>applyTemplate(tpl)} className="px-3 py-2 text-xs bg-white border rounded-lg hover:bg-blue-50">
+                      “{tpl.h}”
+                    </button>
+                  ))}
+                </div>
+                <div className="mt-3">
+                  <button onClick={suggestAI} className="px-3 py-2 bg-gradient-to-r from-blue-500 to-purple-600 text-white rounded-lg text-sm">⚡ Suggest New Copy (AI)</button>
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-medium mb-2 text-sm lg:text-base">Headline</label>
+                <input type="text" className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500" placeholder="Your compelling headline..." value={adForm.headline} onChange={(e)=>setAdForm(prev=>({...prev, headline:e.target.value}))}/>
+              </div>
+              <div>
+                <label className="block font-medium mb-2 text-sm lg:text-base">Ad Copy</label>
+                <textarea className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500 h-28 resize-none" placeholder="Write your ad copy here..." value={adForm.copy} onChange={(e)=>setAdForm(prev=>({...prev, copy:e.target.value}))}/>
+              </div>
+              <div>
+                <label className="block font-medium mb-2 text-sm lg:text-base">Call-to-Action</label>
+                <select className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500" value={adForm.cta} onChange={(e)=>setAdForm(prev=>({...prev, cta:e.target.value}))}>
+                  <option value="learn-more">Learn More</option>
+                  <option value="get-quote">Get Free Quote</option>
+                  <option value="call-now">Call Now</option>
+                  <option value="apply-now">Apply Now</option>
+                </select>
+              </div>
+
+              <div className="space-y-3">
+                <button onClick={launchCampaign} className="w-full p-3 bg-gradient-to-r from-green-500 to-green-600 text-white font-semibold rounded-xl hover:shadow-lg transition-all">🚀 Launch Campaign</button>
+              </div>
+            </div>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-          <select className="p-3 border rounded-xl focus:ring-2 focus:ring-blue-500" 
-                  value={filterMarket} 
-                  onChange={(e) => setFilterMarket(e.target.value)}>
-            <option value="">All Markets</option>
-            {Object.keys(MARKET_OPTIONS).map(m => <option key={m} value={m}>{m}</option>)}
-          </select>
-          <select className="p-3 border rounded-xl focus:ring-2 focus:ring-blue-500" 
-                  value={filterType} 
-                  onChange={(e) => setFilterType(e.target.value)}>
-            <option value="">All Sub-Types</option>
-            {Object.values(MARKET_OPTIONS).flat().map(t => <option key={t} value={t}>{t}</option>)}
-          </select>
-          <input type="text" 
-                 className="p-3 border rounded-xl focus:ring-2 focus:ring-blue-500" 
-                 placeholder="Search leads…" 
-                 value={searchTerm} 
-                 onChange={(e) => setSearchTerm(e.target.value)} />
-          <select className="p-3 border rounded-xl focus:ring-2 focus:ring-blue-500" 
-                  value={filterStatus} 
-                  onChange={(e) => setFilterStatus(e.target.value)}>
-            <option value="">All Status</option>
-            {STATUS_LABELS.map(s => <option key={s} value={s}>{s}</option>)}
-          </select>
-        </div>
-
-        <div className="space-y-4">
-          {filteredLeads.map(lead => (
-            <div key={lead.id} className="p-4 border border-gray-200 rounded-xl hover:border-blue-300 transition-all">
-              <div className="flex flex-col sm:flex-row justify-between items-start gap-3 mb-3">
-                <div>
-                  <button onClick={() => openLeadEditor(lead)} 
-                          className="font-semibold text-lg text-left hover:underline">
-                    {lead.name}
-                  </button>
-                  <div className="text-sm text-gray-600">
-                    {lead.phone || '—'} • {lead.email || '—'}
-                  </div>
-                  {/* NEW: Show health conditions if present */}
-                  {lead.healthConditions && (
-                    <div className="text-xs text-orange-600 mt-1">
-                      🏥 Health: {lead.healthConditions}
-                    </div>
-                  )}
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className={`badge ${
-                    lead.status === 'New' ? 'bg-blue-100 text-blue-800' :
-                    lead.status === 'Contacted' ? 'bg-orange-100 text-orange-800' :
-                    lead.status === 'Scheduled' ? 'bg-purple-100 text-purple-800' :
-                    lead.status === 'Paid' ? 'bg-green-100 text-green-800' :
-                    'bg-gray-100 text-gray-800'
-                  }`}>
-                    {lead.status}
-                  </span>
-                  {lead.isClient && (
-                    <span className="badge bg-green-50 text-green-700 border border-green-200">
-                      Client
-                    </span>
-                  )}
-                  <button onClick={() => openLeadEditor(lead)} 
-                          className="px-2 py-1 text-sm bg-blue-100 text-blue-700 rounded hover:bg-blue-200">
-                    ✏️ Edit
-                  </button>
-                  <button onClick={() => { if (confirm('Delete this lead?')) deleteLead(lead.id); }} 
-                          className="px-2 py-1 text-sm bg-gray-100 text-gray-700 rounded hover:bg-gray-200">
-                    🗑️
-                  </button>
-                </div>
+        {/* Variants / Rotation */}
+        <div className="bg-white rounded-2xl p-4 lg:p-6 shadow-lg">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg lg:text-xl font-bold">Ad Variants & Rotation</h3>
+            <div className="flex items-center gap-3">
+              <span className="text-sm">Rotate</span>
+              <div className={`toggle-switch ${adLab.rotate ? 'active' : ''}`} onClick={()=>{ const nv = !adLab.rotate; setRotate(nv); setAdLabPersist({ ...adLab, rotate: nv }); }}>
+                <div className="toggle-slider"></div>
               </div>
-              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-                <div className="text-sm text-gray-600">
-                  {lead.market}/{lead.type} • {lead.location || '—'} • {lead.time || '—'}
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <button onClick={() => initiateContact(lead, 'call')} 
-                          className="px-3 py-1 bg-green-100 text-green-700 rounded-lg hover:bg-green-200 transition-all text-sm">
-                    📞 AI Call
-                  </button>
-                  <button onClick={() => initiateContact(lead, 'sms')} 
-                          className="px-3 py-1 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-all text-sm">
-                    💬 AI SMS
-                  </button>
-                  <button className="px-3 py-1 bg-purple-100 text-purple-700 rounded-lg hover:bg-purple-200 transition-all text-sm">
-                    📅 Schedule
-                  </button>
-                </div>
-              </div>
-              {lead.apv ? (
-                <div className="mt-2 text-xs text-gray-700">
-                  APV: <strong>${Number(lead.apv).toLocaleString()}</strong> 
-                  {lead.carrier ? ` • Carrier: ${lead.carrier}` : ''}
-                </div>
-              ) : null}
             </div>
-          ))}
-          {filteredLeads.length === 0 && (
-            <div className="text-center py-8 text-gray-500">No leads found</div>
+          </div>
+          <div className="flex gap-2 mb-3">
+            <button onClick={addVariant} className="px-3 py-2 bg-purple-100 text-purple-700 rounded-lg">➕ Add Variant (from current)</button>
+            <button onClick={()=>simulateTraffic(200)} className="px-3 py-2 bg-blue-100 text-blue-700 rounded-lg">▶️ Simulate 200 Views</button>
+          </div>
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            {localVariants.map(v=>(
+              <div key={v.id} className="border rounded-xl p-3">
+                <div className="font-semibold mb-1">{v.headline}</div>
+                <div className="text-sm text-gray-700 mb-2">{v.copy}</div>
+                <div className="text-xs text-gray-500 mb-2">CTA: {v.cta}</div>
+                <div className="text-xs">Impr: <strong>{v.impressions}</strong> • Clicks: <strong>{v.clicks}</strong> • CTR: <strong>{((v.clicks/(v.impressions||1))*100).toFixed(1)}%</strong></div>
+                <div className="text-right mt-2">
+                  <button onClick={()=>deleteVariant(v.id)} className="px-2 py-1 bg-gray-100 rounded">Delete</button>
+                </div>
+              </div>
+            ))}
+            {localVariants.length===0 && <div className="text-gray-500">No variants yet. Click “Add Variant”.</div>}
+          </div>
+          {bestVariant && (
+            <div className="mt-4 text-sm text-gray-700">
+              Current best: <span className="font-semibold">{bestVariant.headline}</span>
+            </div>
           )}
         </div>
       </div>
+    );
+  };
 
-      {/* Import Modal - Keep existing */}
-      {showImportModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl p-6 max-w-md w-full">
-            <h3 className="text-xl font-bold mb-4">Import Leads</h3>
-            <div className="space-y-4">
-              <div className="p-4 border-2 border-dashed border-gray-300 rounded-xl text-center">
-                <div className="text-2xl mb-2">📄</div>
-                <h4 className="font-semibold mb-2">Upload PDF</h4>
-                <p className="text-sm text-gray-600 mb-3">Front-end sim. Connect OCR later.</p>
-                <input type="file" accept=".pdf" onChange={(e) => handleFileUpload(e, 'pdf')} className="hidden" id="pdf-upload" />
-                <label htmlFor="pdf-upload" className="px-4 py-2 bg-red-100 text-red-700 rounded-lg cursor-pointer hover:bg-red-200 transition-all">
-                  Choose PDF File
-                </label>
-              </div>
-              <div className="p-4 border-2 border-dashed border-gray-300 rounded-xl text-center">
-                <div className="text-2xl mb-2">📊</div>
-                <h4 className="font-semibold mb-2">Upload CSV</h4>
-                <p className="text-sm text-gray-600 mb-3">Preview first 200 rows.</p>
-                <input type="file" accept=".csv" onChange={(e) => handleFileUpload(e, 'csv')} className="hidden" id="csv-upload" />
-                <label htmlFor="csv-upload" className="px-4 py-2 bg-green-100 text-green-700 rounded-lg cursor-pointer hover:bg-green-200 transition-all">
-                  Choose CSV File
-                </label>
-              </div>
-            </div>
-            <div className="flex gap-3 mt-6">
-              <button onClick={() => setShowImportModal(false)} 
-                      className="flex-1 px-4 py-2 border border-gray-300 rounded-xl hover:bg-gray-50 transition-all">
-                Close
-              </button>
+  /* ---------- Leads (click to edit + advanced statuses + notes + recordings) ---------- */
+  const LeadManagement = () => {
+    const [searchTerm, setSearchTerm] = useState('');
+    const [filterMarket, setFilterMarket] = useState('');
+    const [filterType, setFilterType] = useState('');
+    const [filterStatus, setFilterStatus] = useState('');
+    const [showImportModal, setShowImportModal] = useState(false);
+    const [showTestModal, setShowTestModal] = useState(false);
+    const [showAddLead, setShowAddLead] = useState(false);
+
+    const [newLead, setNewLead] = useState({ market:'Insurance', type:'Life', source:'Manual', name:'', phone:'', email:'', location:'', status:'New', notes:'' });
+
+    const filteredLeads = leads.filter(lead => {
+      const term = searchTerm.toLowerCase();
+      const matchesSearch = (lead.name||'').toLowerCase().includes(term) || (lead.phone||'').includes(searchTerm) || (lead.email||'').toLowerCase().includes(term);
+      const matchesMarket = !filterMarket || lead.market===filterMarket;
+      const matchesType = !filterType || (lead.type||'').toLowerCase() === filterType.toLowerCase();
+      const matchesStatus = !filterStatus || lead.status===filterStatus;
+      return matchesSearch && matchesMarket && matchesType && matchesStatus;
+    });
+
+    const handleFileUpload = async (event, type) => {
+      const file = event.target.files[0]; if (!file) return;
+      if (type === 'csv') {
+        const text = await file.text();
+        const rows = parseCSV(text).slice(0, 200);
+        const imp = { id: Date.now(), filename: file.name, createdAt: new Date().toISOString(), rows, mapped: {}, dropPlaceholders: true };
+        const next = [imp, ...imports];
+        setImports(next); saveNow({ imports: next });
+        alert(`✅ CSV loaded (${rows.length} preview rows). Go to Imports to map.`);
+        setShowImportModal(false); setActiveTab('imports');
+      } else {
+        alert('🔍 PDF scanning simulated (connect OCR later).');
+        const imp = { id: Date.now(), filename: file.name, createdAt: new Date().toISOString(), rows: [], mapped: {}, dropPlaceholders: true };
+        const next = [imp, ...imports];
+        setImports(next); saveNow({ imports: next });
+        setShowImportModal(false); setActiveTab('imports');
+      }
+    };
+
+    const saveNewLead = async () => {
+      if (!newLead.name || !newLead.phone) { alert('Name and phone are required'); return; }
+      const created = { ...newLead, id: Date.now(), time: new Date().toLocaleString(), callLogs: [], isClient: false };
+      try{ await fetch('/api/leads', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(created) }).catch(()=>{}); } catch {}
+      setLeads(prev => [created, ...prev]);
+      setShowAddLead(false);
+      setNewLead({ market:'Insurance', type:'Life', source:'Manual', name:'', phone:'', email:'', location:'', status:'New', notes:'' });
+
+      // auto-start outreach if Meta and automation enabled
+      if (created.source === 'Meta' && automation.autoStartOnMeta) {
+        alert('⚡ Auto-start outreach: calling now (sim).');
+        try{ await fetch('/api/ai-call', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ leadId: created.id, phoneNumber: created.phone, method:'call', routing, metadata: routing.metadata.call }) }).catch(()=>{});}catch{}
+      }
+    };
+
+    const deleteLead = async (leadId) => {
+      if (!confirm('Delete this lead?')) return;
+      try{ await fetch(`/api/leads/${leadId}`, { method:'DELETE' }).catch(()=>{}); }catch{}
+      setLeads(prev => prev.filter(l=>l.id!==leadId));
+    };
+
+    return (
+      <div className="space-y-6 fade-in">
+        <div className="bg-white rounded-2xl p-4 lg:p-6 shadow-lg">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
+            <h3 className="text-lg lg:text-xl font-bold">Lead Pipeline</h3>
+            <div className="flex flex-wrap gap-2">
+              <button onClick={()=>setShowAddLead(true)} className="px-3 py-2 bg-purple-100 text-purple-700 rounded-xl hover:bg-purple-200 transition-all text-sm">➕ Add Lead</button>
+
+              <input type="file" accept=".csv" onChange={(e)=>handleFileUpload(e,'csv')} className="hidden" id="csv-upload-direct"/>
+              <label htmlFor="csv-upload-direct" className="px-3 py-2 bg-green-100 text-green-700 rounded-xl hover:bg-green-200 transition-all text-sm cursor-pointer">📊 Upload CSV</label>
+
+              <input type="file" accept=".pdf" onChange={(e)=>handleFileUpload(e,'pdf')} className="hidden" id="pdf-upload-direct"/>
+              <label htmlFor="pdf-upload-direct" className="px-3 py-2 bg-red-100 text-red-700 rounded-xl hover:bg-red-200 transition-all text-sm cursor-pointer">📄 Scan PDF → CSV</label>
+
+              <button onClick={()=>setShowImportModal(true)} className="px-3 py-2 bg-blue-100 text-blue-700 rounded-xl hover:bg-blue-200 transition-all text-sm">📋 Import Options</button>
+              <button onClick={()=>setShowTestModal(true)} className="px-3 py-2 bg-amber-100 text-amber-700 rounded-xl hover:bg-amber-200 transition-all text-sm">🧪 Test System</button>
             </div>
           </div>
-        </div>
-      )}
 
-      {/* Test Modal - Keep existing */}
-      {showTestModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl p-6 max-w-md w-full">
-            <h3 className="text-xl font-bold mb-4">🧪 Test Complete System</h3>
-            <p className="text-gray-600 mb-4">Simulates voice, SMS, objections, scoring, and calendar.</p>
-            <div className="bg-yellow-50 p-4 rounded-xl mb-4">
-              <ul className="text-sm text-yellow-700 space-y-1">
-                <li>• AI voice call simulation</li>
-                <li>• SMS backup message</li>
-                <li>• Objection handling test</li>
-                <li>• Lead scoring verification</li>
-                <li>• Calendar integration check</li>
-              </ul>
-            </div>
-            <div className="flex gap-3">
-              <button onClick={() => setShowTestModal(false)} 
-                      className="flex-1 px-4 py-2 border border-gray-300 rounded-xl hover:bg-gray-50 transition-all">
-                Close
-              </button>
-              <button onClick={() => { alert('✅ All checks passed (sim).'); setShowTestModal(false); }} 
-                      className="flex-1 px-4 py-3 bg-gradient-to-r from-blue-500 to-purple-600 text-white font-semibold rounded-xl hover:shadow-lg transition-all">
-                Run
-              </button>
-            </div>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+            <select className="p-3 border rounded-xl focus:ring-2 focus:ring-blue-500" value={filterMarket} onChange={(e)=>setFilterMarket(e.target.value)}>
+              <option value="">All Markets</option>
+              {Object.keys(MARKET_OPTIONS).map(m=><option key={m} value={m}>{m}</option>)}
+            </select>
+            <select className="p-3 border rounded-xl focus:ring-2 focus:ring-blue-500" value={filterType} onChange={(e)=>setFilterType(e.target.value)}>
+              <option value="">All Sub-Types</option>
+              {Object.values(MARKET_OPTIONS).flat().map(t=><option key={t} value={t}>{t}</option>)}
+            </select>
+            <input type="text" className="p-3 border rounded-xl focus:ring-2 focus:ring-blue-500" placeholder="Search leads…" value={searchTerm} onChange={(e)=>setSearchTerm(e.target.value)}/>
+            <select className="p-3 border rounded-xl focus:ring-2 focus:ring-blue-500" value={filterStatus} onChange={(e)=>setFilterStatus(e.target.value)}>
+              <option value="">All Status</option>
+              {STATUS_LABELS.map(s=><option key={s} value={s}>{s}</option>)}
+            </select>
+          </div>
+
+          <div className="space-y-4">
+            {filteredLeads.map(lead=>(
+              <div key={lead.id} className="p-4 border border-gray-200 rounded-xl hover:border-blue-300 transition-all">
+                <div className="flex flex-col sm:flex-row justify-between items-start gap-3 mb-3">
+                  <div>
+                    <button onClick={()=>openLeadEditor(lead)} className="font-semibold text-lg text-left hover:underline">{lead.name}</button>
+                    <div className="text-sm text-gray-600">{lead.phone || '—'} • {lead.email || '—'}</div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className={`badge ${
+                      lead.status==='New'?'bg-blue-100 text-blue-800':
+                      lead.status==='Contacted'?'bg-orange-100 text-orange-800':
+                      lead.status==='Scheduled'?'bg-purple-100 text-purple-800':
+                      lead.status==='Paid'?'bg-green-100 text-green-800':
+                      'bg-gray-100 text-gray-800'
+                    }`}>{lead.status}</span>
+                    {lead.isClient && <span className="badge bg-green-50 text-green-700 border border-green-200">Client</span>}
+                    <button onClick={()=>openLeadEditor(lead)} className="px-2 py-1 text-sm bg-blue-100 text-blue-700 rounded hover:bg-blue-200">✏️ Edit</button>
+                    <button onClick={()=>{ if(confirm('Delete this lead?')) deleteLead(lead.id); }} className="px-2 py-1 text-sm bg-gray-100 text-gray-700 rounded hover:bg-gray-200">🗑️</button>
+                  </div>
+                </div>
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+                  <div className="text-sm text-gray-600">{lead.market}/{lead.type} • {lead.location || '—'} • {lead.time || '—'}</div>
+                  <div className="flex flex-wrap gap-2">
+                    <button onClick={()=>initiateContact(lead,'call')} className="px-3 py-1 bg-green-100 text-green-700 rounded-lg hover:bg-green-200 transition-all text-sm">📞 AI Call</button>
+                    <button onClick={()=>initiateContact(lead,'sms')} className="px-3 py-1 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-all text-sm">💬 AI SMS</button>
+                    <button className="px-3 py-1 bg-purple-100 text-purple-700 rounded-lg hover:bg-purple-200 transition-all text-sm">📅 Schedule</button>
+                  </div>
+                </div>
+                {lead.apv ? <div className="mt-2 text-xs text-gray-700">APV: <strong>${Number(lead.apv).toLocaleString()}</strong> {lead.carrier? `• Carrier: ${lead.carrier}`:''}</div> : null}
+              </div>
+            ))}
+            {filteredLeads.length===0 && <div className="text-center py-8 text-gray-500">No leads found</div>}
           </div>
         </div>
-      )}
 
-      {/* Add Lead Modal */}
-      {showAddLead && (
-        <LeadEditorModal
-          initialLead={{ ...newLead, id: 'new' }}
-          onClose={() => setShowAddLead(false)}
-          onSave={(lead) => {
-            const isNew = lead.id === 'new';
-            if (isNew) {
-              const created = { 
-                ...lead, 
-                id: Date.now(), 
-                time: new Date().toLocaleString(), 
-                callLogs: lead.callLogs || [], 
-                isClient: lead.status === 'Paid' 
-              };
-              setLeads(prev => [created, ...prev]);
-              setShowAddLead(false);
-              // Auto outreach if source Meta
-              if (created.source === 'Meta' && automation.autoStartOnMeta) {
-                alert('⚡ Auto-start outreach: calling now (sim).');
+        {/* Import Modal */}
+        {showImportModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-2xl p-6 max-w-md w-full">
+              <h3 className="text-xl font-bold mb-4">Import Leads</h3>
+              <div className="space-y-4">
+                <div className="p-4 border-2 border-dashed border-gray-300 rounded-xl text-center">
+                  <div className="text-2xl mb-2">📄</div>
+                  <h4 className="font-semibold mb-2">Upload PDF</h4>
+                  <p className="text-sm text-gray-600 mb-3">Front-end sim. Connect OCR later.</p>
+                  <input type="file" accept=".pdf" onChange={(e)=>handleFileUpload(e,'pdf')} className="hidden" id="pdf-upload"/>
+                  <label htmlFor="pdf-upload" className="px-4 py-2 bg-red-100 text-red-700 rounded-lg cursor-pointer hover:bg-red-200 transition-all">Choose PDF File</label>
+                </div>
+                <div className="p-4 border-2 border-dashed border-gray-300 rounded-xl text-center">
+                  <div className="text-2xl mb-2">📊</div>
+                  <h4 className="font-semibold mb-2">Upload CSV</h4>
+                  <p className="text-sm text-gray-600 mb-3">Preview first 200 rows.</p>
+                  <input type="file" accept=".csv" onChange={(e)=>handleFileUpload(e,'csv')} className="hidden" id="csv-upload"/>
+                  <label htmlFor="csv-upload" className="px-4 py-2 bg-green-100 text-green-700 rounded-lg cursor-pointer hover:bg-green-200 transition-all">Choose CSV File</label>
+                </div>
+              </div>
+              <div className="flex gap-3 mt-6">
+                <button onClick={()=>setShowImportModal(false)} className="flex-1 px-4 py-2 border border-gray-300 rounded-xl hover:bg-gray-50 transition-all">Close</button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Test Modal (simulated) */}
+        {showTestModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-2xl p-6 max-w-md w-full">
+              <h3 className="text-xl font-bold mb-4">🧪 Test Complete System</h3>
+              <p className="text-gray-600 mb-4">Simulates voice, SMS, objections, scoring, and calendar.</p>
+              <div className="bg-yellow-50 p-4 rounded-xl mb-4">
+                <ul className="text-sm text-yellow-700 space-y-1">
+                  <li>• AI voice call simulation</li>
+                  <li>• SMS backup message</li>
+                  <li>• Objection handling test</li>
+                  <li>• Lead scoring verification</li>
+                  <li>• Calendar integration check</li>
+                </ul>
+              </div>
+              <div className="flex gap-3">
+                <button onClick={()=>setShowTestModal(false)} className="flex-1 px-4 py-2 border border-gray-300 rounded-xl hover:bg-gray-50 transition-all">Close</button>
+                <button onClick={()=>{ alert('✅ All checks passed (sim).'); setShowTestModal(false); }} className="flex-1 px-4 py-3 bg-gradient-to-r from-blue-500 to-purple-600 text-white font-semibold rounded-xl hover:shadow-lg transition-all">Run</button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Add Lead Modal */}
+        {showAddLead && (
+          <LeadEditorModal
+            initialLead={{ ...newLead, id: 'new' }}
+            onClose={()=>setShowAddLead(false)}
+            onSave={(lead)=>{
+              const isNew = lead.id==='new';
+              if (isNew) {
+                const created = { ...lead, id: Date.now(), time: new Date().toLocaleString(), callLogs: lead.callLogs || [], isClient: lead.status==='Paid' };
+                setLeads(prev => [created, ...prev]);
+                setShowAddLead(false);
+                // Auto outreach if source Meta
+                if (created.source==='Meta' && automation.autoStartOnMeta) {
+                  alert('⚡ Auto-start outreach: calling now (sim).');
+                }
+              } else {
+                setLeads(prev => prev.map(l => l.id===lead.id ? lead : l));
               }
-            } else {
-              setLeads(prev => prev.map(l => l.id === lead.id ? lead : l));
-            }
-          }}
-        />
-      )}
-    </div>
-  );
-};
+            }}
+          />
+        )}
+      </div>
+    );
+  };
 
-/* ---------- Lead Editor Modal (enhanced with health conditions + debt naming) ---------- */
+  /* ---------- Lead Editor Modal (full editor) ---------- */
   function LeadEditorModal({ initialLead, onClose, onSave }) {
     const [lead, setLead] = useState(() => ({
       id: initialLead.id,
@@ -2186,196 +1378,205 @@ const LeadManagement = () => {
     );
   }
 
-/* ---------- Voice + SMS (enhanced with recordings + simplified callbacks) ---------- */
-const VoiceAI = () => {
-  const [local, setLocal] = useState(voiceSettings);
-  
-  useEffect(() => { 
-    setLocal(voiceSettings); 
-  }, [voiceSettings]);
-  
-  const voices = VOICE_CATALOG[local.provider] || [];
-  
-  const saveVoiceSettings = () => { 
-    setVoiceSettings(local); 
-    saveNow(); 
-    alert('✅ Voice settings saved.'); 
-  };
+  /* ---------- Voice + SMS ---------- */
+  const VoiceAI = () => {
+    const [local, setLocal] = useState(voiceSettings);
+    useEffect(()=>{ setLocal(voiceSettings); }, [voiceSettings]);
+    const voices = VOICE_CATALOG[local.provider] || [];
+    const saveVoiceSettings = () => { setVoiceSettings(local); saveNow(); alert('✅ Voice settings saved.'); };
 
-  return (
-    <div className="space-y-6 fade-in">
-      <div className="bg-white rounded-2xl p-6 shadow-lg">
-        <h3 className="text-xl font-bold mb-4">🎙️ Voice AI Configuration</h3>
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <div className="space-y-4">
-            <div>
-              <label className="block font-medium mb-2">Voice Provider</label>
-              <select className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500" 
-                      value={local.provider} 
-                      onChange={(e) => setLocal(prev => ({ ...prev, provider: e.target.value, voice: '' }))}>
-                <option value="elevenlabs">ElevenLabs</option>
-                <option value="openai">OpenAI Voice</option>
-                <option value="azure">Azure Speech</option>
-                <option value="google">Google Cloud Speech</option>
-              </select>
-            </div>
-            
-            <div>
-              <label className="block font-medium mb-2">Voice</label>
-              <select className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500" 
-                      value={local.voice} 
-                      onChange={(e) => setLocal(prev => ({ ...prev, voice: e.target.value }))}>
-                <option value="">Select…</option>
-                {voices.map(v => <option key={v} value={v}>{v}</option>)}
-              </select>
-            </div>
-            
-            <div>
-              <label className="block font-medium mb-2">Style</label>
-              <select className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500" 
-                      value={local.style} 
-                      onChange={(e) => setLocal(prev => ({ ...prev, style: e.target.value }))}>
-                <option value="professional">Professional</option>
-                <option value="friendly">Friendly</option>
-                <option value="authoritative">Authoritative</option>
-                <option value="conversational">Conversational</option>
-              </select>
-            </div>
-            
-            <div>
-              <label className="block font-medium mb-2">Response Speed</label>
-              <select className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500" 
-                      value={local.speed} 
-                      onChange={(e) => setLocal(prev => ({ ...prev, speed: e.target.value }))}>
-                <option value="fast">Fast (0.5–1s)</option>
-                <option value="normal">Normal (1–2s)</option>
-                <option value="thoughtful">Thoughtful (2–3s)</option>
-              </select>
-            </div>
-            
-            <div>
-              <label className="block font-medium mb-2">Time Between Calls</label>
-              <select className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500" 
-                      value={local.callInterval} 
-                      onChange={(e) => setLocal(prev => ({ ...prev, callInterval: parseInt(e.target.value) }))}>
-                <option value="15">15 minutes</option>
-                <option value="30">30 minutes</option>
-                <option value="60">1 hour</option>
-                <option value="120">2 hours</option>
-                <option value="240">4 hours</option>
-                <option value="1440">1 day</option>
-              </select>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
+    return (
+      <div className="space-y-6 fade-in">
+        <div className="bg-white rounded-2xl p-6 shadow-lg">
+          <h3 className="text-xl font-bold mb-4">🎙️ Voice AI Configuration</h3>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div className="space-y-4">
               <div>
-                <label className="block font-medium mb-2">Time Zone</label>
-                <select className="w-full p-3 border rounded-xl" 
-                        value={local.timezone} 
-                        onChange={(e) => setLocal(prev => ({ ...prev, timezone: e.target.value }))}>
-                  {US_TZ.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
+                <label className="block font-medium mb-2">Voice Provider</label>
+                <select className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500" value={local.provider} onChange={(e)=>setLocal(prev=>({...prev, provider:e.target.value, voice:''}))}>
+                  <option value="elevenlabs">ElevenLabs</option>
+                  <option value="openai">OpenAI Voice</option>
+                  <option value="azure">Azure Speech</option>
+                  <option value="google">Google Cloud Speech</option>
                 </select>
               </div>
               <div>
-                <label className="block font-medium mb-2">Business Hours</label>
-                <div className="flex gap-2">
-                  <input type="time" 
-                         className="flex-1 p-2 border rounded-xl" 
-                         value={local.businessHours?.start || '09:00'}
-                         onChange={(e) => setLocal(prev => ({ 
-                           ...prev, 
-                           businessHours: { ...prev.businessHours, start: e.target.value } 
-                         }))} />
-                  <input type="time" 
-                         className="flex-1 p-2 border rounded-xl" 
-                         value={local.businessHours?.end || '17:00'}
-                         onChange={(e) => setLocal(prev => ({ 
-                           ...prev, 
-                           businessHours: { ...prev.businessHours, end: e.target.value } 
-                         }))} />
+                <label className="block font-medium mb-2">Voice</label>
+                <select className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500" value={local.voice} onChange={(e)=>setLocal(prev=>({...prev, voice:e.target.value}))}>
+                  <option value="">Select…</option>
+                  {voices.map(v=><option key={v} value={v}>{v}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block font-medium mb-2">Style</label>
+                <select className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500" value={local.style} onChange={(e)=>setLocal(prev=>({...prev, style:e.target.value}))}>
+                  <option value="professional">Professional</option>
+                  <option value="friendly">Friendly</option>
+                  <option value="authoritative">Authoritative</option>
+                  <option value="conversational">Conversational</option>
+                </select>
+              </div>
+              <div>
+                <label className="block font-medium mb-2">Response Speed</label>
+                <select className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500" value={local.speed} onChange={(e)=>setLocal(prev=>({...prev, speed:e.target.value}))}>
+                  <option value="fast">Fast (0.5–1s)</option>
+                  <option value="normal">Normal (1–2s)</option>
+                  <option value="thoughtful">Thoughtful (2–3s)</option>
+                </select>
+              </div>
+              <div>
+                <label className="block font-medium mb-2">Time Between Calls</label>
+                <select className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500" value={local.callInterval} onChange={(e)=>setLocal(prev=>({...prev, callInterval: parseInt(e.target.value)}))}>
+                  <option value="15">15 minutes</option>
+                  <option value="30">30 minutes</option>
+                  <option value="60">1 hour</option>
+                  <option value="120">2 hours</option>
+                  <option value="240">4 hours</option>
+                  <option value="1440">1 day</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <label className="flex items-center justify-between p-3 bg-gray-50 rounded-xl">
+                  <span className="font-medium text-sm">Immediate callback on no answer</span>
+                  <div className={`toggle-switch ${local.immediateCallbackOnNoAnswer ? 'active' : ''}`} onClick={()=>setLocal(prev=>({...prev, immediateCallbackOnNoAnswer: !prev.immediateCallbackOnNoAnswer}))}><div className="toggle-slider"></div></div>
+                </label>
+                <label className="flex items-center justify-between p-3 bg-gray-50 rounded-xl">
+                  <span className="font-medium text-sm">Immediate callback after voicemail</span>
+                  <div className={`toggle-switch ${local.immediateCallbackOnVoicemail ? 'active' : ''}`} onClick={()=>setLocal(prev=>({...prev, immediateCallbackOnVoicemail: !prev.immediateCallbackOnVoicemail}))}><div className="toggle-slider"></div></div>
+                </label>
+              </div>
+
+              <div>
+                <label className="block font-medium mb-2">Voicemail Behavior</label>
+                <select className="w-full p-3 border rounded-xl" value={local.voicemailBehavior} onChange={(e)=>setLocal(prev=>({...prev, voicemailBehavior:e.target.value}))}>
+                  <option value="hangup">Detect beep → hang up</option>
+                  <option value="leave_message">Detect beep → leave message</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block font-medium mb-2">Voicemail Script</label>
+                <textarea className="w-full p-3 border rounded-xl h-24" value={local.voicemailScript} onChange={(e)=>setLocal(prev=>({...prev, voicemailScript:e.target.value}))}/>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-medium mb-2">Time Zone</label>
+                  <select className="w-full p-3 border rounded-xl" value={local.timezone} onChange={(e)=>setLocal(prev=>({...prev, timezone:e.target.value}))}>
+                    {US_TZ.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
+                  </select>
                 </div>
+                <div>
+                  <label className="block font-medium mb-2">Call Attempts</label>
+                  <input type="range" min="1" max="5" value={local.callAttempts} onChange={(e)=>setLocal(prev=>({...prev, callAttempts: parseInt(e.target.value)}))} className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"/>
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-medium mb-2">Script Template (Generic)</label>
+                <textarea className="w-full p-3 border rounded-xl h-24" value={local.scripts.generic} onChange={(e)=>setLocal(prev=>({...prev, scripts:{...prev.scripts, generic:e.target.value}}))}/>
+              </div>
+              {['life','term','finalExpense','medicare'].map(key=>{
+                const label = key==='finalExpense' ? 'Final Expense' : key[0].toUpperCase()+key.slice(1);
+                return (
+                  <div key={key}>
+                    <label className="block font-medium mb-2">Script Template ({label})</label>
+                    <textarea className="w-full p-3 border rounded-xl h-20" value={local.scripts[key] || ''} onChange={(e)=>setLocal(prev=>({...prev, scripts:{...prev.scripts, [key]: e.target.value}}))}/>
+                  </div>
+                );
+              })}
+
+              <button onClick={saveVoiceSettings} className="w-full p-3 bg-gradient-to-r from-blue-500 to-purple-600 text-white font-semibold rounded-xl hover:shadow-lg transition-all">💾 Save Voice Settings</button>
+            </div>
+          </div>
+        </div>
+
+        <SMSConfig smsSettings={smsSettings} setSmsSettings={(s)=>{ setSmsSettings(s); saveNow(); }}/>
+      </div>
+    );
+  };
+
+  function SMSConfig({ smsSettings, setSmsSettings }){
+    const DELAY_OPTIONS = [
+      { v: 5, label: '5 minutes' },
+      { v: 15, label: '15 minutes' },
+      { v: 30, label: '30 minutes' },
+      { v: 60, label: '1 hour' },
+      { v: 1440, label: '1 day' },
+      { v: 2880, label: '2 days' },
+      { v: 10080, label: 'Next week' }
+    ];
+    return (
+      <div className="bg-white rounded-2xl p-6 shadow-lg">
+        <h3 className="text-xl font-bold mb-4">💬 SMS Configuration & Drip</h3>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="space-y-4">
+            <div>
+              <label className="block font-medium mb-2">SMS Provider</label>
+              <select className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500" value={smsSettings.provider} onChange={(e)=>setSmsSettings(prev=>({...prev, provider:e.target.value}))}>
+                <option value="twilio">Twilio</option>
+                <option value="messagebird">MessageBird</option>
+                <option value="vonage">Vonage</option>
+              </select>
+            </div>
+            <div className="flex items-center justify-between">
+              <div>
+                <label className="font-medium">Auto-Respond</label>
+                <p className="text-sm text-gray-600">AI replies to inbound texts</p>
+              </div>
+              <div className={`toggle-switch ${smsSettings.autoRespond ? 'active' : ''}`} onClick={()=>setSmsSettings(prev=>({...prev, autoRespond: !prev.autoRespond}))}>
+                <div className="toggle-slider"></div>
+              </div>
+            </div>
+            <div>
+              <label className="block font-medium mb-2">Default Follow-Up Delay</label>
+              <select className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500" value={smsSettings.followUpDelay} onChange={(e)=>setSmsSettings(prev=>({...prev, followUpDelay: parseInt(e.target.value)}))}>
+                {DELAY_OPTIONS.map(o=><option key={o.v} value={o.v}>{o.label}</option>)}
+              </select>
+              <p className="text-xs text-gray-500 mt-1">Per-lead overrides can change this.</p>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block font-medium mb-2">Business Start</label>
+                <input type="time" className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500" value={smsSettings.businessHours.start} onChange={(e)=>setSmsSettings(prev=>({...prev, businessHours:{...prev.businessHours, start:e.target.value}}))}/>
+              </div>
+              <div>
+                <label className="block font-medium mb-2">Business End</label>
+                <input type="time" className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500" value={smsSettings.businessHours.end} onChange={(e)=>setSmsSettings(prev=>({...prev, businessHours:{...prev.businessHours, end:e.target.value}}))}/>
               </div>
             </div>
           </div>
 
           <div className="space-y-4">
-            {/* SIMPLIFIED: Combined callback settings */}
-            <div className="bg-blue-50 border border-blue-200 p-4 rounded-xl">
-              <h4 className="font-semibold mb-3 text-blue-800">📞 Immediate Callback Settings</h4>
-              
-              <div className="space-y-3">
-                <label className="flex items-center justify-between p-3 bg-white rounded-xl border">
-                  <div>
-                    <span className="font-medium text-sm">Enable Immediate Callbacks</span>
-                    <p className="text-xs text-gray-600">For both no-answer and voicemail</p>
-                  </div>
-                  <div className={`toggle-switch ${local.immediateCallbacks ? 'active' : ''}`} 
-                       onClick={() => setLocal(prev => ({ ...prev, immediateCallbacks: !prev.immediateCallbacks }))}>
-                    <div className="toggle-slider"></div>
-                  </div>
-                </label>
-
-                {local.immediateCallbacks && (
-                  <>
-                    <div>
-                      <label className="block font-medium mb-2 text-sm">Callback Attempts</label>
-                      <select className="w-full p-3 border rounded-xl" 
-                              value={local.callbackAttempts || 2}
-                              onChange={(e) => setLocal(prev => ({ ...prev, callbackAttempts: parseInt(e.target.value) }))}>
-                        <option value="1">1 time</option>
-                        <option value="2">2 times</option>
-                        <option value="3">3 times</option>
-                      </select>
-                    </div>
-
-                    <label className="flex items-center justify-between p-3 bg-white rounded-xl border">
-                      <div>
-                        <span className="font-medium text-sm">Leave Voicemail</span>
-                        <p className="text-xs text-gray-600">On final callback attempt only</p>
-                      </div>
-                      <div className={`toggle-switch ${local.leaveVoicemail ? 'active' : ''}`} 
-                           onClick={() => setLocal(prev => ({ ...prev, leaveVoicemail: !prev.leaveVoicemail }))}>
-                        <div className="toggle-slider"></div>
-                      </div>
-                    </label>
-
-                    <label className="flex items-center justify-between p-3 bg-white rounded-xl border">
-                      <div>
-                        <span className="font-medium text-sm">Send SMS After Final Attempt</span>
-                        <p className="text-xs text-gray-600">Only after all callbacks are complete</p>
-                      </div>
-                      <div className={`toggle-switch ${local.sendSMSAfterCallbacks ? 'active' : ''}`} 
-                           onClick={() => setLocal(prev => ({ ...prev, sendSMSAfterCallbacks: !prev.sendSMSAfterCallbacks }))}>
-                        <div className="toggle-slider"></div>
-                      </div>
-                    </label>
-                  </>
-                )}
-              </div>
+            <div className="bg-gray-50 p-4 rounded-xl">
+              <h4 className="font-semibold mb-2">📆 Drip Scripts (by day)</h4>
+              {Object.entries(smsSettings.scripts).map(([key,val])=>(
+                <div key={key} className="mb-2">
+                  <label className="block text-sm font-medium mb-1 uppercase">{key}</label>
+                  <textarea className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500 h-20 resize-none" value={val} onChange={(e)=>setSmsSettings(prev=>({...prev, scripts:{...prev.scripts, [key]: e.target.value}}))}/>
+                </div>
+              ))}
             </div>
 
-            {/* NEW: Call Recording & Transcription */}
-            <div className="bg-green-50 border border-green-200 p-4 rounded-xl">
-              <h4 className="font-semibold mb-3 text-green-800">🎙️ Recording & Transcription</h4>
-              
-              <div className="space-y-3">
-                <label className="flex items-center justify-between p-3 bg-white rounded-xl border">
-                  <div>
-                    <span className="font-medium text-sm">Record All Calls</span>
-                    <p className="text-xs text-gray-600">Automatically record conversations</p>
-                  </div>
-                  <div className={`toggle-switch ${local.recordCalls ? 'active' : ''}`} 
-                       onClick={() => setLocal(prev => ({ ...prev, recordCalls: !prev.recordCalls }))}>
-                    <div className="toggle-slider"></div>
-                  </div>
-                </label>
+            <div className="bg-gray-50 p-4 rounded-xl">
+              <h4 className="font-semibold mb-2">🎯 Situational Scripts</h4>
+              {Object.entries(smsSettings.scriptVariants).map(([key,val])=>(
+                <div key={key} className="mb-2">
+                  <label className="block text-sm font-medium mb-1 capitalize">{key}</label>
+                  <textarea className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500 h-16 resize-none" value={val} onChange={(e)=>setSmsSettings(prev=>({...prev, scriptVariants:{...prev.scriptVariants, [key]: e.target.value}}))}/>
+                </div>
+              ))}
+            </div>
 
-                <label className="flex items-center justify-between p-3 bg-white rounded-xl border">
-                  <div>
-                    <span className="font-medium text-sm">Auto-Transcribe</span>
-                    <p className="text-xs text-gray-600">Convert speech to text automatically</p>
-                  </div>
-                  <div className={`toggle-switch ${local.autoTranscribe ? 'active' : ''}`}
+            <button onClick={()=>{ alert('✅ SMS settings saved.'); }} className="w-full p-3 bg-gradient-to-r from-green-500 to-green-600 text-white font-semibold rounded-xl hover:shadow-lg transition-all">💾 Save SMS Settings</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   /* ---------- Objections ---------- */
   const ObjectionHandling = () => {
@@ -2453,294 +1654,24 @@ const VoiceAI = () => {
     );
   };
 
-/* ---------- Analytics (enhanced with week/month/year breakdown) ---------- */
-const Analytics = () => {
-  const [timeframe, setTimeframe] = useState('week'); // week, month, year
-  
-  // Helper functions for date calculations
-  const now = new Date();
-  const getDateRange = (period) => {
-    const end = new Date(now);
-    const start = new Date(now);
-    
-    switch(period) {
-      case 'week':
-        start.setDate(now.getDate() - 7);
-        break;
-      case 'month':
-        start.setDate(now.getDate() - 30);
-        break;
-      case 'year':
-        start.setDate(now.getDate() - 365);
-        break;
-      default:
-        start.setDate(now.getDate() - 7);
-    }
-    
-    return { start, end };
-  };
-
-  // Filter data by timeframe
-  const filterByTimeframe = (items, dateField = 'time') => {
-    const { start, end } = getDateRange(timeframe);
-    return items.filter(item => {
-      const itemDate = new Date(item[dateField] || item.createdAt || item.time || Date.now());
-      return itemDate >= start && itemDate <= end;
-    });
-  };
-
-  // Calculate metrics for current timeframe
-  const filteredLeads = filterByTimeframe(leads);
-  const filteredCampaigns = filterByTimeframe(campaigns, 'createdAt');
-  
-  const metrics = {
-    // Lead Metrics
-    totalLeads: filteredLeads.length,
-    newLeads: filteredLeads.filter(l => l.status === 'New').length,
-    contactedLeads: filteredLeads.filter(l => l.status === 'Contacted').length,
-    qualifiedLeads: filteredLeads.filter(l => l.status === 'Qualified').length,
-    scheduledLeads: filteredLeads.filter(l => l.status === 'Scheduled').length,
-    paidLeads: filteredLeads.filter(l => l.status === 'Paid').length,
-    
-    // Conversion Metrics
-    contactRate: filteredLeads.length > 0 ? ((filteredLeads.filter(l => ['Contacted', 'Qualified', 'Scheduled', 'Paid'].includes(l.status)).length / filteredLeads.length) * 100).toFixed(1) : 0,
-    qualificationRate: filteredLeads.length > 0 ? ((filteredLeads.filter(l => ['Qualified', 'Scheduled', 'Paid'].includes(l.status)).length / filteredLeads.length) * 100).toFixed(1) : 0,
-    schedulingRate: filteredLeads.length > 0 ? ((filteredLeads.filter(l => ['Scheduled', 'Paid'].includes(l.status)).length / filteredLeads.length) * 100).toFixed(1) : 0,
-    conversionRate: filteredLeads.length > 0 ? ((filteredLeads.filter(l => l.status === 'Paid').length / filteredLeads.length) * 100).toFixed(1) : 0,
-    
-    // Revenue Metrics
-    totalRevenue: filteredLeads.reduce((sum, l) => sum + (Number(l.apv) || 0), 0),
-    avgDealSize: filteredLeads.filter(l => l.apv).length > 0 ? (filteredLeads.reduce((sum, l) => sum + (Number(l.apv) || 0), 0) / filteredLeads.filter(l => l.apv).length).toFixed(0) : 0,
-    
-    // Campaign Metrics
-    activeCampaigns: campaigns.filter(c => c.status === 'active').length,
-    totalAdSpend: filteredCampaigns.reduce((sum, c) => sum + (Number(c.budget) || 0) * 30, 0), // Estimate monthly spend
-    avgCostPerLead: filteredLeads.length > 0 ? (filteredCampaigns.reduce((sum, c) => sum + (Number(c.budget) || 0) * 30, 0) / filteredLeads.length).toFixed(2) : 0,
-    
-    // Communication Metrics
-    totalCallLogs: filteredLeads.reduce((sum, l) => sum + (l.callLogs?.length || 0), 0),
-    answeredCalls: filteredLeads.reduce((sum, l) => sum + (l.callLogs?.filter(log => log.result === 'answered').length || 0), 0),
-    voicemails: filteredLeads.reduce((sum, l) => sum + (l.callLogs?.filter(log => log.result === 'voicemail').length || 0), 0),
-    
-    // Health Metrics (for insurance leads)
-    leadsWithHealthConditions: filteredLeads.filter(l => l.healthConditions && l.healthConditions.trim()).length,
-    
-    // Debt Free Metrics (for debt free leads)
-    debtFreeLeads: filteredLeads.filter(l => l.market === 'Insurance' && l.type === 'Debt Free').length,
-    totalDebtTracked: filteredLeads.reduce((sum, l) => {
-      if (l.debt) {
-        return sum + Object.values(l.debt).flat().reduce((debtSum, item) => debtSum + (Number(item.amount) || 0), 0);
-      }
-      return sum;
-    }, 0)
-  };
-
-  // Calculate call metrics
-  const callAnswerRate = metrics.totalCallLogs > 0 ? ((metrics.answeredCalls / metrics.totalCallLogs) * 100).toFixed(1) : 0;
-  const voicemailRate = metrics.totalCallLogs > 0 ? ((metrics.voicemails / metrics.totalCallLogs) * 100).toFixed(1) : 0;
-
-  const Money = (n) => `$${new Intl.NumberFormat().format(Number(n || 0))}`;
-  const Percent = (n) => `${n}%`;
-
-  return (
-    <div className="space-y-6 fade-in">
-      {/* Header with Timeframe Selector */}
-      <div className="bg-white rounded-2xl p-6 shadow-lg">
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
-          <div>
-            <h2 className="text-2xl font-bold mb-2">📊 Analytics & Reporting</h2>
-            <p className="text-gray-600">Performance insights for the selected timeframe</p>
-          </div>
-          
-          <div className="flex gap-2">
-            {[
-              { key: 'week', label: 'This Week' },
-              { key: 'month', label: 'Last 30 Days' },
-              { key: 'year', label: 'Last Year' }
-            ].map(period => (
-              <button key={period.key}
-                      onClick={() => setTimeframe(period.key)}
-                      className={`px-4 py-2 rounded-xl font-medium transition-all ${
-                        timeframe === period.key 
-                          ? 'bg-blue-600 text-white shadow-lg' 
-                          : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                      }`}>
-                {period.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Key Performance Indicators */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          <div className="text-center p-4 bg-blue-50 rounded-xl border border-blue-200">
-            <div className="text-3xl font-bold text-blue-600">{metrics.totalLeads}</div>
-            <div className="text-sm text-blue-800">Total Leads</div>
-            <div className="text-xs text-blue-600 mt-1">↗ {metrics.newLeads} new</div>
-          </div>
-          
-          <div className="text-center p-4 bg-green-50 rounded-xl border border-green-200">
-            <div className="text-3xl font-bold text-green-600">{Money(metrics.totalRevenue)}</div>
-            <div className="text-sm text-green-800">Total Revenue</div>
-            <div className="text-xs text-green-600 mt-1">{Money(metrics.avgDealSize)} avg deal</div>
-          </div>
-          
-          <div className="text-center p-4 bg-purple-50 rounded-xl border border-purple-200">
-            <div className="text-3xl font-bold text-purple-600">{Percent(metrics.conversionRate)}</div>
-            <div className="text-sm text-purple-800">Conversion Rate</div>
-            <div className="text-xs text-purple-600 mt-1">{metrics.paidLeads} conversions</div>
-          </div>
-          
-          <div className="text-center p-4 bg-orange-50 rounded-xl border border-orange-200">
-            <div className="text-3xl font-bold text-orange-600">{Money(metrics.avgCostPerLead)}</div>
-            <div className="text-sm text-orange-800">Cost Per Lead</div>
-            <div className="text-xs text-orange-600 mt-1">{Money(metrics.totalAdSpend)} total spend</div>
-          </div>
-        </div>
-      </div>
-
-      {/* Lead Pipeline Analytics */}
-      <div className="bg-white rounded-2xl p-6 shadow-lg">
-        <h3 className="text-xl font-bold mb-4">🎯 Lead Pipeline Performance</h3>
-        
-        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-6">
-          {[
-            { label: 'New', value: metrics.newLeads, color: 'bg-blue-100 text-blue-800', icon: '📥' },
-            { label: 'Contacted', value: metrics.contactedLeads, color: 'bg-yellow-100 text-yellow-800', icon: '📞' },
-            { label: 'Qualified', value: metrics.qualifiedLeads, color: 'bg-indigo-100 text-indigo-800', icon: '✅' },
-            { label: 'Scheduled', value: metrics.scheduledLeads, color: 'bg-purple-100 text-purple-800', icon: '📅' },
-            { label: 'Paid', value: metrics.paidLeads, color: 'bg-green-100 text-green-800', icon: '💰' }
-          ].map(stage => (
-            <div key={stage.label} className="text-center p-4 border rounded-xl">
-              <div className="text-2xl mb-2">{stage.icon}</div>
-              <div className="text-2xl font-bold">{stage.value}</div>
-              <div className={`inline-block px-2 py-1 rounded-full text-xs font-medium mt-1 ${stage.color}`}>
-                {stage.label}
-              </div>
-            </div>
-          ))}
-        </div>
-
-        {/* Conversion Rates */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <div className="bg-gray-50 p-4 rounded-xl text-center">
-            <div className="text-lg font-bold">{Percent(metrics.contactRate)}</div>
-            <div className="text-sm text-gray-600">Contact Rate</div>
-          </div>
-          <div className="bg-gray-50 p-4 rounded-xl text-center">
-            <div className="text-lg font-bold">{Percent(metrics.qualificationRate)}</div>
-            <div className="text-sm text-gray-600">Qualification Rate</div>
-          </div>
-          <div className="bg-gray-50 p-4 rounded-xl text-center">
-            <div className="text-lg font-bold">{Percent(metrics.schedulingRate)}</div>
-            <div className="text-sm text-gray-600">Scheduling Rate</div>
-          </div>
-          <div className="bg-gray-50 p-4 rounded-xl text-center">
-            <div className="text-lg font-bold">{Percent(metrics.conversionRate)}</div>
-            <div className="text-sm text-gray-600">Final Conversion</div>
-          </div>
-        </div>
-      </div>
-
-      {/* Communication Analytics */}
-      <div className="bg-white rounded-2xl p-6 shadow-lg">
-        <h3 className="text-xl font-bold mb-4">📞 Communication Performance</h3>
-        
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-          <div className="text-center p-4 bg-green-50 rounded-xl">
-            <div className="text-2xl font-bold text-green-600">{metrics.totalCallLogs}</div>
-            <div className="text-sm text-green-800">Total Calls Made</div>
-          </div>
-          
-          <div className="text-center p-4 bg-blue-50 rounded-xl">
-            <div className="text-2xl font-bold text-blue-600">{metrics.answeredCalls}</div>
-            <div className="text-sm text-blue-800">Calls Answered</div>
-            <div className="text-xs text-blue-600 mt-1">{callAnswerRate}% answer rate</div>
-          </div>
-          
-          <div className="text-center p-4 bg-orange-50 rounded-xl">
-            <div className="text-2xl font-bold text-orange-600">{metrics.voicemails}</div>
-            <div className="text-sm text-orange-800">Voicemails Left</div>
-            <div className="text-xs text-orange-600 mt-1">{voicemailRate}% voicemail rate</div>
-          </div>
-          
-          <div className="text-center p-4 bg-purple-50 rounded-xl">
-            <div className="text-2xl font-bold text-purple-600">{metrics.activeCampaigns}</div>
-            <div className="text-sm text-purple-800">Active Campaigns</div>
-          </div>
-        </div>
-      </div>
-
-      {/* Market-Specific Analytics */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Insurance-Specific Metrics */}
+  /* ---------- Analytics ---------- */
+  const Analytics = () => {
+    const a = analyticsData;
+    if (!a) return <div className="bg-white rounded-2xl p-6 shadow-lg">Loading analytics…</div>;
+    return (
+      <div className="space-y-6 fade-in">
         <div className="bg-white rounded-2xl p-6 shadow-lg">
-          <h3 className="text-xl font-bold mb-4">🏥 Insurance Analytics</h3>
-          
-          <div className="space-y-4">
-            <div className="flex justify-between items-center p-3 bg-blue-50 rounded-xl">
-              <span className="font-medium">Leads with Health Conditions</span>
-              <span className="font-bold text-blue-600">{metrics.leadsWithHealthConditions}</span>
-            </div>
-            
-            <div className="flex justify-between items-center p-3 bg-green-50 rounded-xl">
-              <span className="font-medium">Debt Free Leads</span>
-              <span className="font-bold text-green-600">{metrics.debtFreeLeads}</span>
-            </div>
-            
-            <div className="flex justify-between items-center p-3 bg-purple-50 rounded-xl">
-              <span className="font-medium">Total Debt Tracked</span>
-              <span className="font-bold text-purple-600">{Money(metrics.totalDebtTracked)}</span>
-            </div>
-
-            {/* Insurance sub-type breakdown */}
-            <div className="bg-gray-50 p-4 rounded-xl">
-              <h4 className="font-semibold mb-3">Insurance Type Breakdown</h4>
-              {Object.keys(MARKET_OPTIONS.Insurance || {}).map(subType => {
-                const count = filteredLeads.filter(l => l.market === 'Insurance' && l.type === subType).length;
-                const revenue = filteredLeads.filter(l => l.market === 'Insurance' && l.type === subType).reduce((sum, l) => sum + (Number(l.apv) || 0), 0);
-                
-                return count > 0 ? (
-                  <div key={subType} className="flex justify-between items-center py-2 border-b border-gray-200 last:border-b-0">
-                    <span className="text-sm">{subType}</span>
-                    <div className="text-right">
-                      <div className="font-medium">{count} leads</div>
-                      <div className="text-xs text-gray-600">{Money(revenue)}</div>
-                    </div>
-                  </div>
-                ) : null;
-              })}
-            </div>
+          <h2 className="text-2xl font-bold mb-6">📊 Analytics & Reporting</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
+            <div className="text-center p-4 bg-blue-50 rounded-xl"><div className="text-2xl font-bold text-blue-600">${a.overview.avgCostPerLead}</div><div className="text-sm text-blue-800">Avg CPL</div></div>
+            <div className="text-center p-4 bg-green-50 rounded-xl"><div className="text-2xl font-bold text-green-600">{a.performance.callAnswerRate}%</div><div className="text-sm text-green-800">Call Answer Rate</div></div>
+            <div className="text-center p-4 bg-purple-50 rounded-xl"><div className="text-2xl font-bold text-purple-600">{a.performance.schedulingRate}%</div><div className="text-sm text-purple-800">Scheduling Rate</div></div>
+            <div className="text-center p-4 bg-orange-50 rounded-xl"><div className="text-2xl font-bold text-orange-600">${a.performance.revenuePerLead}</div><div className="text-sm text-orange-800">Revenue / Lead</div></div>
           </div>
         </div>
-
-        {/* Revenue Analytics */}
-        <div className="bg-white rounded-2xl p-6 shadow-lg">
-          <h3 className="text-xl font-bold mb-4">💰 Revenue Analytics</h3>
-          
-          <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="text-center p-4 bg-green-50 rounded-xl">
-                <div className="text-2xl font-bold text-green-600">{Money(metrics.totalRevenue)}</div>
-                <div className="text-sm text-green-800">Total Revenue</div>
-              </div>
-              
-              <div className="text-center p-4 bg-blue-50 rounded-xl">
-                <div className="text-2xl font-bold text-blue-600">{Money(metrics.avgDealSize)}</div>
-                <div className="text-sm text-blue-800">Avg Deal Size</div>
-              </div>
-            </div>
-
-            {/* Revenue by Market */}
-            <div className="bg-gray-50 p-4 rounded-xl">
-              <h4 className="font-semibold mb-3">Revenue by Market</h4>
-              {Object.keys(MARKET_OPTIONS).map(market => {
-                const revenue = filteredLeads.filter(l => l.market === market).reduce((sum, l) => sum + (Number(l.apv) || 0), 0);
-                const deals = filteredLeads.filter(l => l.market === market && l.apv).length;
-                
-                return revenue > 0 ? (
-                  <div key={market} className="flex justify-between items-center py-2 border-b border-gray-200 last:border-b-0">
-                    <span className="text-sm font-medium">{market}</span
+      </div>
+    );
+  };
 
   /* ---------- Inbound Center (unchanged core) ---------- */
   const InboundCenter = () => {
@@ -2826,714 +1757,327 @@ const Analytics = () => {
     );
   };
 
- /* ---------- Imports (enhanced with line-by-line transfer) ---------- */
-const Imports = () => {
-  const [selectedImport, setSelectedImport] = useState(imports[0] || null);
-  const [importsFilterPlaceholders, setImportsFilterPlaceholders] = useState(true);
-  const [currentMapping, setCurrentMapping] = useState({ 
-    name: '', phone: '', email: '', type: '', market: '', location: '', time: '', source: '', 
-    healthConditions: '', custom1: '', custom2: '' 
-  });
-  const [transferInProgress, setTransferInProgress] = useState(false);
-  const [transferResults, setTransferResults] = useState(null);
+  /* ---------- Imports ---------- */
+  const Imports = () => {
+    const [selectedImport, setSelectedImport] = useState(imports[0] || null);
+    const [importsFilterPlaceholders, setImportsFilterPlaceholders] = useState(true);
+    const [currentMapping, setCurrentMapping] = useState({ name:'', phone:'', email:'', type:'', market:'', location:'', time:'', source:'', custom1:'', custom2:'' });
 
-  useEffect(() => { 
-    if (!selectedImport && imports.length) setSelectedImport(imports[0]); 
-  }, [imports, selectedImport]);
+    useEffect(()=>{ if (!selectedImport && imports.length) setSelectedImport(imports[0]); }, [imports, selectedImport]);
 
-  const rows0 = selectedImport?.rows || [];
-  const headers = Object.keys(rows0[0] || {});
-  
-  const filteredRows = useMemo(() => {
-    const rows = rows0;
-    if (!importsFilterPlaceholders) return rows.slice(0, 200);
-    
-    // Filter blank lines and placeholder data
-    return rows.filter(r => {
-      // Skip completely blank rows
-      const hasData = Object.values(r).some(val => val && val.toString().trim());
-      if (!hasData) return false;
-      
-      // Skip placeholder rows
-      const values = Object.values(r).join(' ').toLowerCase();
-      return !values.includes('example') && !values.includes('(555)') && !values.includes('test@');
-    }).slice(0, 200);
-  }, [rows0, importsFilterPlaceholders]);
+    const rows0 = selectedImport?.rows || [];
+    const headers = Object.keys(rows0[0] || {});
+    const filteredRows = useMemo(()=>{
+      const rows = rows0;
+      if (!importsFilterPlaceholders) return rows.slice(0, 200);
+      return rows.filter(r=>{
+        const values = Object.values(r).join(' ').toLowerCase();
+        return !values.includes('example') && !values.includes('(555)');
+      }).slice(0, 200);
+    },[rows0, importsFilterPlaceholders]);
 
-  const saveMapping = () => {
-    if (!selectedImport) return;
-    const updated = imports.map(i => i.id === selectedImport.id ? { 
-      ...i, 
-      mapped: currentMapping, 
-      dropPlaceholders: importsFilterPlaceholders 
-    } : i);
-    setImports(updated); 
-    saveNow({ imports: updated });
-    alert('✅ Mapping saved.');
-  };
+    const saveMapping = () => {
+      if (!selectedImport) return;
+      const updated = imports.map(i => i.id===selectedImport.id ? { ...i, mapped: currentMapping, dropPlaceholders: importsFilterPlaceholders } : i);
+      setImports(updated); saveNow({ imports: updated });
+      alert('✅ Mapping saved.');
+    };
+    const importToLeads = () => {
+      if (!selectedImport) return;
+      const newLeads = filteredRows.map((row)=>({
+        id: Date.now() + Math.floor(Math.random()*100000),
+        name: row[currentMapping.name] || 'Unknown',
+        phone: row[currentMapping.phone] || '',
+        email: row[currentMapping.email] || '',
+        market: row[currentMapping.market] || 'Insurance',
+        type: (row[currentMapping.type] || 'Other'),
+        source: row[currentMapping.source] || 'Import',
+        location: row[currentMapping.location] || '',
+        time: row[currentMapping.time] || new Date().toLocaleString(),
+        status: 'New',
+        isClient:false,
+        callLogs:[]
+      }));
+      setLeads(prev => [...newLeads, ...prev]);
+      alert(`✅ Imported ${newLeads.length} leads.`);
+    };
+    const deleteImport = () => {
+      if (!selectedImport) return;
+      if (!confirm('Delete this import file from the list?')) return;
+      const updated = imports.filter(i => i.id !== selectedImport.id);
+      setImports(updated); saveNow({ imports: updated });
+      setSelectedImport(updated[0] || null);
+    };
 
-  // NEW: Line-by-line transfer to leads
-  const transferToLeads = async () => {
-    if (!selectedImport || filteredRows.length === 0) {
-      alert('No data to transfer');
-      return;
-    }
+    return (
+      <div className="space-y-6 fade-in">
+        <div className="bg-white rounded-2xl p-6 shadow-lg">
+          <h3 className="text-xl font-bold mb-4">📂 Imports</h3>
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className="space-y-3">
+              <h4 className="font-semibold">Files</h4>
+              {imports.map(imp=>(
+                <button key={imp.id} onClick={()=>{ setSelectedImport(imp); setCurrentMapping(imp.mapped || currentMapping); }}
+                        className={`w-full text-left p-3 border rounded-xl hover:border-blue-300 ${selectedImport?.id===imp.id?'border-blue-400 bg-blue-50':''}`}>
+                  <div className="font-medium">{imp.filename}</div>
+                  <div className="text-xs text-gray-600">{new Date(imp.createdAt).toLocaleString()}</div>
+                </button>
+              ))}
+              {imports.length===0 && <div className="text-sm text-gray-500">No imports yet. Use “Upload CSV”.</div>}
+            </div>
 
-    setTransferInProgress(true);
-    setTransferResults(null);
+            <div className="lg:col-span-2 space-y-4">
+              {!selectedImport && <div className="text-gray-500">Select an import to view rows and map fields.</div>}
 
-    try {
-      const results = {
-        processed: 0,
-        created: 0,
-        skipped: 0,
-        errors: [],
-        leads: []
-      };
-
-      // Process each row individually
-      for (let i = 0; i < filteredRows.length; i++) {
-        const row = filteredRows[i];
-        results.processed++;
-
-        try {
-          // Check for required fields
-          const name = row[currentMapping.name] || '';
-          const phone = row[currentMapping.phone] || '';
-          
-          if (!name.trim() && !phone.trim()) {
-            results.skipped++;
-            continue;
-          }
-
-          // Create lead object
-          const newLead = {
-            id: Date.now() + i,
-            name: name.trim() || 'Unknown',
-            phone: phone.trim() || '',
-            email: (row[currentMapping.email] || '').trim(),
-            market: row[currentMapping.market] || 'Insurance',
-            type: row[currentMapping.type] || 'Life',
-            source: row[currentMapping.source] || 'Import',
-            location: (row[currentMapping.location] || '').trim(),
-            time: row[currentMapping.time] || new Date().toLocaleString(),
-            status: 'New',
-            healthConditions: (row[currentMapping.healthConditions] || '').trim(), // NEW
-            notes: `Imported from ${selectedImport.filename}`,
-            isClient: false,
-            callLogs: [],
-            debt: { creditCards: [], mortgages: [], cars: [], others: [] }
-          };
-
-          // Try to save to backend
-          try {
-            await fetch('/api/leads', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(newLead)
-            }).catch(() => {
-              // Backend not ready, continue with local storage
-            });
-          } catch (error) {
-            console.log('Backend not ready, saving locally');
-          }
-
-          results.leads.push(newLead);
-          results.created++;
-
-          // Small delay to prevent overwhelming the system
-          if (i % 10 === 0) {
-            await new Promise(resolve => setTimeout(resolve, 100));
-          }
-
-        } catch (error) {
-          results.errors.push(`Row ${i + 1}: ${error.message}`);
-        }
-      }
-
-      // Update leads state
-      setLeads(prev => [...results.leads, ...prev]);
-      setTransferResults(results);
-
-      alert(`✅ Transfer complete!\n` +
-            `Processed: ${results.processed} rows\n` +
-            `Created: ${results.created} leads\n` +
-            `Skipped: ${results.skipped} rows\n` +
-            `Errors: ${results.errors.length}`);
-
-    } catch (error) {
-      alert(`❌ Transfer failed: ${error.message}`);
-    } finally {
-      setTransferInProgress(false);
-    }
-  };
-
-  const deleteImport = () => {
-    if (!selectedImport) return;
-    if (!confirm('Delete this import file from the list?')) return;
-    const updated = imports.filter(i => i.id !== selectedImport.id);
-    setImports(updated); 
-    saveNow({ imports: updated });
-    setSelectedImport(updated[0] || null);
-  };
-
-  return (
-    <div className="space-y-6 fade-in">
-      <div className="bg-white rounded-2xl p-6 shadow-lg">
-        <h3 className="text-xl font-bold mb-4">📂 Imports & Field Mapping</h3>
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="space-y-3">
-            <h4 className="font-semibold">Import Files</h4>
-            {imports.map(imp => (
-              <button key={imp.id} 
-                      onClick={() => { 
-                        setSelectedImport(imp); 
-                        setCurrentMapping(imp.mapped || currentMapping); 
-                      }}
-                      className={`w-full text-left p-3 border rounded-xl hover:border-blue-300 transition-all ${
-                        selectedImport?.id === imp.id ? 'border-blue-400 bg-blue-50' : ''
-                      }`}>
-                <div className="font-medium">{imp.filename}</div>
-                <div className="text-xs text-gray-600">
-                  {new Date(imp.createdAt).toLocaleString()}
-                </div>
-                <div className="text-xs text-blue-600 mt-1">
-                  {(imp.rows || []).length} total rows
-                </div>
-              </button>
-            ))}
-            {imports.length === 0 && (
-              <div className="text-sm text-gray-500">
-                No imports yet. Use "Upload CSV" to get started.
-              </div>
-            )}
-          </div>
-
-          <div className="lg:col-span-2 space-y-4">
-            {!selectedImport && (
-              <div className="text-gray-500">Select an import to view rows and map fields.</div>
-            )}
-
-            {selectedImport && (
-              <>
-                <div className="flex items-center justify-between">
-                  <div className="font-semibold">{selectedImport.filename}</div>
-                  <div className="flex gap-2">
-                    <label className="flex items-center gap-2 text-sm">
-                      <input type="checkbox" 
-                             checked={importsFilterPlaceholders} 
-                             onChange={(e) => setImportsFilterPlaceholders(e.target.checked)} />
-                      Filter blank lines & placeholders
-                    </label>
-                    <button onClick={deleteImport} 
-                            className="px-3 py-1 bg-gray-100 rounded hover:bg-gray-200">
-                      Delete
-                    </button>
-                  </div>
-                </div>
-
-                {/* Data Preview */}
-                <div className="bg-gray-50 p-4 rounded-xl">
-                  <div className="flex justify-between items-center mb-3">
-                    <h4 className="font-semibold">Data Preview</h4>
-                    <div className="text-sm text-gray-600">
-                      Showing {filteredRows.length} of {rows0.length} rows
+              {selectedImport && (
+                <>
+                  <div className="flex items-center justify-between">
+                    <div className="font-semibold">{selectedImport.filename}</div>
+                    <div className="flex gap-2">
+                      <label className="flex items-center gap-2 text-sm">
+                        <input type="checkbox" checked={importsFilterPlaceholders} onChange={(e)=>setImportsFilterPlaceholders(e.target.checked)}/>
+                        Filter placeholders (e.g., “example”, 555)
+                      </label>
+                      <button onClick={deleteImport} className="px-3 py-1 bg-gray-100 rounded">Delete</button>
                     </div>
                   </div>
-                  
-                  <div className="overflow-auto border rounded-xl max-h-64">
+
+                  <div className="overflow-auto border rounded-xl">
                     <table className="min-w-full text-sm">
-                      <thead className="bg-gray-100 sticky top-0">
-                        <tr>
-                          {headers.map(h => (
-                            <th key={h} className="px-3 py-2 text-left font-medium text-gray-700">
-                              {h}
-                            </th>
-                          ))}
-                        </tr>
+                      <thead className="bg-gray-50">
+                        <tr>{headers.map(h=><th key={h} className="px-3 py-2 text-left font-medium text-gray-700">{h}</th>)}</tr>
                       </thead>
                       <tbody>
-                        {filteredRows.slice(0, 10).map((row, idx) => (
-                          <tr key={idx} className="border-t">
-                            {headers.map(h => (
-                              <td key={h} className="px-3 py-2 max-w-32 truncate">
-                                {row[h]}
-                              </td>
-                            ))}
-                          </tr>
+                        {filteredRows.map((row,idx)=>(
+                          <tr key={idx} className="border-t">{headers.map(h=><td key={h} className="px-3 py-2">{row[h]}</td>)}</tr>
                         ))}
-                        {filteredRows.length === 0 && (
-                          <tr>
-                            <td className="px-3 py-6 text-center text-gray-500" colSpan="999">
-                              No valid rows found. Check filter settings.
-                            </td>
-                          </tr>
-                        )}
+                        {filteredRows.length===0 && <tr><td className="px-3 py-6 text-center text-gray-500" colSpan="999">No rows to show.</td></tr>}
                       </tbody>
                     </table>
                   </div>
-                </div>
+                  <div className="text-xs text-gray-500">Showing up to 200 rows (preview).</div>
 
-                {/* Field Mapping */}
-                <div className="bg-blue-50 p-4 rounded-xl border border-blue-200">
-                  <h4 className="font-semibold mb-3 text-blue-800">🔗 Field Mapping</h4>
-                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                     {[
-                      ['name', 'Lead Name'], ['phone', 'Phone Number'], ['email', 'Email Address'],
-                      ['market', 'Market'], ['type', 'Sub-Type'], ['location', 'Location'], 
-                      ['time', 'Date/Time'], ['source', 'Lead Source'],
-                      ['healthConditions', 'Health Conditions'], ['custom1', 'Custom Field 1'], ['custom2', 'Custom Field 2']
-                    ].map(([field, label]) => (
+                      ['name','Name'], ['phone','Phone'], ['email','Email'],
+                      ['market','Market'], ['type','Sub-Type'], ['location','City'], ['time','Time'], ['source','Source'],
+                      ['custom1','Custom 1'], ['custom2','Custom 2']
+                    ].map(([field,label])=>(
                       <div key={field}>
-                        <label className="block text-sm font-medium mb-1">{label}</label>
-                        <select className="w-full p-2 border rounded text-sm" 
-                                value={currentMapping[field] || ''} 
-                                onChange={(e) => setCurrentMapping(prev => ({ 
-                                  ...prev, 
-                                  [field]: e.target.value 
-                                }))}>
-                          <option value="">Skip Field</option>
-                          {headers.map(h => <option key={h} value={h}>{h}</option>)}
+                        <label className="block text-sm font-medium mb-1">{label} → {field}</label>
+                        <select className="w-full p-2 border rounded" value={currentMapping[field] || ''} onChange={(e)=>setCurrentMapping(prev=>({...prev, [field]: e.target.value}))}>
+                          <option value="">Skip</option>
+                          {headers.map(h=><option key={h} value={h}>{h}</option>)}
                         </select>
                       </div>
                     ))}
                   </div>
-                </div>
 
-                {/* Transfer Actions */}
-                <div className="flex gap-3">
-                  <button onClick={saveMapping} 
-                          className="px-4 py-2 bg-gradient-to-r from-blue-500 to-purple-600 text-white rounded-xl">
-                    💾 Save Mapping
-                  </button>
-                  
-                  <button onClick={transferToLeads}
-                          disabled={transferInProgress || filteredRows.length === 0}
-                          className="px-4 py-2 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-xl disabled:opacity-50">
-                    {transferInProgress ? '⏳ Transferring...' : '⬆️ Transfer to Leads'}
-                  </button>
-
-                  <div className="text-sm text-gray-600 flex items-center">
-                    Will transfer {filteredRows.length} rows as new leads
+                  <div className="flex gap-3">
+                    <button onClick={saveMapping} className="px-4 py-2 bg-gradient-to-r from-blue-500 to-purple-600 text-white rounded-xl">💾 Save Mapping</button>
+                    <button onClick={importToLeads} className="px-4 py-2 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-xl">⬆️ Import to Leads</button>
                   </div>
-                </div>
-
-                {/* Transfer Results */}
-                {transferResults && (
-                  <div className="bg-green-50 border border-green-200 p-4 rounded-xl">
-                    <h4 className="font-semibold text-green-800 mb-2">Transfer Results</h4>
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                      <div>
-                        <div className="font-medium">Processed</div>
-                        <div className="text-green-600">{transferResults.processed}</div>
-                      </div>
-                      <div>
-                        <div className="font-medium">Created</div>
-                        <div className="text-green-600">{transferResults.created}</div>
-                      </div>
-                      <div>
-                        <div className="font-medium">Skipped</div>
-                        <div className="text-orange-600">{transferResults.skipped}</div>
-                      </div>
-                      <div>
-                        <div className="font-medium">Errors</div>
-                        <div className="text-red-600">{transferResults.errors.length}</div>
-                      </div>
-                    </div>
-                    
-                    {transferResults.errors.length > 0 && (
-                      <div className="mt-3">
-                        <div className="font-medium text-red-800 mb-2">Errors:</div>
-                        <div className="text-xs text-red-700 max-h-20 overflow-y-auto">
-                          {transferResults.errors.map((error, idx) => (
-                            <div key={idx}>{error}</div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </>
-            )}
+                </>
+              )}
+            </div>
           </div>
         </div>
       </div>
-    </div>
-  );
-};
-/* ---------- End of Imports ---------- */
-
-/* ---------- Settings (enhanced with dynamic API labels) ---------- */
-const Settings = () => {
-  const [tab, setTab] = useState('apis');
-  const [apiLabels, setApiLabels] = useState({
-    openai: 'OpenAI API Key',
-    meta: 'Meta Access Token', 
-    elevenlabs: 'ElevenLabs API Key',
-    twilio: 'Twilio Account SID',
-    smsFrom: 'SMS From Number',
-    voiceFrom: 'Voice From Number'
-  });
-
-  const saveAll = () => { 
-    saveNow(); 
-    alert('✅ Settings saved.'); 
-  };
-  
-  const changePassword = async () => {
-    const oldp = prompt('Enter current password:'); 
-    if (!oldp) return;
-    const newp = prompt('Enter new password:'); 
-    if (!newp) return;
-    const conf = prompt('Confirm new password:'); 
-    if (conf !== newp) { 
-      alert('Passwords do not match'); 
-      return; 
-    }
-    
-    const users = loadUsers();
-    const idx = users.findIndex(x => emailEq(x.email, me.email)); 
-    if (idx < 0) return alert('User not found');
-    
-    const oldHash = await sha256(oldp);
-    if (oldHash !== users[idx].passHash) return alert('Current password incorrect');
-    
-    users[idx] = { ...users[idx], passHash: await sha256(newp) };
-    saveUsers(users);
-    alert('✅ Password changed.');
+    );
   };
 
-  return (
-    <div className="space-y-6 fade-in">
-      <div className="bg-white rounded-2xl p-4 lg:p-6 shadow-lg">
-        <div className="flex gap-2 mb-4 flex-wrap">
-          <button onClick={() => setTab('apis')} 
-                  className={`px-3 py-2 rounded ${tab === 'apis' ? 'bg-blue-600 text-white' : 'bg-gray-100'}`}>
-            API Keys
-          </button>
-          <button onClick={() => setTab('routing')} 
-                  className={`px-3 py-2 rounded ${tab === 'routing' ? 'bg-blue-600 text-white' : 'bg-gray-100'}`}>
-            AI Routing & Workers
-          </button>
-          <button onClick={() => setTab('automation')} 
-                  className={`px-3 py-2 rounded ${tab === 'automation' ? 'bg-blue-600 text-white' : 'bg-gray-100'}`}>
-            Automation
-          </button>
-          <button onClick={() => setTab('account')} 
-                  className={`px-3 py-2 rounded ${tab === 'account' ? 'bg-blue-600 text-white' : 'bg-gray-100'}`}>
-            Account
-          </button>
-          {me.isAdmin && (
-            <button onClick={() => setTab('users')} 
-                    className={`px-3 py-2 rounded ${tab === 'users' ? 'bg-blue-600 text-white' : 'bg-gray-100'}`}>
-              Users (Admin)
-            </button>
-          )}
-        </div>
+  /* ---------- Settings ---------- */
+  const Settings = () => {
+    const [tab, setTab] = useState('apis');
+    const saveAll = () => { saveNow(); alert('✅ Settings saved.'); };
+    const changePassword = async ()=>{
+      const oldp = prompt('Enter current password:'); if (!oldp) return;
+      const newp = prompt('Enter new password:'); if (!newp) return;
+      const conf = prompt('Confirm new password:'); if (conf !== newp) { alert('Passwords do not match'); return; }
+      const users = loadUsers();
+      const idx = users.findIndex(x=>emailEq(x.email, me.email)); if (idx<0) return alert('User not found');
+      const oldHash = await sha256(oldp);
+      if (oldHash !== users[idx].passHash) return alert('Current password incorrect');
+      users[idx] = { ...users[idx], passHash: await sha256(newp) };
+      saveUsers(users);
+      alert('✅ Password changed.');
+    };
 
-        {tab === 'apis' && (
-          <>
-            <h3 className="text-lg lg:text-xl font-bold mb-4">API Configuration</h3>
-            
-            {/* Dynamic Label Editor */}
-            <div className="bg-blue-50 border border-blue-200 p-4 rounded-xl mb-6">
-              <h4 className="font-semibold mb-3 text-blue-800">🏷️ Customize API Labels</h4>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {Object.entries(apiLabels).map(([key, label]) => (
+    return (
+      <div className="space-y-6 fade-in">
+        <div className="bg-white rounded-2xl p-4 lg:p-6 shadow-lg">
+          <div className="flex gap-2 mb-4 flex-wrap">
+            <button onClick={()=>setTab('apis')} className={`px-3 py-2 rounded ${tab==='apis'?'bg-blue-600 text-white':'bg-gray-100'}`}>API Keys</button>
+            <button onClick={()=>setTab('routing')} className={`px-3 py-2 rounded ${tab==='routing'?'bg-blue-600 text-white':'bg-gray-100'}`}>AI Routing & Workers</button>
+            <button onClick={()=>setTab('automation')} className={`px-3 py-2 rounded ${tab==='automation'?'bg-blue-600 text-white':'bg-gray-100'}`}>Automation</button>
+            <button onClick={()=>setTab('account')} className={`px-3 py-2 rounded ${tab==='account'?'bg-blue-600 text-white':'bg-gray-100'}`}>Account</button>
+            {me.isAdmin && <button onClick={()=>setTab('users')} className={`px-3 py-2 rounded ${tab==='users'?'bg-blue-600 text-white':'bg-gray-100'}`}>Users (Admin)</button>}
+          </div>
+
+          {tab==='apis' && (
+            <>
+              <h3 className="text-lg lg:text-xl font-bold mb-4">API Configuration</h3>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {[
+                  ['openai','OpenAI API Key','sk-...','For ad gen & voice'],
+                  ['meta','Meta Access Token','EA...','For Facebook/Instagram campaigns'],
+                  ['elevenlabs','ElevenLabs API Key','elevenlabs-...','For voice calling'],
+                  ['twilio','Twilio Account SID','AC...','For SMS/phone services'],
+                ].map(([key,label,ph,help])=>(
                   <div key={key}>
-                    <label className="block text-sm font-medium mb-1">
-                      {key} Label
-                    </label>
-                    <input className="w-full p-2 border rounded-xl text-sm" 
-                           value={label}
-                           onChange={(e) => setApiLabels(prev => ({ 
-                             ...prev, 
-                             [key]: e.target.value 
-                           }))}
-                           placeholder={`Label for ${key}`} />
+                    <label className="block font-medium mb-2">{label}</label>
+                    <input type="password" className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500" placeholder={ph} value={apiKeys[key]} onChange={(e)=>setApiKeys(prev=>({...prev, [key]: e.target.value}))}/>
+                    <p className="text-xs text-gray-500 mt-1">{help}</p>
                   </div>
                 ))}
-              </div>
-              <p className="text-xs text-blue-600 mt-2">
-                Customize these labels to match your current providers
-              </p>
-            </div>
-
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* API Keys with Dynamic Labels */}
-              {[
-                ['openai', 'sk-...', 'For ad generation & voice AI'],
-                ['meta', 'EA...', 'For Facebook/Instagram campaigns'],
-                ['elevenlabs', 'elevenlabs-...', 'For voice calling services'],
-                ['twilio', 'AC...', 'For SMS/phone services']
-              ].map(([key, placeholder, help]) => (
-                <div key={key}>
-                  <label className="block font-medium mb-2">{apiLabels[key]}</label>
-                  <input type="password" 
-                         className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500" 
-                         placeholder={placeholder} 
-                         value={apiKeys[key]} 
-                         onChange={(e) => setApiKeys(prev => ({ ...prev, [key]: e.target.value }))} />
-                  <p className="text-xs text-gray-500 mt-1">{help}</p>
+                <div>
+                  <label className="block font-medium mb-2">Default Voice Provider (links to Voice tab)</label>
+                  <select className="w-full p-3 border rounded-xl" value={voiceSettings.provider} onChange={(e)=>{ setVoiceSettings(prev=>({...prev, provider:e.target.value, voice:''})); }}>
+                    <option value="elevenlabs">ElevenLabs</option>
+                    <option value="openai">OpenAI Voice</option>
+                    <option value="azure">Azure Speech</option>
+                    <option value="google">Google Cloud Speech</option>
+                  </select>
                 </div>
-              ))}
-
-              {/* Phone Numbers */}
-              <div>
-                <label className="block font-medium mb-2">{apiLabels.smsFrom}</label>
-                <input className="w-full p-3 border rounded-xl" 
-                       placeholder="+1 555 111 0000" 
-                       value={apiKeys.smsFrom} 
-                       onChange={(e) => setApiKeys(prev => ({ ...prev, smsFrom: e.target.value }))} />
-              </div>
-              
-              <div>
-                <label className="block font-medium mb-2">{apiLabels.voiceFrom}</label>
-                <input className="w-full p-3 border rounded-xl" 
-                       placeholder="+1 555 222 0000" 
-                       value={apiKeys.voiceFrom} 
-                       onChange={(e) => setApiKeys(prev => ({ ...prev, voiceFrom: e.target.value }))} />
-              </div>
-
-              {/* Provider Defaults - Only show if needed */}
-              <div>
-                <label className="block font-medium mb-2">Default Voice Provider</label>
-                <select className="w-full p-3 border rounded-xl" 
-                        value={voiceSettings.provider} 
-                        onChange={(e) => { 
-                          setVoiceSettings(prev => ({ ...prev, provider: e.target.value, voice: '' })); 
-                        }}>
-                  <option value="elevenlabs">ElevenLabs</option>
-                  <option value="openai">OpenAI Voice</option>
-                  <option value="azure">Azure Speech</option>
-                  <option value="google">Google Cloud Speech</option>
-                </select>
-              </div>
-              
-              <div>
-                <label className="block font-medium mb-2">Default SMS Provider</label>
-                <select className="w-full p-3 border rounded-xl" 
-                        value={smsSettings.provider} 
-                        onChange={(e) => { 
-                          setSmsSettings(prev => ({ ...prev, provider: e.target.value })); 
-                        }}>
-                  <option value="twilio">Twilio</option>
-                  <option value="messagebird">MessageBird</option>
-                  <option value="vonage">Vonage</option>
-                </select>
-              </div>
-            </div>
-          </>
-        )}
-
-        {tab === 'routing' && (
-          <>
-            <h3 className="text-lg lg:text-xl font-bold mb-4">AI Model Routing & Workers</h3>
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <div className="space-y-4">
-                <div className="bg-gray-50 p-4 rounded-xl">
-                  <h4 className="font-semibold mb-2">AI Models</h4>
-                  {[
-                    ['callsModel', 'Calls/SMS brain', 'gpt-5-mini'],
-                    ['callsEscalationModel', 'Escalation model', 'gpt-5'],
-                    ['smsModel', 'SMS brain', 'gpt-5-mini'],
-                    ['adsDraftModel', 'Ads draft model', 'gpt-5-mini'],
-                    ['adsPolishModel', 'Ads polish model', 'gpt-5'],
-                    ['adsImageModel', 'Ad images model', 'gpt-image-3.5']
-                  ].map(([field, label, def]) => (
-                    <div key={field} className="mb-2">
-                      <label className="block text-sm font-medium mb-1">{label}</label>
-                      <input type="text" 
-                             className="w-full p-2 border rounded" 
-                             value={routing[field]} 
-                             onChange={(e) => setRouting(prev => ({ 
-                               ...prev, 
-                               [field]: e.target.value || def 
-                             }))} />
-                    </div>
-                  ))}
-                  <p className="text-xs text-gray-600 mt-2">
-                    Realtime worker for calls/SMS; batch worker for ads. Isolated for performance.
-                  </p>
+                <div>
+                  <label className="block font-medium mb-2">Default SMS Provider (links to SMS section)</label>
+                  <select className="w-full p-3 border rounded-xl" value={smsSettings.provider} onChange={(e)=>{ setSmsSettings(prev=>({...prev, provider:e.target.value})); }}>
+                    <option value="twilio">Twilio</option>
+                    <option value="messagebird">MessageBird</option>
+                    <option value="vonage">Vonage</option>
+                  </select>
                 </div>
+                <div>
+                  <label className="block font-medium mb-2">From Number (SMS)</label>
+                  <input className="w-full p-3 border rounded-xl" placeholder="+1 555 111 0000" value={apiKeys.smsFrom} onChange={(e)=>setApiKeys(prev=>({...prev, smsFrom:e.target.value}))}/>
+                </div>
+                <div>
+                  <label className="block font-medium mb-2">From Number (Voice)</label>
+                  <input className="w-full p-3 border rounded-xl" placeholder="+1 555 222 0000" value={apiKeys.voiceFrom} onChange={(e)=>setApiKeys(prev=>({...prev, voiceFrom:e.target.value}))}/>
+                </div>
+              </div>
+            </>
+          )}
 
-                <div className="bg-gray-50 p-4 rounded-xl">
-                  <h4 className="font-semibold mb-2">Worker Limits</h4>
-                  <div className="mb-3">
-                    <div className="font-medium mb-1">Realtime (calls/SMS)</div>
-                    {['maxTokens', 'timeoutMs', 'rpm', 'tpm'].map(k => (
-                      <div key={k} className="grid grid-cols-2 gap-2 mb-2">
-                        <label className="text-sm text-gray-600">{k}</label>
-                        <input type="number" 
-                               className="p-2 border rounded" 
-                               value={routing.realtimeWorker[k]} 
-                               onChange={(e) => setRouting(prev => ({ 
-                                 ...prev, 
-                                 realtimeWorker: { 
-                                   ...prev.realtimeWorker, 
-                                   [k]: parseInt(e.target.value) || 0 
-                                 } 
-                               }))} />
+          {tab==='routing' && (
+            <>
+              <h3 className="text-lg lg:text-xl font-bold mb-4">Model Routing & Workers</h3>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div className="space-y-4">
+                  <div className="bg-gray-50 p-4 rounded-xl">
+                    <h4 className="font-semibold mb-2">Brains</h4>
+                    {[
+                      ['callsModel','Calls/SMS brain','gpt-5-mini'],
+                      ['callsEscalationModel','Escalation model','gpt-5'],
+                      ['smsModel','SMS brain','gpt-5-mini'],
+                      ['adsDraftModel','Ads draft model','gpt-5-mini'],
+                      ['adsPolishModel','Ads polish model','gpt-5'],
+                      ['adsImageModel','Ad images model','gpt-image-3.5']
+                    ].map(([field,label,def])=>(
+                      <div key={field} className="mb-2">
+                        <label className="block text-sm font-medium mb-1">{label}</label>
+                        <input type="text" className="w-full p-2 border rounded" value={routing[field]} onChange={(e)=>setRouting(prev=>({...prev, [field]: e.target.value || def}))}/>
                       </div>
                     ))}
+                    <p className="text-xs text-gray-600 mt-2">Realtime worker for calls/SMS; batch worker for ads. Kept isolated so calls never lag.</p>
                   </div>
-                  
-                  <div>
-                    <div className="font-medium mb-1">Batch (ads copy/image)</div>
-                    {['maxTokens', 'timeoutMs', 'rpm', 'tpm'].map(k => (
-                      <div key={k} className="grid grid-cols-2 gap-2 mb-2">
-                        <label className="text-sm text-gray-600">{k}</label>
-                        <input type="number" 
-                               className="p-2 border rounded" 
-                               value={routing.batchWorker[k]} 
-                               onChange={(e) => setRouting(prev => ({ 
-                                 ...prev, 
-                                 batchWorker: { 
-                                   ...prev.batchWorker, 
-                                   [k]: parseInt(e.target.value) || 0 
-                                 } 
-                               }))} />
+
+                  <div className="bg-gray-50 p-4 rounded-xl">
+                    <h4 className="font-semibold mb-2">Workers (limits)</h4>
+                    <div className="mb-3">
+                      <div className="font-medium mb-1">Realtime (calls/SMS)</div>
+                      {['maxTokens','timeoutMs','rpm','tpm'].map(k=>(
+                        <div key={k} className="grid grid-cols-2 gap-2 mb-2">
+                          <label className="text-sm text-gray-600">{k}</label>
+                          <input type="number" className="p-2 border rounded" value={routing.realtimeWorker[k]} onChange={(e)=>setRouting(prev=>({...prev, realtimeWorker:{...prev.realtimeWorker, [k]: parseInt(e.target.value)||0}}))}/>
+                        </div>
+                      ))}
+                    </div>
+                    <div>
+                      <div className="font-medium mb-1">Batch (ads copy/image)</div>
+                      {['maxTokens','timeoutMs','rpm','tpm'].map(k=>(
+                        <div key={k} className="grid grid-cols-2 gap-2 mb-2">
+                          <label className="text-sm text-gray-600">{k}</label>
+                          <input type="number" className="p-2 border rounded" value={routing.batchWorker[k]} onChange={(e)=>setRouting(prev=>({...prev, batchWorker:{...prev.batchWorker, [k]: parseInt(e.target.value)||0}}))}/>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  <div className="bg-gray-50 p-4 rounded-xl">
+                    <h4 className="font-semibold mb-2">Spend Tracking Metadata</h4>
+                    {[
+                      ['call','call'],
+                      ['sms','sms'],
+                      ['adsCopy','ads-copy'],
+                      ['adsImage','ads-image']
+                    ].map(([key,def])=>(
+                      <div key={key} className="mb-3">
+                        <div className="text-sm font-medium mb-1">{key}</div>
+                        <div className="grid grid-cols-3 gap-2 items-center">
+                          <span className="text-xs text-gray-600 col-span-1">channel</span>
+                          <input type="text" className="p-2 border rounded col-span-2" value={routing.metadata[key]?.channel || def} onChange={(e)=>setRouting(prev=>({...prev, metadata:{...prev.metadata, [key]: { ...prev.metadata[key], channel: e.target.value }}}))}/>
+                        </div>
                       </div>
                     ))}
+                    <p className="text-xs text-gray-600">Requests are tagged like <code className="inline">{'{channel:"call"|"sms"|"ads-copy"|"ads-image"}'}</code></p>
                   </div>
                 </div>
               </div>
+            </>
+          )}
 
-              <div className="space-y-4">
-                <div className="bg-gray-50 p-4 rounded-xl">
-                  <h4 className="font-semibold mb-2">Usage Tracking Metadata</h4>
-                  {[
-                    ['call', 'call'],
-                    ['sms', 'sms'],
-                    ['adsCopy', 'ads-copy'],
-                    ['adsImage', 'ads-image']
-                  ].map(([key, def]) => (
-                    <div key={key} className="mb-3">
-                      <div className="text-sm font-medium mb-1">{key}</div>
-                      <div className="grid grid-cols-3 gap-2 items-center">
-                        <span className="text-xs text-gray-600 col-span-1">channel</span>
-                        <input type="text" 
-                               className="p-2 border rounded col-span-2" 
-                               value={routing.metadata[key]?.channel || def} 
-                               onChange={(e) => setRouting(prev => ({ 
-                                 ...prev, 
-                                 metadata: { 
-                                   ...prev.metadata, 
-                                   [key]: { 
-                                     ...prev.metadata[key], 
-                                     channel: e.target.value 
-                                   } 
-                                 } 
-                               }))} />
-                      </div>
-                    </div>
-                  ))}
-                  <p className="text-xs text-gray-600">
-                    Requests tagged as: <code className="inline bg-white px-1 rounded">
-                      {'{channel:"call"|"sms"|"ads-copy"|"ads-image"}'}
-                    </code>
-                  </p>
-                </div>
+          {tab==='automation' && (
+            <div className="space-y-4">
+              <h3 className="text-lg lg:text-xl font-bold">Automation</h3>
+              <label className="flex items-center justify-between p-3 bg-gray-50 rounded-xl">
+                <span>Auto-start outreach when a Meta lead arrives</span>
+                <div className={`toggle-switch ${automation.autoStartOnMeta ? 'active' : ''}`} onClick={()=>setAutomation(prev=>({...prev, autoStartOnMeta: !prev.autoStartOnMeta}))}><div className="toggle-slider"></div></div>
+              </label>
+              <label className="flex items-center justify-between p-3 bg-gray-50 rounded-xl">
+                <span>Immediate retry on No Answer</span>
+                <div className={`toggle-switch ${automation.immediateRetryOnNoAnswer ? 'active' : ''}`} onClick={()=>setAutomation(prev=>({...prev, immediateRetryOnNoAnswer: !prev.immediateRetryOnNoAnswer}))}><div className="toggle-slider"></div></div>
+              </label>
+              <label className="flex items-center justify-between p-3 bg-gray-50 rounded-xl">
+                <span>Immediate retry after Voicemail</span>
+                <div className={`toggle-switch ${automation.immediateRetryOnVoicemail ? 'active' : ''}`} onClick={()=>setAutomation(prev=>({...prev, immediateRetryOnVoicemail: !prev.immediateRetryOnVoicemail}))}><div className="toggle-slider"></div></div>
+              </label>
+              <div className="text-xs text-gray-600">These work with Voice AI “immediate callback” settings.</div>
+            </div>
+          )}
+
+          {tab==='account' && (
+            <div className="space-y-4">
+              <h3 className="text-lg lg:text-xl font-bold">Account</h3>
+              <div className="p-4 bg-gray-50 rounded-xl">
+                <div className="text-sm text-gray-700"><strong>Email:</strong> {me.email}</div>
+                <div className="text-sm text-gray-700"><strong>Role:</strong> {me.isAdmin ? 'Admin' : 'User'}</div>
+              </div>
+              <div className="flex gap-2">
+                <button onClick={changePassword} className="px-4 py-2 bg-gradient-to-r from-blue-500 to-purple-600 text-white rounded-xl">Change Password</button>
+                <button onClick={onLogout} className="px-4 py-2 bg-red-100 text-red-700 rounded-xl">Logout</button>
               </div>
             </div>
-          </>
-        )}
+          )}
 
-        {tab === 'automation' && (
-          <div className="space-y-4">
-            <h3 className="text-lg lg:text-xl font-bold">Automation Rules</h3>
-            
-            <label className="flex items-center justify-between p-3 bg-gray-50 rounded-xl">
-              <span>Auto-start outreach when a Meta lead arrives</span>
-              <div className={`toggle-switch ${automation.autoStartOnMeta ? 'active' : ''}`} 
-                   onClick={() => setAutomation(prev => ({ 
-                     ...prev, 
-                     autoStartOnMeta: !prev.autoStartOnMeta 
-                   }))}>
-                <div className="toggle-slider"></div>
-              </div>
-            </label>
-            
-            <label className="flex items-center justify-between p-3 bg-gray-50 rounded-xl">
-              <span>Immediate retry on No Answer</span>
-              <div className={`toggle-switch ${automation.immediateRetryOnNoAnswer ? 'active' : ''}`} 
-                   onClick={() => setAutomation(prev => ({ 
-                     ...prev, 
-                     immediateRetryOnNoAnswer: !prev.immediateRetryOnNoAnswer 
-                   }))}>
-                <div className="toggle-slider"></div>
-              </div>
-            </label>
-            
-            <label className="flex items-center justify-between p-3 bg-gray-50 rounded-xl">
-              <span>Immediate retry after Voicemail</span>
-              <div className={`toggle-switch ${automation.immediateRetryOnVoicemail ? 'active' : ''}`} 
-                   onClick={() => setAutomation(prev => ({ 
-                     ...prev, 
-                     immediateRetryOnVoicemail: !prev.immediateRetryOnVoicemail 
-                   }))}>
-                <div className="toggle-slider"></div>
-              </div>
-            </label>
-            
-            <div className="text-xs text-gray-600">
-              These work with Voice AI "immediate callback" settings.
+          {tab==='users' && me.isAdmin && (
+            <UsersAdmin me={me} onImpersonate={(email)=>{
+              saveSession({ email, isAdmin: loadUsers().find(u=>emailEq(u.email,email))?.isAdmin || false });
+              onImpersonate(email);
+            }}/>
+          )}
+
+          {(tab==='apis' || tab==='routing' || tab==='automation') && (
+            <div className="mt-6">
+              <button onClick={saveAll} className="px-6 py-3 bg-gradient-to-r from-blue-500 to-purple-600 text-white font-semibold rounded-xl hover:shadow-lg transition-all">💾 Save</button>
             </div>
-          </div>
-        )}
-
-        {tab === 'account' && (
-          <div className="space-y-4">
-            <h3 className="text-lg lg:text-xl font-bold">Account Management</h3>
-            
-            <div className="p-4 bg-gray-50 rounded-xl">
-              <div className="text-sm text-gray-700">
-                <strong>Email:</strong> {me.email}
-              </div>
-              <div className="text-sm text-gray-700">
-                <strong>Role:</strong> {me.isAdmin ? 'Administrator' : 'User'}
-              </div>
-              <div className="text-sm text-gray-700">
-                <strong>Last Login:</strong> {new Date().toLocaleString()}
-              </div>
-            </div>
-            
-            <div className="flex gap-2">
-              <button onClick={changePassword} 
-                      className="px-4 py-2 bg-gradient-to-r from-blue-500 to-purple-600 text-white rounded-xl">
-                Change Password
-              </button>
-              <button onClick={onLogout} 
-                      className="px-4 py-2 bg-red-100 text-red-700 rounded-xl hover:bg-red-200">
-                Logout
-              </button>
-            </div>
-          </div>
-        )}
-
-        {tab === 'users' && me.isAdmin && (
-          <UsersAdmin me={me} onImpersonate={(email) => {
-            saveSession({ 
-              email, 
-              isAdmin: loadUsers().find(u => emailEq(u.email, email))?.isAdmin || false 
-            });
-            onImpersonate(email);
-          }} />
-        )}
-
-        {(tab === 'apis' || tab === 'routing' || tab === 'automation') && (
-          <div className="mt-6">
-            <button onClick={saveAll} 
-                    className="px-6 py-3 bg-gradient-to-r from-blue-500 to-purple-600 text-white font-semibold rounded-xl hover:shadow-lg transition-all">
-              💾 Save All Settings
-            </button>
-          </div>
-        )}
+          )}
+        </div>
       </div>
-    </div>
-  );
-};
-/* ---------- End of Settings ---------- */
+    );
+  };
 
   /* ---------- Utility actions used above ---------- */
   const getLeadFollowUp = (lead) => {
