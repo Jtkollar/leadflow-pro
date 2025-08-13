@@ -725,7 +725,7 @@ const Dashboard = () => {
 /* ---------- Ad Creator (market/sub) ---------- */
 const AdCreator = () => {
   const [adForm, setAdForm] = useState({
-    market: 'Insurance',
+    market: '',                 // <-- no default; user must choose
     subType: '',
     targetLocations: '',
     minAge: '',
@@ -734,7 +734,7 @@ const AdCreator = () => {
     headline: '',
     copy: '',
     cta: 'learn-more',
-    genPrompt: '' // single prompt that powers text, images, and video
+    genPrompt: ''               // one prompt for text, image, and video
   });
 
   // Persisted variants/rotation (uses your existing adLab + setAdLabPersist)
@@ -751,7 +751,7 @@ const AdCreator = () => {
   // Reset sub-type when market changes (works for ALL markets)
   useEffect(()=>{ setAdForm(prev=>({ ...prev, subType:'' })); }, [adForm.market]);
 
-  // Optional: load any existing creative library for this workspace (safe if backend not ready)
+  // Load existing creative library (safe if backend not ready)
   useEffect(()=>{
     let stop=false;
     (async ()=>{
@@ -766,7 +766,7 @@ const AdCreator = () => {
     return ()=>{ stop=true; };
   },[]);
 
-  // Templates (from your PROMPT_TEMPLATES map)
+  // Templates (from PROMPT_TEMPLATES)
   const currentTemplates = (PROMPT_TEMPLATES[adForm.market] || {})[adForm.subType] || [];
   const applyTemplate = (tpl) => {
     if (!tpl) return;
@@ -870,8 +870,8 @@ const AdCreator = () => {
 
   /* === Launch (attaches selected creatives) === */
   async function launchCampaign(){
-    if (!adForm.headline || !adForm.copy || !adForm.targetLocations || !adForm.subType) {
-      alert('Fill headline, copy, locations, and sub-type'); return;
+    if (!adForm.market || !adForm.headline || !adForm.copy || !adForm.targetLocations || !adForm.subType) {
+      alert('Select a market and fill headline, copy, locations, and sub-type'); return;
     }
     try{
       const body = {
@@ -909,6 +909,7 @@ const AdCreator = () => {
                 <select className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500"
                         value={adForm.market}
                         onChange={(e)=>setAdForm(prev=>({...prev, market:e.target.value, subType:''}))}>
+                  <option value="">Choose…</option>
                   {Object.keys(MARKET_OPTIONS).map(m=><option key={m} value={m}>{m}</option>)}
                 </select>
               </div>
@@ -1072,7 +1073,7 @@ const AdCreator = () => {
       <div className="bg-white rounded-2xl p-4 lg:p-6 shadow-lg">
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-lg lg:text-xl font-bold">Ad Variants & Rotation</h3>
-          <label className="flex items-center gap-2 text-sm">
+        <label className="flex items-center gap-2 text-sm">
             <span>Rotate</span>
             <input type="checkbox" checked={rotate} onChange={toggleRotate}/>
           </label>
@@ -1095,6 +1096,7 @@ const AdCreator = () => {
   );
 };
 /* ---------- Leads (click to edit + advanced statuses + notes + recordings) ---------- */
+
   const LeadManagement = () => {
     const [searchTerm, setSearchTerm] = useState('');
     const [filterMarket, setFilterMarket] = useState('');
