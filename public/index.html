@@ -559,170 +559,170 @@ function LeadFlowApp({ me, onLogout, onImpersonate }){
     </div>
   );
 
-    /* ---------- Dashboard (with Quick Actions + APV widgets) ---------- */
-  const Dashboard = () => {
-    // helpers for date windows
-    const now = new Date();
-    const w0 = startOfWeek(now);
-    const m0 = startOfMonth(now);
-    const y0 = startOfYear(now);
+   /* ---------- Dashboard (with Quick Actions + APV widgets) ---------- */
+const Dashboard = () => {
+  // helpers for date windows
+  const now = new Date();
+  const w0 = startOfWeek(now);
+  const m0 = startOfMonth(now);
+  const y0 = startOfYear(now);
 
-    // parse lead.time like "Today 10:15 AM", "Yesterday 4:05 PM", or a normal date string
-    const parseLeadTime = (t) => {
-      const s = (t || '').trim();
-      if (!s) return null;
-      if (s.startsWith('Today')) return new Date();
-      if (s.startsWith('Yesterday')) { const d = new Date(); d.setDate(d.getDate() - 1); return d; }
-      const d = new Date(s);
-      return isNaN(d.getTime()) ? null : d;
-    };
-    const leadDate = (l) => parseLeadTime(l.time);
-    const isIn = (date, start) => !!date && date >= start;
-    const isToday = (date) => !!date && date.toDateString() === now.toDateString();
-
-    // === Your requested metrics ===
-
-    // 1) Leads (Open only: New, Contacted, Qualified)
-    const totalOpenLeads = (leads || []).filter(l =>
-      l && ['New','Contacted','Qualified'].includes(l.status)
-    ).length;
-
-    // 2) Paid counts (this week / this month)
-    const paidThisWeek  = (leads || []).filter(l => l.status === 'Paid' && isIn(leadDate(l), w0)).length;
-    const paidThisMonth = (leads || []).filter(l => l.status === 'Paid' && isIn(leadDate(l), m0)).length;
-
-    // 3) Scheduled (today / this week / this month)
-    const scheduledToday  = (leads || []).filter(l => l.status === 'Scheduled' && isToday(leadDate(l))).length;
-    const scheduledWeek   = (leads || []).filter(l => l.status === 'Scheduled' && isIn(leadDate(l), w0)).length;
-    const scheduledMonth  = (leads || []).filter(l => l.status === 'Scheduled' && isIn(leadDate(l), m0)).length;
-
-    // 4) Ad Spend (This Week / Month / Year)
-    // Uses active campaign daily budgets × days elapsed in each window (front-end estimate; replace with backend totals when ready)
-    const activeDailyBudget = (campaigns || [])
-      .filter(c => (c.status || 'active') === 'active')
-      .reduce((sum, c) => sum + (Number(c.budget) || 0), 0);
-    const daysSince = (start) => Math.max(1, Math.floor((now - start) / (24*60*60*1000)) + 1);
-    const adSpendWeek  = Math.round(activeDailyBudget * daysSince(w0));
-    const adSpendMonth = Math.round(activeDailyBudget * daysSince(m0));
-    const adSpendYear  = Math.round(activeDailyBudget * daysSince(y0));
-
-    // 5) Conversion Rate (Paid / Created in window)
-    const createdIn = (start) => (leads || []).filter(l => isIn(leadDate(l), start));
-    const convPct = (start) => {
-      const subset = createdIn(start);
-      if (subset.length === 0) return 0;
-      const paid = subset.filter(l => l.status === 'Paid').length;
-      return Math.round((paid / subset.length) * 100);
-    };
-    const convWeek  = convPct(w0);
-    const convMonth = convPct(m0);
-    const convYear  = convPct(y0);
-
-    const StatCard = ({ label, value, icon, gradient }) => (
-      <div className={`bg-gradient-to-br ${gradient} text-white p-4 lg:p-6 rounded-2xl shadow-lg text-center`}>
-        <div className="text-2xl mb-2">{icon}</div>
-        <div className="text-2xl lg:text-3xl font-bold mb-1">{value}</div>
-        <div className="text-xs lg:text-sm opacity-90">{label}</div>
-      </div>
-    );
-
-    const Money = (n) => `$${new Intl.NumberFormat().format(n)}`;
-    const Pct   = (n) => `${Number(n||0)}%`;
-
-    return (
-      <div className="space-y-6 fade-in">
-        {/* 4 columns; each column stacks the section + sub-metrics exactly as requested */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-6">
-          {/* Column 1: Open + Paid */}
-          <div className="space-y-4">
-            <StatCard label="Total Open Leads" value={totalOpenLeads} icon="👥" gradient="from-blue-500 to-blue-600"/>
-            <StatCard label="Total Leads Paid This Week" value={paidThisWeek} icon="✅" gradient="from-emerald-500 to-emerald-600"/>
-            <StatCard label="Total Leads Paid This Month" value={paidThisMonth} icon="💵" gradient="from-emerald-600 to-emerald-700"/>
-          </div>
-
-          {/* Column 2: Scheduled */}
-          <div className="space-y-4">
-            <StatCard label="Scheduled Today" value={scheduledToday} icon="📅" gradient="from-purple-500 to-purple-600"/>
-            <StatCard label="Scheduled This Week" value={scheduledWeek} icon="🗓️" gradient="from-purple-600 to-indigo-600"/>
-            <StatCard label="Scheduled This Month" value={scheduledMonth} icon="🗃️" gradient="from-indigo-600 to-indigo-700"/>
-          </div>
-
-          {/* Column 3: Ad Spend */}
-          <div className="space-y-4">
-            <StatCard label="Ad Spend This Week" value={Money(adSpendWeek)} icon="💰" gradient="from-orange-500 to-orange-600"/>
-            <StatCard label="Ad Spend This Month" value={Money(adSpendMonth)} icon="💳" gradient="from-orange-600 to-amber-600"/>
-            <StatCard label="Ad Spend This Year" value={Money(adSpendYear)} icon="🏦" gradient="from-amber-600 to-yellow-600"/>
-          </div>
-
-          {/* Column 4: Conversion Rate */}
-          <div className="space-y-4">
-            <StatCard label="Conversion Rate This Week" value={Pct(convWeek)} icon="📈" gradient="from-teal-500 to-teal-600"/>
-            <StatCard label="Conversion Rate This Month" value={Pct(convMonth)} icon="📊" gradient="from-teal-600 to-cyan-600"/>
-            <StatCard label="Conversion Rate This Year" value={Pct(convYear)} icon="📌" gradient="from-cyan-600 to-sky-600"/>
-          </div>
-        </div>
-
-        {/* Keep your APV row (unchanged) */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <div className="bg-white rounded-2xl p-4 shadow-lg text-center">
-            <div className="text-xs text-gray-500">APV This Week</div>
-            <div className="text-2xl font-bold">${apvStats.week.toLocaleString()}</div>
-          </div>
-          <div className="bg-white rounded-2xl p-4 shadow-lg text-center">
-            <div className="text-xs text-gray-500">APV This Month</div>
-            <div className="text-2xl font-bold">${apvStats.month.toLocaleString()}</div>
-          </div>
-          <div className="bg-white rounded-2xl p-4 shadow-lg text-center">
-            <div className="text-xs text-gray-500">APV This Year</div>
-            <div className="text-2xl font-bold">${apvStats.year.toLocaleString()}</div>
-          </div>
-        </div>
-
-        {/* Recent Leads + Quick Actions (as before) */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <div className="bg-white rounded-2xl p-4 lg:p-6 shadow-lg">
-            <h3 className="text-lg lg:text-xl font-bold mb-4">Recent Leads</h3>
-            <div className="space-y-3">
-              {leads.slice(0, 3).map(lead => (
-                <button key={lead.id} onClick={()=>openLeadEditor(lead)} className="w-full text-left p-3 lg:p-4 border border-gray-200 rounded-xl hover:border-blue-300">
-                  <div className="flex justify-between items-start mb-2">
-                    <div className="font-semibold text-sm lg:text-base">{lead.name}</div>
-                    <span className={`px-2 lg:px-3 py-1 rounded-full text-xs font-medium ${
-                      lead.status === 'New' ? 'bg-blue-100 text-blue-800' :
-                      lead.status === 'Contacted' ? 'bg-orange-100 text-orange-800' :
-                      lead.status === 'Scheduled' ? 'bg-purple-100 text-purple-800' :
-                      lead.status === 'Paid' ? 'bg-green-100 text-green-800' :
-                      'bg-gray-100 text-gray-800'
-                    }`}>{lead.status}</span>
-                  </div>
-                  <div className="text-xs lg:text-sm text-gray-600">
-                    {lead.market}/{lead.type} • {lead.location||'—'} • {lead.time||'—'}
-                  </div>
-                </button>
-              ))}
-              {leads.length===0 && <div className="text-gray-500">No leads yet.</div>}
-            </div>
-          </div>
-
-          <div className="bg-white rounded-2xl p-4 lg:p-6 shadow-lg">
-            <h3 className="text-lg lg:text-xl font-bold mb-4">Quick Actions</h3>
-            <div className="space-y-3">
-              <button onClick={()=>setActiveTab('ad-creator')} className="w-full p-3 lg:p-4 bg-gradient-to-r from-blue-500 to-purple-600 text-white rounded-xl font-semibold hover:shadow-lg transition-all">
-                🎯 Create New Ad Campaign
-              </button>
-              <button onClick={()=>setActiveTab('leads')} className="w-full p-3 lg:p-4 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-xl font-semibold hover:shadow-lg transition-all">
-                👥 Manage Leads
-              </button>
-              <button onClick={()=>setActiveTab('voice-ai')} className="w-full p-3 lg:p-4 bg-gradient-to-r from-orange-500 to-red-600 text-white rounded-xl font-semibold hover:shadow-lg transition-all">
-                🎙️ Test Voice AI System
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
+  // parse lead.time like "Today 10:15 AM", "Yesterday 4:05 PM", or a normal date string
+  const parseLeadTime = (t) => {
+    const s = (t || '').trim();
+    if (!s) return null;
+    if (s.startsWith('Today')) return new Date();
+    if (s.startsWith('Yesterday')) { const d = new Date(); d.setDate(d.getDate() - 1); return d; }
+    const d = new Date(s);
+    return isNaN(d.getTime()) ? null : d;
   };
-  /* ---------- Ad Creator (market/sub) ---------- */
+  const leadDate = (l) => parseLeadTime(l.time);
+  const isIn = (date, start) => !!date && date >= start;
+  const isToday = (date) => !!date && date.toDateString() === now.toDateString();
+
+  // === Metrics ===
+
+  // 1) Leads (Open only: New, Contacted, Qualified)
+  const totalOpenLeads = (leads || []).filter(l =>
+    l && ['New','Contacted','Qualified'].includes(l.status)
+  ).length;
+
+  // 2) Paid counts (this week / this month)
+  const paidThisWeek  = (leads || []).filter(l => l.status === 'Paid' && isIn(leadDate(l), w0)).length;
+  const paidThisMonth = (leads || []).filter(l => l.status === 'Paid' && isIn(leadDate(l), m0)).length;
+
+  // 3) Scheduled (today / this week / this month)
+  const scheduledToday  = (leads || []).filter(l => l.status === 'Scheduled' && isToday(leadDate(l))).length;
+  const scheduledWeek   = (leads || []).filter(l => l.status === 'Scheduled' && isIn(leadDate(l), w0)).length;
+  const scheduledMonth  = (leads || []).filter(l => l.status === 'Scheduled' && isIn(leadDate(l), m0)).length;
+
+  // 4) Ad Spend (This Week / Month / Year)
+  // Uses active campaign daily budgets × days elapsed in each window (front-end estimate)
+  const activeDailyBudget = (campaigns || [])
+    .filter(c => (c.status || 'active') === 'active')
+    .reduce((sum, c) => sum + (Number(c.budget) || 0), 0);
+  const daysSince = (start) => Math.max(1, Math.floor((now - start) / (24*60*60*1000)) + 1);
+  const adSpendWeek  = Math.round(activeDailyBudget * daysSince(w0));
+  const adSpendMonth = Math.round(activeDailyBudget * daysSince(m0));
+  const adSpendYear  = Math.round(activeDailyBudget * daysSince(y0));
+
+  // 5) Conversion Rate (Paid / Created in window)
+  const createdIn = (start) => (leads || []).filter(l => isIn(leadDate(l), start));
+  const convPct = (start) => {
+    const subset = createdIn(start);
+    if (subset.length === 0) return 0;
+    const paid = subset.filter(l => l.status === 'Paid').length;
+    return Math.round((paid / subset.length) * 100);
+  };
+  const convWeek  = convPct(w0);
+  const convMonth = convPct(m0);
+  const convYear  = convPct(y0);
+
+  const StatCard = ({ label, value, icon, gradient }) => (
+    <div className={`bg-gradient-to-br ${gradient} text-white p-4 lg:p-6 rounded-2xl shadow-lg text-center`}>
+      <div className="text-2xl mb-2">{icon}</div>
+      <div className="text-2xl lg:text-3xl font-bold mb-1">{value}</div>
+      <div className="text-xs lg:text-sm opacity-90">{label}</div>
+    </div>
+  );
+
+  const Money = (n) => `$${new Intl.NumberFormat().format(n)}`;
+  const Pct   = (n) => `${Number(n||0)}%`;
+
+  return (
+    <div className="space-y-6 fade-in">
+      {/* 4 columns; each column stacks the section + sub-metrics */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-6">
+        {/* Column 1: Open + Paid */}
+        <div className="space-y-4">
+          <StatCard label="Total Open Leads" value={totalOpenLeads} icon="👥" gradient="from-blue-500 to-blue-600"/>
+          <StatCard label="Total Leads Paid This Week" value={paidThisWeek} icon="✅" gradient="from-emerald-500 to-emerald-600"/>
+          <StatCard label="Total Leads Paid This Month" value={paidThisMonth} icon="💵" gradient="from-emerald-600 to-emerald-700"/>
+        </div>
+
+        {/* Column 2: Scheduled */}
+        <div className="space-y-4">
+          <StatCard label="Scheduled Today" value={scheduledToday} icon="📅" gradient="from-purple-500 to-purple-600"/>
+          <StatCard label="Scheduled This Week" value={scheduledWeek} icon="🗓️" gradient="from-purple-600 to-indigo-600"/>
+          <StatCard label="Scheduled This Month" value={scheduledMonth} icon="🗃️" gradient="from-indigo-600 to-indigo-700"/>
+        </div>
+
+        {/* Column 3: Ad Spend */}
+        <div className="space-y-4">
+          <StatCard label="Ad Spend This Week" value={Money(adSpendWeek)} icon="💰" gradient="from-orange-500 to-orange-600"/>
+          <StatCard label="Ad Spend This Month" value={Money(adSpendMonth)} icon="💳" gradient="from-orange-600 to-amber-600"/>
+          <StatCard label="Ad Spend This Year" value={Money(adSpendYear)} icon="🏦" gradient="from-amber-600 to-yellow-600"/>
+        </div>
+
+        {/* Column 4: Conversion Rate */}
+        <div className="space-y-4">
+          <StatCard label="Conversion Rate This Week" value={Pct(convWeek)} icon="📈" gradient="from-teal-500 to-teal-600"/>
+          <StatCard label="Conversion Rate This Month" value={Pct(convMonth)} icon="📊" gradient="from-teal-600 to-cyan-600"/>
+          <StatCard label="Conversion Rate This Year" value={Pct(convYear)} icon="📌" gradient="from-cyan-600 to-sky-600"/>
+        </div>
+      </div>
+
+      /* Keep your APV row (unchanged) */
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="bg-white rounded-2xl p-4 shadow-lg text-center">
+          <div className="text-xs text-gray-500">APV This Week</div>
+          <div className="text-2xl font-bold">${apvStats.week.toLocaleString()}</div>
+        </div>
+        <div className="bg-white rounded-2xl p-4 shadow-lg text-center">
+          <div className="text-xs text-gray-500">APV This Month</div>
+          <div className="text-2xl font-bold">${apvStats.month.toLocaleString()}</div>
+        </div>
+        <div className="bg-white rounded-2xl p-4 shadow-lg text-center">
+          <div className="text-xs text-gray-500">APV This Year</div>
+          <div className="text-2xl font-bold">${apvStats.year.toLocaleString()}</div>
+        </div>
+      </div>
+
+     /* Recent Leads + Quick Actions (as before) */
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="bg-white rounded-2xl p-4 lg:p-6 shadow-lg">
+          <h3 className="text-lg lg:text-xl font-bold mb-4">Recent Leads</h3>
+          <div className="space-y-3">
+            {leads.slice(0, 3).map(lead => (
+              <button key={lead.id} onClick={()=>openLeadEditor(lead)} className="w-full text-left p-3 lg:p-4 border border-gray-200 rounded-xl hover:border-blue-300">
+                <div className="flex justify-between items-start mb-2">
+                  <div className="font-semibold text-sm lg:text-base">{lead.name}</div>
+                  <span className={`px-2 lg:px-3 py-1 rounded-full text-xs font-medium ${
+                    lead.status === 'New' ? 'bg-blue-100 text-blue-800' :
+                    lead.status === 'Contacted' ? 'bg-orange-100 text-orange-800' :
+                    lead.status === 'Scheduled' ? 'bg-purple-100 text-purple-800' :
+                    lead.status === 'Paid' ? 'bg-green-100 text-green-800' :
+                    'bg-gray-100 text-gray-800'
+                  }`}>{lead.status}</span>
+                </div>
+                <div className="text-xs lg:text-sm text-gray-600">
+                  {lead.market}/{lead.type} • {lead.location||'—'} • {lead.time||'—'}
+                </div>
+              </button>
+            ))}
+            {leads.length===0 && <div className="text-gray-500">No leads yet.</div>}
+          </div>
+        </div>
+
+        <div className="bg-white rounded-2xl p-4 lg:p-6 shadow-lg">
+          <h3 className="text-lg lg:text-xl font-bold mb-4">Quick Actions</h3>
+          <div className="space-y-3">
+            <button onClick={()=>setActiveTab('ad-creator')} className="w-full p-3 lg:p-4 bg-gradient-to-r from-blue-500 to-purple-600 text-white rounded-xl font-semibold hover:shadow-lg transition-all">
+              🎯 Create New Ad Campaign
+            </button>
+            <button onClick={()=>setActiveTab('leads')} className="w-full p-3 lg:p-4 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-xl font-semibold hover:shadow-lg transition-all">
+              👥 Manage Leads
+            </button>
+            <button onClick={()=>setActiveTab('voice-ai')} className="w-full p-3 lg:p-4 bg-gradient-to-r from-orange-500 to-red-600 text-white rounded-xl font-semibold hover:shadow-lg transition-all">
+              🎙️ Test Voice AI System
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+/* ---------- Ad Creator (market/sub) ---------- */
 
   const AdCreator = () => {
     const [adForm, setAdForm] = useState({
