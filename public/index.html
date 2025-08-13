@@ -723,218 +723,378 @@ const Dashboard = () => {
   );
 };
 /* ---------- Ad Creator (market/sub) ---------- */
+const AdCreator = () => {
+  const [adForm, setAdForm] = useState({
+    market: 'Insurance',
+    subType: '',
+    targetLocations: '',
+    minAge: '',
+    maxAge: '',
+    dailyBudget: '',
+    headline: '',
+    copy: '',
+    cta: 'learn-more',
+    genPrompt: '' // single prompt that powers text, images, and video
+  });
 
-  const AdCreator = () => {
-    const [adForm, setAdForm] = useState({
-      market: 'Insurance',
-      subType: '',
-      targetLocations: '',
-      minAge: '',
-      maxAge: '',
-      dailyBudget: '',
-      headline: '',
-      copy: '',
-      cta: 'learn-more'
-    });
+  // Persisted variants/rotation (uses your existing adLab + setAdLabPersist)
+  const [localVariants, setLocalVariants] = useState(adLab.variants || []);
+  const [rotate, setRotate] = useState(adLab.rotate || false);
 
-    const [localVariants, setLocalVariants] = useState(adLab.variants || []);
-    const [rotate, setRotate] = useState(adLab.rotate || false);
+  // Creative library (images & videos) + selection
+  const [assets, setAssets] = useState([]); // [{id,url,type:'image'|'video',tags?:[]}]
+  const [selectedAssetIds, setSelectedAssetIds] = useState([]);
 
-    useEffect(()=>{ setAdForm(prev=>({...prev, subType:''})); }, [adForm.market]);
+  const [err, setErr] = useState('');
+  const [busy, setBusy] = useState({ text:false, upload:false, genImg:false, genVid:false });
 
-    const currentTemplates = (PROMPT_TEMPLATES[adForm.market] || {})[adForm.subType] || [];
-    const applyTemplate = (tpl)=>{
-      setAdForm(prev=>({
-        ...prev,
-        headline: tpl.h.replace('{{CITY}}','your area').replace('{{STATE}}','your state').replace('{{LOW_PRICE}}','15'),
-        copy: tpl.c.replace('{{CITY}}','your area').replace('{{STATE}}','your state').replace('{{PRICE}}','500k').replace('{{INDUSTRY}}','your industry'),
-        cta: tpl.cta || prev.cta
-      }));
-    };
+  // Reset sub-type when market changes (works for ALL markets)
+  useEffect(()=>{ setAdForm(prev=>({ ...prev, subType:'' })); }, [adForm.market]);
 
-    const suggestAI = async () => {
+  // Optional: load any existing creative library for this workspace (safe if backend not ready)
+  useEffect(()=>{
+    let stop=false;
+    (async ()=>{
       try{
-        const payload = { market: adForm.market, subType: adForm.subType, targeting: { locations: adForm.targetLocations }, analytics: analyticsData, routing, metadata: routing.metadata.adsCopy };
-        const res = await fetch('/api/generate-ad', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
-        const data = await res.json();
-        setAdForm(prev=>({ ...prev, headline: data.headline || prev.headline, copy: data.copy || prev.copy, cta: data.cta || prev.cta }));
-        alert('✨ AI refreshed your ad content.');
-      }catch{
-        const tpl = currentTemplates[Math.floor(Math.random()*currentTemplates.length)];
-        if (tpl) applyTemplate(tpl); else alert('No templates for this selection.');
-      }
-    };
+        const r = await fetch('/api/creative/list').catch(()=>null);
+        if (!r || stop) return;
+        const j = await r.json();
+        const list = Array.isArray(j) ? j : (j.assets || []);
+        if (!stop && list?.length) setAssets(list);
+      }catch{}
+    })();
+    return ()=>{ stop=true; };
+  },[]);
 
-    const addVariant = ()=>{
-      if (!adForm.headline || !adForm.copy) { alert('Set headline and copy first'); return; }
-      const v = { id: Date.now(), headline: adForm.headline, copy: adForm.copy, cta: adForm.cta, impressions: 0, clicks: 0 };
-      const next = [v, ...localVariants];
-      setLocalVariants(next);
-      setAdLabPersist({ ...adLab, variants: next, rotate });
-    };
-    const deleteVariant = (id)=>{
-      const next = localVariants.filter(v=>v.id!==id);
-      setLocalVariants(next);
-      setAdLabPersist({ ...adLab, variants: next, rotate });
-    };
-    const simulateTraffic = (views=200)=>{
-      if (localVariants.length===0) return alert('Add at least one variant.');
-      const next = localVariants.map(v=>{
-        const share = Math.floor(views / localVariants.length);
-        const ctr = 0.02 + Math.random()*0.03;
-        return { ...v, impressions: v.impressions + share, clicks: v.clicks + Math.round(share*ctr) };
-      });
-      setLocalVariants(next);
-      setAdLabPersist({ ...adLab, variants: next, rotate });
-    };
-    const bestVariant = localVariants.reduce((b,v)=> ((v.clicks/(v.impressions||1)) > (b?.clicks/(b?.impressions||1) || 0) ? v : b), null);
-
-    const launchCampaign = async () => {
-      if (!adForm.headline || !adForm.copy || !adForm.targetLocations || !adForm.subType) { alert('Fill headline, copy, locations, and sub-type'); return; }
-      try{
-        const body = {
-          name: `${adForm.market}/${adForm.subType} - ${adForm.targetLocations}`,
-          market: adForm.market, type: adForm.subType,
-          budget: parseInt(adForm.dailyBudget) || 100,
-          adContent: { headline: adForm.headline, copy: adForm.copy, cta: adForm.cta },
-          targeting: { locations: adForm.targetLocations.split(',').map(s=>s.trim()).filter(Boolean), ageMin: parseInt(adForm.minAge)||25, ageMax: parseInt(adForm.maxAge)||65 },
-          routing, metadata: routing.metadata.adsCopy, variants: localVariants
-        };
-        await fetch('/api/launch-campaign', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) }).catch(()=>{});
-        const newCamp = { id:'c'+Date.now(), name: body.name, market: body.market, type: body.type, budget: body.budget, status:'active', leads:0, costPerLead:0 };
-        setCampaigns(prev => [newCamp, ...prev]); saveNow({ campaigns: [newCamp, ...campaigns] });
-        alert('🚀 Campaign launched (simulated).');
-      } catch { alert('❌ Launch failed.'); }
-    };
-
-    return (
-      <div className="space-y-6 fade-in">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 lg:gap-6">
-          <div className="bg-white rounded-2xl p-4 lg:p-6 shadow-lg">
-            <h3 className="text-lg lg:text-xl font-bold mb-4">Category</h3>
-            <div className="space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-medium mb-2 text-sm lg:text-base">Market</label>
-                  <select className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500" value={adForm.market} onChange={(e)=>setAdForm(prev=>({...prev, market:e.target.value, subType:''}))}>
-                    {Object.keys(MARKET_OPTIONS).map(m=><option key={m} value={m}>{m}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="block font-medium mb-2 text-sm lg:text-base">Sub-Type</label>
-                  <select className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500" value={adForm.subType} onChange={(e)=>setAdForm(prev=>({...prev, subType:e.target.value}))}>
-                    <option value="">Choose…</option>
-                    {MARKET_OPTIONS[adForm.market].map(s=><option key={s} value={s}>{s}</option>)}
-                  </select>
-                </div>
-              </div>
-
-              <div>
-                <label className="block font-medium mb-2 text-sm lg:text-base">Target Locations</label>
-                <input type="text" className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500" placeholder="FL, TX, CA" value={adForm.targetLocations} onChange={(e)=>setAdForm(prev=>({...prev, targetLocations:e.target.value}))}/>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-medium mb-2 text-sm lg:text-base">Min Age</label>
-                  <input type="number" className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500" placeholder="25" value={adForm.minAge} onChange={(e)=>setAdForm(prev=>({...prev, minAge:e.target.value}))}/>
-                </div>
-                <div>
-                  <label className="block font-medium mb-2 text-sm lg:text-base">Max Age</label>
-                  <input type="number" className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500" placeholder="65" value={adForm.maxAge} onChange={(e)=>setAdForm(prev=>({...prev, maxAge:e.target.value}))}/>
-                </div>
-              </div>
-
-              <div>
-                <label className="block font-medium mb-2 text-sm lg:text-base">Daily Budget ($)</label>
-                <input type="number" className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500" placeholder="150" value={adForm.dailyBudget} onChange={(e)=>setAdForm(prev=>({...prev, dailyBudget:e.target.value}))}/>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-white rounded-2xl p-4 lg:p-6 shadow-lg">
-            <h3 className="text-lg lg:text-xl font-bold mb-4">Ad Content</h3>
-            <div className="space-y-4">
-              <div className="bg-gray-50 p-3 rounded-xl">
-                <div className="text-sm font-semibold mb-2">Prompt Examples for {adForm.market}{adForm.subType? ' / '+adForm.subType:''}</div>
-                <div className="flex flex-wrap gap-2">
-                  {currentTemplates.length===0 && <div className="text-xs text-gray-500">Select Market and Sub-type to see examples.</div>}
-                  {currentTemplates.map((tpl, i)=>(
-                    <button key={i} onClick={()=>applyTemplate(tpl)} className="px-3 py-2 text-xs bg-white border rounded-lg hover:bg-blue-50">
-                      “{tpl.h}”
-                    </button>
-                  ))}
-                </div>
-                <div className="mt-3">
-                  <button onClick={suggestAI} className="px-3 py-2 bg-gradient-to-r from-blue-500 to-purple-600 text-white rounded-lg text-sm">⚡ Suggest New Copy (AI)</button>
-                </div>
-              </div>
-
-              <div>
-                <label className="block font-medium mb-2 text-sm lg:text-base">Headline</label>
-                <input type="text" className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500" placeholder="Your compelling headline..." value={adForm.headline} onChange={(e)=>setAdForm(prev=>({...prev, headline:e.target.value}))}/>
-              </div>
-              <div>
-                <label className="block font-medium mb-2 text-sm lg:text-base">Ad Copy</label>
-                <textarea className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500 h-28 resize-none" placeholder="Write your ad copy here..." value={adForm.copy} onChange={(e)=>setAdForm(prev=>({...prev, copy:e.target.value}))}/>
-              </div>
-              <div>
-                <label className="block font-medium mb-2 text-sm lg:text-base">Call-to-Action</label>
-                <select className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500" value={adForm.cta} onChange={(e)=>setAdForm(prev=>({...prev, cta:e.target.value}))}>
-                  <option value="learn-more">Learn More</option>
-                  <option value="get-quote">Get Free Quote</option>
-                  <option value="call-now">Call Now</option>
-                  <option value="apply-now">Apply Now</option>
-                </select>
-              </div>
-
-              <div className="space-y-3">
-                <button onClick={launchCampaign} className="w-full p-3 bg-gradient-to-r from-green-500 to-green-600 text-white font-semibold rounded-xl hover:shadow-lg transition-all">🚀 Launch Campaign</button>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Variants / Rotation */}
-        <div className="bg-white rounded-2xl p-4 lg:p-6 shadow-lg">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg lg:text-xl font-bold">Ad Variants & Rotation</h3>
-            <div className="flex items-center gap-3">
-              <span className="text-sm">Rotate</span>
-              <div className={`toggle-switch ${adLab.rotate ? 'active' : ''}`} onClick={()=>{ const nv = !adLab.rotate; setRotate(nv); setAdLabPersist({ ...adLab, rotate: nv }); }}>
-                <div className="toggle-slider"></div>
-              </div>
-            </div>
-          </div>
-          <div className="flex gap-2 mb-3">
-            <button onClick={addVariant} className="px-3 py-2 bg-purple-100 text-purple-700 rounded-lg">➕ Add Variant (from current)</button>
-            <button onClick={()=>simulateTraffic(200)} className="px-3 py-2 bg-blue-100 text-blue-700 rounded-lg">▶️ Simulate 200 Views</button>
-          </div>
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-            {localVariants.map(v=>(
-              <div key={v.id} className="border rounded-xl p-3">
-                <div className="font-semibold mb-1">{v.headline}</div>
-                <div className="text-sm text-gray-700 mb-2">{v.copy}</div>
-                <div className="text-xs text-gray-500 mb-2">CTA: {v.cta}</div>
-                <div className="text-xs">Impr: <strong>{v.impressions}</strong> • Clicks: <strong>{v.clicks}</strong> • CTR: <strong>{((v.clicks/(v.impressions||1))*100).toFixed(1)}%</strong></div>
-                <div className="text-right mt-2">
-                  <button onClick={()=>deleteVariant(v.id)} className="px-2 py-1 bg-gray-100 rounded">Delete</button>
-                </div>
-              </div>
-            ))}
-            {localVariants.length===0 && <div className="text-gray-500">No variants yet. Click “Add Variant”.</div>}
-          </div>
-          {bestVariant && (
-            <div className="mt-4 text-sm text-gray-700">
-              Current best: <span className="font-semibold">{bestVariant.headline}</span>
-            </div>
-          )}
-        </div>
-      </div>
-    );
+  // Templates (from your PROMPT_TEMPLATES map)
+  const currentTemplates = (PROMPT_TEMPLATES[adForm.market] || {})[adForm.subType] || [];
+  const applyTemplate = (tpl) => {
+    if (!tpl) return;
+    setAdForm(prev=>({
+      ...prev,
+      headline: tpl.h.replace('{{CITY}}','your area').replace('{{STATE}}','your state').replace('{{LOW_PRICE}}','15'),
+      copy: tpl.c.replace('{{CITY}}','your area').replace('{{STATE}}','your state').replace('{{PRICE}}','500k').replace('{{INDUSTRY}}','your industry'),
+      cta: tpl.cta || prev.cta
+    }));
   };
 
-  /* ---------- Leads (click to edit + advanced statuses + notes + recordings) ---------- */
+  /* === AI GENERATION (Text/Image/Video) === */
+  async function generateTextFromPrompt() {
+    if (!adForm.genPrompt.trim()) { alert('Enter a prompt first.'); return; }
+    setBusy(b=>({...b, text:true})); setErr('');
+    try{
+      const body = { prompt: adForm.genPrompt, market: adForm.market, subType: adForm.subType || undefined };
+      const r = await fetch('/api/generate-ad', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+      const j = await r.json();
+      setAdForm(prev=>({
+        ...prev,
+        headline: j.headline || prev.headline,
+        copy: j.copy || prev.copy,
+        cta: j.cta || prev.cta
+      }));
+    }catch{ setErr('Text generation failed.'); }
+    finally{ setBusy(b=>({...b, text:false})); }
+  }
+
+  async function generateImages(extraPrompt){
+    const prompt = (extraPrompt ?? adForm.genPrompt || '').trim();
+    if (!prompt) { alert('Enter a prompt first.'); return; }
+    setBusy(b=>({...b, genImg:true})); setErr('');
+    try{
+      const r = await fetch('/api/creative/generate', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ prompt, count: 6, market: adForm.market, subType: adForm.subType || undefined })
+      });
+      const j = await r.json();
+      const gen = Array.isArray(j) ? j : (j.assets || []);
+      if (gen.length) setAssets(prev => [...gen, ...prev]);
+    }catch{ setErr('Image generation failed.'); }
+    finally{ setBusy(b=>({...b, genImg:false})); }
+  }
+
+  async function generateVideo(extraPrompt){
+    const prompt = (extraPrompt ?? adForm.genPrompt || '').trim();
+    if (!prompt) { alert('Enter a prompt first.'); return; }
+    setBusy(b=>({...b, genVid:true})); setErr('');
+    try{
+      const r = await fetch('/api/creative/generate-video', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ prompt, market: adForm.market, subType: adForm.subType || undefined })
+      });
+      const j = await r.json();
+      const vids = Array.isArray(j) ? j : (j.assets || []);
+      if (vids.length) setAssets(prev => [...vids, ...prev]);
+    }catch{ setErr('Video generation failed.'); }
+    finally{ setBusy(b=>({...b, genVid:false})); }
+  }
+
+  /* === Upload (images/videos) === */
+  async function onUploadFiles(fileList){
+    const files = Array.from(fileList || []);
+    if (!files.length) return;
+    setBusy(b=>({...b, upload:true})); setErr('');
+    try{
+      const fd = new FormData();
+      files.forEach(f=>fd.append('files', f));
+      const r = await fetch('/api/creative/upload', { method:'POST', body: fd });
+      const j = await r.json();
+      const newAssets = Array.isArray(j) ? j : (j.assets || []);
+      if (newAssets.length) setAssets(prev => [...newAssets, ...prev]);
+    }catch{ setErr('Upload failed.'); }
+    finally{ setBusy(b=>({...b, upload:false})); }
+  }
+
+  /* === Variants (persist via adLab) === */
+  function addVariantFromCurrent(){
+    if (!adForm.headline || !adForm.copy) { alert('Set headline and copy first'); return; }
+    const v = { id: Date.now(), headline: adForm.headline, copy: adForm.copy, cta: adForm.cta, impressions: 0, clicks: 0 };
+    const next = [v, ...localVariants];
+    setLocalVariants(next);
+    setAdLabPersist({ ...adLab, variants: next, rotate });
+  }
+  function deleteVariant(id){
+    const next = localVariants.filter(v=>v.id!==id);
+    setLocalVariants(next);
+    setAdLabPersist({ ...adLab, variants: next, rotate });
+  }
+  function toggleRotate(){
+    const nv = !rotate;
+    setRotate(nv);
+    setAdLabPersist({ ...adLab, rotate: nv, variants: localVariants });
+  }
+
+  /* === Select creatives for campaign === */
+  function toggleSelectAsset(id){
+    setSelectedAssetIds(prev => prev.includes(id) ? prev.filter(x=>x!==id) : [...prev, id]);
+  }
+
+  /* === Launch (attaches selected creatives) === */
+  async function launchCampaign(){
+    if (!adForm.headline || !adForm.copy || !adForm.targetLocations || !adForm.subType) {
+      alert('Fill headline, copy, locations, and sub-type'); return;
+    }
+    try{
+      const body = {
+        name: `${adForm.market}/${adForm.subType} - ${adForm.targetLocations}`,
+        market: adForm.market, type: adForm.subType,
+        budget: parseInt(adForm.dailyBudget) || 100,
+        adContent: { headline: adForm.headline, copy: adForm.copy, cta: adForm.cta },
+        targeting: {
+          locations: adForm.targetLocations.split(',').map(s=>s.trim()).filter(Boolean),
+          ageMin: parseInt(adForm.minAge)||25, ageMax: parseInt(adForm.maxAge)||65
+        },
+        creative: { assetIds: selectedAssetIds },
+        routing,
+        metadata: routing.metadata.adsCopy
+      };
+      await fetch('/api/launch-campaign', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) }).catch(()=>{});
+      const newCamp = { id:'c'+Date.now(), name: body.name, market: body.market, type: body.type, budget: body.budget, status:'active', leads:0, costPerLead:0 };
+      setCampaigns(prev => [newCamp, ...prev]); saveNow({ campaigns: [newCamp, ...campaigns] });
+      alert('🚀 Campaign launched (simulated).');
+    } catch { alert('❌ Launch failed.'); }
+  }
+
+  const Money = (n) => `$${new Intl.NumberFormat().format(Number(n||0))}`;
+
+  return (
+    <div className="space-y-6 fade-in">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 lg:gap-6">
+        {/* Category */}
+        <div className="bg-white rounded-2xl p-4 lg:p-6 shadow-lg">
+          <h3 className="text-lg lg:text-xl font-bold mb-4">Category</h3>
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block font-medium mb-2 text-sm lg:text-base">Market</label>
+                <select className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500"
+                        value={adForm.market}
+                        onChange={(e)=>setAdForm(prev=>({...prev, market:e.target.value, subType:''}))}>
+                  {Object.keys(MARKET_OPTIONS).map(m=><option key={m} value={m}>{m}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block font-medium mb-2 text-sm lg:text-base">Sub-Type</label>
+                <select className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500"
+                        value={adForm.subType}
+                        onChange={(e)=>setAdForm(prev=>({...prev, subType:e.target.value}))}>
+                  <option value="">Choose…</option>
+                  {(MARKET_OPTIONS[adForm.market]||[]).map(s=><option key={s} value={s}>{s}</option>)}
+                </select>
+              </div>
+            </div>
+
+            <div>
+              <label className="block font-medium mb-2 text-sm lg:text-base">Target Locations</label>
+              <input type="text" className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500"
+                     placeholder="FL, TX, CA"
+                     value={adForm.targetLocations}
+                     onChange={(e)=>setAdForm(prev=>({...prev, targetLocations:e.target.value}))}/>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block font-medium mb-2 text-sm lg:text-base">Min Age</label>
+                <input type="number" className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500"
+                       placeholder="25"
+                       value={adForm.minAge}
+                       onChange={(e)=>setAdForm(prev=>({...prev, minAge:e.target.value}))}/>
+              </div>
+              <div>
+                <label className="block font-medium mb-2 text-sm lg:text-base">Max Age</label>
+                <input type="number" className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500"
+                       placeholder="65"
+                       value={adForm.maxAge}
+                       onChange={(e)=>setAdForm(prev=>({...prev, maxAge:e.target.value}))}/>
+              </div>
+            </div>
+
+            <div>
+              <label className="block font-medium mb-2 text-sm lg:text-base">Daily Budget ($)</label>
+              <input type="number" className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500"
+                     placeholder="150"
+                     value={adForm.dailyBudget}
+                     onChange={(e)=>setAdForm(prev=>({...prev, dailyBudget:e.target.value}))}/>
+              <p className="text-xs text-gray-500 mt-1">Estimated budget: <strong>{Money(adForm.dailyBudget||0)}/day</strong></p>
+            </div>
+          </div>
+        </div>
+
+        {/* Ad Content + Single Prompt */}
+        <div className="bg-white rounded-2xl p-4 lg:p-6 shadow-lg">
+          <h3 className="text-lg lg:text-xl font-bold mb-4">Ad Content</h3>
+
+          <div className="bg-gray-50 p-3 rounded-xl mb-4">
+            <div className="text-sm font-semibold mb-2">Single Prompt (powers Text, Image, Video)</div>
+            <textarea className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500 h-20 resize-none"
+                      placeholder="Describe your offer, audience, vibe…"
+                      value={adForm.genPrompt}
+                      onChange={(e)=>setAdForm(prev=>({...prev, genPrompt:e.target.value}))}/>
+            <div className="flex flex-wrap gap-2 mt-3">
+              <button onClick={generateTextFromPrompt}
+                      className="px-3 py-2 bg-gradient-to-r from-blue-500 to-purple-600 text-white rounded-lg text-sm disabled:opacity-60"
+                      disabled={busy.text}>
+                {busy.text ? 'Generating…' : '⚡ Generate Text'}
+              </button>
+              <button onClick={()=>generateImages()}
+                      className="px-3 py-2 bg-blue-100 text-blue-700 rounded-lg text-sm disabled:opacity-60"
+                      disabled={busy.genImg}>
+                {busy.genImg ? 'Generating…' : '🖼️ Generate Images'}
+              </button>
+              <button onClick={()=>generateVideo()}
+                      className="px-3 py-2 bg-purple-100 text-purple-700 rounded-lg text-sm disabled:opacity-60"
+                      disabled={busy.genVid}>
+                {busy.genVid ? 'Generating…' : '🎬 Generate Video'}
+              </button>
+
+              <label className="px-3 py-2 bg-gray-100 text-gray-800 rounded-lg text-sm cursor-pointer">
+                ⬆️ Upload (img/video)
+                <input type="file" accept="image/*,video/*" multiple className="hidden" onChange={(e)=>onUploadFiles(e.target.files)}/>
+              </label>
+            </div>
+
+            {currentTemplates.length>0 && (
+              <div className="mt-3">
+                <div className="text-xs text-gray-600 mb-1">Or apply a template:</div>
+                <div className="flex flex-wrap gap-2">
+                  {currentTemplates.map((tpl,i)=>(
+                    <button key={i} onClick={()=>applyTemplate(tpl)} className="px-3 py-2 text-xs bg-white border rounded-lg hover:bg-blue-50">“{tpl.h}”</button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="space-y-4">
+            <div>
+              <label className="block font-medium mb-2 text-sm lg:text-base">Headline</label>
+              <input type="text" className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500"
+                     placeholder="Your compelling headline…"
+                     value={adForm.headline}
+                     onChange={(e)=>setAdForm(prev=>({...prev, headline:e.target.value}))}/>
+            </div>
+            <div>
+              <label className="block font-medium mb-2 text-sm lg:text-base">Ad Copy</label>
+              <textarea className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500 h-28 resize-none"
+                        placeholder="Write your ad copy here…"
+                        value={adForm.copy}
+                        onChange={(e)=>setAdForm(prev=>({...prev, copy:e.target.value}))}/>
+            </div>
+            <div>
+              <label className="block font-medium mb-2 text-sm lg:text-base">Call-to-Action</label>
+              <select className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500"
+                      value={adForm.cta}
+                      onChange={(e)=>setAdForm(prev=>({...prev, cta:e.target.value}))}>
+                <option value="learn-more">Learn More</option>
+                <option value="get-quote">Get Free Quote</option>
+                <option value="call-now">Call Now</option>
+                <option value="apply-now">Apply Now</option>
+              </select>
+            </div>
+
+            <div className="flex gap-2">
+              <button onClick={addVariantFromCurrent}
+                      className="px-3 py-2 bg-purple-100 text-purple-700 rounded-lg">
+                ➕ Add Variant (from current)
+              </button>
+              <button onClick={launchCampaign}
+                      className="px-3 py-2 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-lg">
+                🚀 Launch Campaign
+              </button>
+            </div>
+
+            {err && <div className="mt-3 text-sm text-red-600">{err}</div>}
+          </div>
+        </div>
+      </div>
+
+      {/* Creative Library Preview (select creatives to attach) */}
+      <div className="bg-white rounded-2xl p-4 lg:p-6 shadow-lg">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-lg lg:text-xl font-bold">Creative Library</h3>
+          <div className="text-sm text-gray-600">{selectedAssetIds.length} selected</div>
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+          {assets.map(a=>(
+            <button key={a.id}
+              onClick={()=>toggleSelectAsset(a.id)}
+              className={`relative border rounded-xl overflow-hidden ${selectedAssetIds.includes(a.id)?'ring-2 ring-purple-500 border-purple-300':'border-gray-200 hover:border-blue-300'}`}>
+              {a.type==='video'
+                ? <video src={a.url} className="w-full h-32 object-cover" controls/>
+                : <img src={a.url} className="w-full h-32 object-cover" alt="creative"/>}
+              <div className={`absolute top-2 right-2 w-5 h-5 rounded-full ${selectedAssetIds.includes(a.id)?'bg-purple-600':'bg-white border'}`}></div>
+            </button>
+          ))}
+          {assets.length===0 && <div className="text-gray-500 text-sm col-span-full">No creatives yet. Upload or generate above.</div>}
+        </div>
+      </div>
+
+      {/* Variants & Rotation (persisted) */}
+      <div className="bg-white rounded-2xl p-4 lg:p-6 shadow-lg">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-lg lg:text-xl font-bold">Ad Variants & Rotation</h3>
+          <label className="flex items-center gap-2 text-sm">
+            <span>Rotate</span>
+            <input type="checkbox" checked={rotate} onChange={toggleRotate}/>
+          </label>
+        </div>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          {localVariants.map(v=>(
+            <div key={v.id} className="border rounded-xl p-3">
+              <div className="font-semibold mb-1">{v.headline}</div>
+              <div className="text-sm text-gray-700 mb-2">{v.copy}</div>
+              <div className="text-xs text-gray-500 mb-2">CTA: {v.cta}</div>
+              <div className="text-right">
+                <button onClick={()=>deleteVariant(v.id)} className="px-2 py-1 bg-gray-100 rounded text-sm">Delete</button>
+              </div>
+            </div>
+          ))}
+          {localVariants.length===0 && <div className="text-gray-500">No variants yet. Use “Add Variant (from current)”.</div>}
+        </div>
+      </div>
+    </div>
+  );
+};
+/* ---------- Leads (click to edit + advanced statuses + notes + recordings) ---------- */
   const LeadManagement = () => {
     const [searchTerm, setSearchTerm] = useState('');
     const [filterMarket, setFilterMarket] = useState('');
