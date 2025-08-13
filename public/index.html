@@ -723,9 +723,66 @@ const Dashboard = () => {
   );
 };
 /* ---------- Ad Creator (market/sub) ---------- */
+import React, { useState, useEffect } from 'react';
+
+// ADD YOUR IMPORTS HERE - Replace with your actual imports:
+// import { MARKET_OPTIONS, PROMPT_TEMPLATES } from './your-constants';
+// import { adLab, setAdLabPersist, saveNow, campaigns, setCampaigns, routing } from './your-state';
+
+// TEMPORARY MOCK DATA - Replace these with your actual constants
+const MARKET_OPTIONS = {
+  'Real Estate': ['Residential', 'Commercial', 'Luxury', 'Investment'],
+  'Healthcare': ['Medical', 'Dental', 'Mental Health', 'Wellness'],
+  'Legal': ['Personal Injury', 'Family Law', 'Business Law', 'Criminal Defense'],
+  'Finance': ['Insurance', 'Loans', 'Investment', 'Tax Services'],
+  'Technology': ['Software', 'Hardware', 'Consulting', 'Support']
+};
+
+const PROMPT_TEMPLATES = {
+  'Real Estate': {
+    'Residential': [
+      { h: 'Find Your Dream Home in {{CITY}}', c: 'Discover beautiful homes starting at {{LOW_PRICE}}K in {{CITY}}, {{STATE}}. Expert agents ready to help!', cta: 'get-quote' },
+      { h: 'New Homes Available Now', c: 'Move-in ready homes from {{PRICE}} in your area. Schedule a tour today!', cta: 'learn-more' }
+    ],
+    'Commercial': [
+      { h: 'Prime Commercial Real Estate', c: 'Invest in top commercial properties in {{CITY}}. High ROI opportunities available.', cta: 'get-quote' }
+    ]
+  },
+  'Healthcare': {
+    'Medical': [
+      { h: 'Quality Healthcare in {{CITY}}', c: 'Experienced doctors providing comprehensive care in {{CITY}}, {{STATE}}. Book your appointment today.', cta: 'call-now' }
+    ]
+  }
+};
+
 const AdCreator = () => {
+  // REPLACE THESE WITH YOUR ACTUAL STATE/FUNCTIONS:
+  // Use your existing: adLab, setAdLabPersist, saveNow, campaigns, setCampaigns, routing
+  
+  // TEMPORARY MOCK STATE - Replace with your actual state
+  const [adLab] = useState({ variants: [], rotate: false });
+  const [campaigns, setCampaigns] = useState([]);
+  
+  // TEMPORARY MOCK FUNCTIONS - Replace with your actual functions
+  const setAdLabPersist = (data) => {
+    console.log('Persisting ad lab data:', data);
+    // Replace with: your actual setAdLabPersist function
+  };
+  
+  const saveNow = (data) => {
+    console.log('Saving data:', data);
+    // Replace with: your actual saveNow function
+  };
+  
+  // TEMPORARY MOCK ROUTING - Replace with your actual routing object
+  const routing = {
+    metadata: {
+      adsCopy: {}
+    }
+  };
+
   const [adForm, setAdForm] = useState({
-    market: '',                 // <-- no default; user must choose
+    market: '',
     subType: '',
     targetLocations: '',
     minAge: '',
@@ -734,160 +791,264 @@ const AdCreator = () => {
     headline: '',
     copy: '',
     cta: 'learn-more',
-    genPrompt: ''               // one prompt for text, image, and video
+    genPrompt: ''
   });
 
-    // Persisted variants/rotation (uses your existing adLab + setAdLabPersist)
-  const [localVariants, setLocalVariants] = useState(()=> (typeof adLab !== 'undefined' && Array.isArray(adLab.variants) ? adLab.variants : []));
-  const [rotate, setRotate] = useState(()=> (typeof adLab !== 'undefined' ? !!adLab.rotate : false));
-  // Creative library (images & videos) + selection
+  // Persisted variants/rotation
+  const [localVariants, setLocalVariants] = useState(adLab.variants || []);
+  const [rotate, setRotate] = useState(adLab.rotate || false);
 
-  const [assets, setAssets] = useState([]); // [{id,url,type:'image'|'video',tags?:[]}]
+  // Creative library
+  const [assets, setAssets] = useState([]);
   const [selectedAssetIds, setSelectedAssetIds] = useState([]);
 
   const [err, setErr] = useState('');
-  const [busy, setBusy] = useState({ text:false, upload:false, genImg:false, genVid:false });
+  const [busy, setBusy] = useState({ text: false, upload: false, genImg: false, genVid: false });
 
-  // Reset sub-type when market changes (works for ALL markets)
-  useEffect(()=>{ setAdForm(prev=>({ ...prev, subType:'' })); }, [adForm.market]);
+  // Reset sub-type when market changes
+  useEffect(() => { 
+    setAdForm(prev => ({ ...prev, subType: '' })); 
+  }, [adForm.market]);
 
-  // Load existing creative library (safe if backend not ready)
-  useEffect(()=>{
-    let stop=false;
-    (async ()=>{
-      try{
-        const r = await fetch('/api/creative/list').catch(()=>null);
+  // Load existing creative library
+  useEffect(() => {
+    let stop = false;
+    (async () => {
+      try {
+        const r = await fetch('/api/creative/list').catch(() => null);
         if (!r || stop) return;
         const j = await r.json();
         const list = Array.isArray(j) ? j : (j.assets || []);
         if (!stop && list?.length) setAssets(list);
-      }catch{}
+      } catch (error) {
+        console.log('Failed to load creative library:', error);
+      }
     })();
-    return ()=>{ stop=true; };
-  },[]);
+    return () => { stop = true; };
+  }, []);
 
-    // Templates (from PROMPT_TEMPLATES)
-  const MO   = (typeof MARKET_OPTIONS !== 'undefined'    ? MARKET_OPTIONS    : {});
-  const TPLS = (typeof PROMPT_TEMPLATES !== 'undefined'  ? PROMPT_TEMPLATES  : {});
-  const currentTemplates = (TPLS[adForm.market] || {})[adForm.subType] || [];
-  /* === AI GENERATION (Text/Image/Video) === */
+  // Templates
+  const currentTemplates = (PROMPT_TEMPLATES[adForm.market] || {})[adForm.subType] || [];
+  
+  const applyTemplate = (tpl) => {
+    if (!tpl) return;
+    setAdForm(prev => ({
+      ...prev,
+      headline: tpl.h.replace('{{CITY}}', 'your area').replace('{{STATE}}', 'your state').replace('{{LOW_PRICE}}', '15'),
+      copy: tpl.c.replace('{{CITY}}', 'your area').replace('{{STATE}}', 'your state').replace('{{PRICE}}', '500k').replace('{{INDUSTRY}}', 'your industry'),
+      cta: tpl.cta || prev.cta
+    }));
+  };
 
+  // AI Generation functions
   async function generateTextFromPrompt() {
-    if (!adForm.genPrompt.trim()) { alert('Enter a prompt first.'); return; }
-    setBusy(b=>({...b, text:true})); setErr('');
-    try{
-      const body = { prompt: adForm.genPrompt, market: adForm.market, subType: adForm.subType || undefined };
-      const r = await fetch('/api/generate-ad', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+    if (!adForm.genPrompt.trim()) { 
+      alert('Enter a prompt first.'); 
+      return; 
+    }
+    setBusy(b => ({ ...b, text: true })); 
+    setErr('');
+    
+    try {
+      const body = { 
+        prompt: adForm.genPrompt, 
+        market: adForm.market, 
+        subType: adForm.subType || undefined 
+      };
+      const r = await fetch('/api/generate-ad', { 
+        method: 'POST', 
+        headers: { 'Content-Type': 'application/json' }, 
+        body: JSON.stringify(body) 
+      });
       const j = await r.json();
-      setAdForm(prev=>({
+      setAdForm(prev => ({
         ...prev,
         headline: j.headline || prev.headline,
         copy: j.copy || prev.copy,
         cta: j.cta || prev.cta
       }));
-    }catch{ setErr('Text generation failed.'); }
-    finally{ setBusy(b=>({...b, text:false})); }
+    } catch (error) { 
+      console.error('Text generation error:', error);
+      setErr('Text generation failed.'); 
+    } finally { 
+      setBusy(b => ({ ...b, text: false })); 
+    }
   }
 
-  async function generateImages(extraPrompt){
+  async function generateImages(extraPrompt) {
     const prompt = (extraPrompt ?? adForm.genPrompt || '').trim();
-    if (!prompt) { alert('Enter a prompt first.'); return; }
-    setBusy(b=>({...b, genImg:true})); setErr('');
-    try{
+    if (!prompt) { 
+      alert('Enter a prompt first.'); 
+      return; 
+    }
+    setBusy(b => ({ ...b, genImg: true })); 
+    setErr('');
+    
+    try {
       const r = await fetch('/api/creative/generate', {
-        method:'POST', headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({ prompt, count: 6, market: adForm.market, subType: adForm.subType || undefined })
+        method: 'POST', 
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          prompt, 
+          count: 6, 
+          market: adForm.market, 
+          subType: adForm.subType || undefined 
+        })
       });
       const j = await r.json();
       const gen = Array.isArray(j) ? j : (j.assets || []);
       if (gen.length) setAssets(prev => [...gen, ...prev]);
-    }catch{ setErr('Image generation failed.'); }
-    finally{ setBusy(b=>({...b, genImg:false})); }
+    } catch (error) { 
+      console.error('Image generation error:', error);
+      setErr('Image generation failed.'); 
+    } finally { 
+      setBusy(b => ({ ...b, genImg: false })); 
+    }
   }
 
-  async function generateVideo(extraPrompt){
+  async function generateVideo(extraPrompt) {
     const prompt = (extraPrompt ?? adForm.genPrompt || '').trim();
-    if (!prompt) { alert('Enter a prompt first.'); return; }
-    setBusy(b=>({...b, genVid:true})); setErr('');
-    try{
+    if (!prompt) { 
+      alert('Enter a prompt first.'); 
+      return; 
+    }
+    setBusy(b => ({ ...b, genVid: true })); 
+    setErr('');
+    
+    try {
       const r = await fetch('/api/creative/generate-video', {
-        method:'POST', headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({ prompt, market: adForm.market, subType: adForm.subType || undefined })
+        method: 'POST', 
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          prompt, 
+          market: adForm.market, 
+          subType: adForm.subType || undefined 
+        })
       });
       const j = await r.json();
       const vids = Array.isArray(j) ? j : (j.assets || []);
       if (vids.length) setAssets(prev => [...vids, ...prev]);
-    }catch{ setErr('Video generation failed.'); }
-    finally{ setBusy(b=>({...b, genVid:false})); }
+    } catch (error) { 
+      console.error('Video generation error:', error);
+      setErr('Video generation failed.'); 
+    } finally { 
+      setBusy(b => ({ ...b, genVid: false })); 
+    }
   }
 
-  /* === Upload (images/videos) === */
-  async function onUploadFiles(fileList){
+  // Upload function
+  async function onUploadFiles(fileList) {
     const files = Array.from(fileList || []);
     if (!files.length) return;
-    setBusy(b=>({...b, upload:true})); setErr('');
-    try{
+    setBusy(b => ({ ...b, upload: true })); 
+    setErr('');
+    
+    try {
       const fd = new FormData();
-      files.forEach(f=>fd.append('files', f));
-      const r = await fetch('/api/creative/upload', { method:'POST', body: fd });
+      files.forEach(f => fd.append('files', f));
+      const r = await fetch('/api/creative/upload', { method: 'POST', body: fd });
       const j = await r.json();
       const newAssets = Array.isArray(j) ? j : (j.assets || []);
       if (newAssets.length) setAssets(prev => [...newAssets, ...prev]);
-    }catch{ setErr('Upload failed.'); }
-    finally{ setBusy(b=>({...b, upload:false})); }
+    } catch (error) { 
+      console.error('Upload error:', error);
+      setErr('Upload failed.'); 
+    } finally { 
+      setBusy(b => ({ ...b, upload: false })); 
+    }
   }
 
-  /* === Variants (persist via adLab) === */
-  function addVariantFromCurrent(){
-    if (!adForm.headline || !adForm.copy) { alert('Set headline and copy first'); return; }
-    const v = { id: Date.now(), headline: adForm.headline, copy: adForm.copy, cta: adForm.cta, impressions: 0, clicks: 0 };
+  // Variants functions
+  function addVariantFromCurrent() {
+    if (!adForm.headline || !adForm.copy) { 
+      alert('Set headline and copy first'); 
+      return; 
+    }
+    const v = { 
+      id: Date.now(), 
+      headline: adForm.headline, 
+      copy: adForm.copy, 
+      cta: adForm.cta, 
+      impressions: 0, 
+      clicks: 0 
+    };
     const next = [v, ...localVariants];
     setLocalVariants(next);
     setAdLabPersist({ ...adLab, variants: next, rotate });
   }
-  function deleteVariant(id){
-    const next = localVariants.filter(v=>v.id!==id);
+  
+  function deleteVariant(id) {
+    const next = localVariants.filter(v => v.id !== id);
     setLocalVariants(next);
     setAdLabPersist({ ...adLab, variants: next, rotate });
   }
-  function toggleRotate(){
+  
+  function toggleRotate() {
     const nv = !rotate;
     setRotate(nv);
     setAdLabPersist({ ...adLab, rotate: nv, variants: localVariants });
   }
 
-  /* === Select creatives for campaign === */
-  function toggleSelectAsset(id){
-    setSelectedAssetIds(prev => prev.includes(id) ? prev.filter(x=>x!==id) : [...prev, id]);
+  // Asset selection
+  function toggleSelectAsset(id) {
+    setSelectedAssetIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
   }
 
-  /* === Launch (attaches selected creatives) === */
-  async function launchCampaign(){
+  // Launch campaign
+  async function launchCampaign() {
     if (!adForm.market || !adForm.headline || !adForm.copy || !adForm.targetLocations || !adForm.subType) {
-      alert('Select a market and fill headline, copy, locations, and sub-type'); return;
+      alert('Select a market and fill headline, copy, locations, and sub-type'); 
+      return;
     }
-    try{
+    
+    try {
       const body = {
         name: `${adForm.market}/${adForm.subType} - ${adForm.targetLocations}`,
-        market: adForm.market, type: adForm.subType,
+        market: adForm.market, 
+        type: adForm.subType,
         budget: parseInt(adForm.dailyBudget) || 100,
-        adContent: { headline: adForm.headline, copy: adForm.copy, cta: adForm.cta },
+        adContent: { 
+          headline: adForm.headline, 
+          copy: adForm.copy, 
+          cta: adForm.cta 
+        },
         targeting: {
-          locations: adForm.targetLocations.split(',').map(s=>s.trim()).filter(Boolean),
-          ageMin: parseInt(adForm.minAge)||25, ageMax: parseInt(adForm.maxAge)||65
+          locations: adForm.targetLocations.split(',').map(s => s.trim()).filter(Boolean),
+          ageMin: parseInt(adForm.minAge) || 25, 
+          ageMax: parseInt(adForm.maxAge) || 65
         },
         creative: { assetIds: selectedAssetIds },
         routing,
         metadata: routing.metadata.adsCopy
       };
-      await fetch('/api/launch-campaign', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) }).catch(()=>{});
-      const newCamp = { id:'c'+Date.now(), name: body.name, market: body.market, type: body.type, budget: body.budget, status:'active', leads:0, costPerLead:0 };
-      setCampaigns(prev => [newCamp, ...prev]); saveNow({ campaigns: [newCamp, ...campaigns] });
+      
+      await fetch('/api/launch-campaign', { 
+        method: 'POST', 
+        headers: { 'Content-Type': 'application/json' }, 
+        body: JSON.stringify(body) 
+      }).catch(() => {});
+      
+      const newCamp = { 
+        id: 'c' + Date.now(), 
+        name: body.name, 
+        market: body.market, 
+        type: body.type, 
+        budget: body.budget, 
+        status: 'active', 
+        leads: 0, 
+        costPerLead: 0 
+      };
+      
+      setCampaigns(prev => [newCamp, ...prev]); 
+      saveNow({ campaigns: [newCamp, ...campaigns] });
       alert('🚀 Campaign launched (simulated).');
-    } catch { alert('❌ Launch failed.'); }
+    } catch (error) { 
+      console.error('Launch error:', error);
+      alert('❌ Launch failed.'); 
+    }
   }
 
-  const Money = (n) => `$${new Intl.NumberFormat().format(Number(n||0))}`;
+  const Money = (n) => `$${new Intl.NumberFormat().format(Number(n || 0))}`;
 
   return (
     <div className="space-y-6 fade-in">
@@ -899,56 +1060,78 @@ const AdCreator = () => {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className="block font-medium mb-2 text-sm lg:text-base">Market</label>
-                <select className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500"
-                        value={adForm.market}
-                        onChange={(e)=>setAdForm(prev=>({...prev, market:e.target.value, subType:''}))}>
+                <select 
+                  className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500"
+                  value={adForm.market}
+                  onChange={(e) => setAdForm(prev => ({ ...prev, market: e.target.value, subType: '' }))}
+                >
                   <option value="">Choose…</option>
-                  {Object.keys(MARKET_OPTIONS).map(m=><option key={m} value={m}>{m}</option>)}
+                  {Object.keys(MARKET_OPTIONS).map(m => (
+                    <option key={m} value={m}>{m}</option>
+                  ))}
                 </select>
               </div>
               <div>
                 <label className="block font-medium mb-2 text-sm lg:text-base">Sub-Type</label>
-                <select className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500"
-                        value={adForm.subType}
-                        onChange={(e)=>setAdForm(prev=>({...prev, subType:e.target.value}))}>
+                <select 
+                  className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500"
+                  value={adForm.subType}
+                  onChange={(e) => setAdForm(prev => ({ ...prev, subType: e.target.value }))}
+                >
                   <option value="">Choose…</option>
-                  {(MARKET_OPTIONS[adForm.market]||[]).map(s=><option key={s} value={s}>{s}</option>)}
+                  {(MARKET_OPTIONS[adForm.market] || []).map(s => (
+                    <option key={s} value={s}>{s}</option>
+                  ))}
                 </select>
               </div>
             </div>
 
             <div>
               <label className="block font-medium mb-2 text-sm lg:text-base">Target Locations</label>
-              <input type="text" className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500"
-                     placeholder="FL, TX, CA"
-                     value={adForm.targetLocations}
-                     onChange={(e)=>setAdForm(prev=>({...prev, targetLocations:e.target.value}))}/>
+              <input 
+                type="text" 
+                className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500"
+                placeholder="FL, TX, CA"
+                value={adForm.targetLocations}
+                onChange={(e) => setAdForm(prev => ({ ...prev, targetLocations: e.target.value }))}
+              />
             </div>
 
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="block font-medium mb-2 text-sm lg:text-base">Min Age</label>
-                <input type="number" className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500"
-                       placeholder="25"
-                       value={adForm.minAge}
-                       onChange={(e)=>setAdForm(prev=>({...prev, minAge:e.target.value}))}/>
+                <input 
+                  type="number" 
+                  className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500"
+                  placeholder="25"
+                  value={adForm.minAge}
+                  onChange={(e) => setAdForm(prev => ({ ...prev, minAge: e.target.value }))}
+                />
               </div>
               <div>
                 <label className="block font-medium mb-2 text-sm lg:text-base">Max Age</label>
-                <input type="number" className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500"
-                       placeholder="65"
-                       value={adForm.maxAge}
-                       onChange={(e)=>setAdForm(prev=>({...prev, maxAge:e.target.value}))}/>
+                <input 
+                  type="number" 
+                  className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500"
+                  placeholder="65"
+                  value={adForm.maxAge}
+                  onChange={(e) => setAdForm(prev => ({ ...prev, maxAge: e.target.value }))}
+                />
               </div>
             </div>
 
             <div>
               <label className="block font-medium mb-2 text-sm lg:text-base">Daily Budget ($)</label>
-              <input type="number" className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500"
-                     placeholder="150"
-                     value={adForm.dailyBudget}
-                     onChange={(e)=>setAdForm(prev=>({...prev, dailyBudget:e.target.value}))}/>
-              <p className="text-xs text-gray-500 mt-1">Estimated budget: <strong>{Money(adForm.dailyBudget||0)}/day</strong></p>
+              <input 
+                type="number" 
+                className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500"
+                placeholder="150"
+                value={adForm.dailyBudget}
+                onChange={(e) => setAdForm(prev => ({ ...prev, dailyBudget: e.target.value }))}
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                Estimated budget: <strong>{Money(adForm.dailyBudget || 0)}/day</strong>
+              </p>
             </div>
           </div>
         </div>
@@ -959,39 +1142,59 @@ const AdCreator = () => {
 
           <div className="bg-gray-50 p-3 rounded-xl mb-4">
             <div className="text-sm font-semibold mb-2">Single Prompt (powers Text, Image, Video)</div>
-            <textarea className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500 h-20 resize-none"
-                      placeholder="Describe your offer, audience, vibe…"
-                      value={adForm.genPrompt}
-                      onChange={(e)=>setAdForm(prev=>({...prev, genPrompt:e.target.value}))}/>
+            <textarea 
+              className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500 h-20 resize-none"
+              placeholder="Describe your offer, audience, vibe…"
+              value={adForm.genPrompt}
+              onChange={(e) => setAdForm(prev => ({ ...prev, genPrompt: e.target.value }))}
+            />
             <div className="flex flex-wrap gap-2 mt-3">
-              <button onClick={generateTextFromPrompt}
-                      className="px-3 py-2 bg-gradient-to-r from-blue-500 to-purple-600 text-white rounded-lg text-sm disabled:opacity-60"
-                      disabled={busy.text}>
+              <button 
+                onClick={generateTextFromPrompt}
+                className="px-3 py-2 bg-gradient-to-r from-blue-500 to-purple-600 text-white rounded-lg text-sm disabled:opacity-60"
+                disabled={busy.text}
+              >
                 {busy.text ? 'Generating…' : '⚡ Generate Text'}
               </button>
-              <button onClick={()=>generateImages()}
-                      className="px-3 py-2 bg-blue-100 text-blue-700 rounded-lg text-sm disabled:opacity-60"
-                      disabled={busy.genImg}>
+              <button 
+                onClick={() => generateImages()}
+                className="px-3 py-2 bg-blue-100 text-blue-700 rounded-lg text-sm disabled:opacity-60"
+                disabled={busy.genImg}
+              >
                 {busy.genImg ? 'Generating…' : '🖼️ Generate Images'}
               </button>
-              <button onClick={()=>generateVideo()}
-                      className="px-3 py-2 bg-purple-100 text-purple-700 rounded-lg text-sm disabled:opacity-60"
-                      disabled={busy.genVid}>
+              <button 
+                onClick={() => generateVideo()}
+                className="px-3 py-2 bg-purple-100 text-purple-700 rounded-lg text-sm disabled:opacity-60"
+                disabled={busy.genVid}
+              >
                 {busy.genVid ? 'Generating…' : '🎬 Generate Video'}
               </button>
 
               <label className="px-3 py-2 bg-gray-100 text-gray-800 rounded-lg text-sm cursor-pointer">
                 ⬆️ Upload (img/video)
-                <input type="file" accept="image/*,video/*" multiple className="hidden" onChange={(e)=>onUploadFiles(e.target.files)}/>
+                <input 
+                  type="file" 
+                  accept="image/*,video/*" 
+                  multiple 
+                  className="hidden" 
+                  onChange={(e) => onUploadFiles(e.target.files)}
+                />
               </label>
             </div>
 
-            {currentTemplates.length>0 && (
+            {currentTemplates.length > 0 && (
               <div className="mt-3">
                 <div className="text-xs text-gray-600 mb-1">Or apply a template:</div>
                 <div className="flex flex-wrap gap-2">
-                  {currentTemplates.map((tpl,i)=>(
-                    <button key={i} onClick={()=>applyTemplate(tpl)} className="px-3 py-2 text-xs bg-white border rounded-lg hover:bg-blue-50">“{tpl.h}”</button>
+                  {currentTemplates.map((tpl, i) => (
+                    <button 
+                      key={i} 
+                      onClick={() => applyTemplate(tpl)} 
+                      className="px-3 py-2 text-xs bg-white border rounded-lg hover:bg-blue-50"
+                    >
+                      "{tpl.h.substring(0, 20)}..."
+                    </button>
                   ))}
                 </div>
               </div>
@@ -1001,23 +1204,30 @@ const AdCreator = () => {
           <div className="space-y-4">
             <div>
               <label className="block font-medium mb-2 text-sm lg:text-base">Headline</label>
-              <input type="text" className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500"
-                     placeholder="Your compelling headline…"
-                     value={adForm.headline}
-                     onChange={(e)=>setAdForm(prev=>({...prev, headline:e.target.value}))}/>
+              <input 
+                type="text" 
+                className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500"
+                placeholder="Your compelling headline…"
+                value={adForm.headline}
+                onChange={(e) => setAdForm(prev => ({ ...prev, headline: e.target.value }))}
+              />
             </div>
             <div>
               <label className="block font-medium mb-2 text-sm lg:text-base">Ad Copy</label>
-              <textarea className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500 h-28 resize-none"
-                        placeholder="Write your ad copy here…"
-                        value={adForm.copy}
-                        onChange={(e)=>setAdForm(prev=>({...prev, copy:e.target.value}))}/>
+              <textarea 
+                className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500 h-28 resize-none"
+                placeholder="Write your ad copy here…"
+                value={adForm.copy}
+                onChange={(e) => setAdForm(prev => ({ ...prev, copy: e.target.value }))}
+              />
             </div>
             <div>
               <label className="block font-medium mb-2 text-sm lg:text-base">Call-to-Action</label>
-              <select className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500"
-                      value={adForm.cta}
-                      onChange={(e)=>setAdForm(prev=>({...prev, cta:e.target.value}))}>
+              <select 
+                className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500"
+                value={adForm.cta}
+                onChange={(e) => setAdForm(prev => ({ ...prev, cta: e.target.value }))}
+              >
                 <option value="learn-more">Learn More</option>
                 <option value="get-quote">Get Free Quote</option>
                 <option value="call-now">Call Now</option>
@@ -1026,12 +1236,16 @@ const AdCreator = () => {
             </div>
 
             <div className="flex gap-2">
-              <button onClick={addVariantFromCurrent}
-                      className="px-3 py-2 bg-purple-100 text-purple-700 rounded-lg">
+              <button 
+                onClick={addVariantFromCurrent}
+                className="px-3 py-2 bg-purple-100 text-purple-700 rounded-lg"
+              >
                 ➕ Add Variant (from current)
               </button>
-              <button onClick={launchCampaign}
-                      className="px-3 py-2 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-lg">
+              <button 
+                onClick={launchCampaign}
+                className="px-3 py-2 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-lg"
+              >
                 🚀 Launch Campaign
               </button>
             </div>
@@ -1041,53 +1255,76 @@ const AdCreator = () => {
         </div>
       </div>
 
-      {/* Creative Library Preview (select creatives to attach) */}
+      {/* Creative Library Preview */}
       <div className="bg-white rounded-2xl p-4 lg:p-6 shadow-lg">
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-lg lg:text-xl font-bold">Creative Library</h3>
           <div className="text-sm text-gray-600">{selectedAssetIds.length} selected</div>
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-          {assets.map(a=>(
-            <button key={a.id}
-              onClick={()=>toggleSelectAsset(a.id)}
-              className={`relative border rounded-xl overflow-hidden ${selectedAssetIds.includes(a.id)?'ring-2 ring-purple-500 border-purple-300':'border-gray-200 hover:border-blue-300'}`}>
-              {a.type==='video'
-                ? <video src={a.url} className="w-full h-32 object-cover" controls/>
-                : <img src={a.url} className="w-full h-32 object-cover" alt="creative"/>}
-              <div className={`absolute top-2 right-2 w-5 h-5 rounded-full ${selectedAssetIds.includes(a.id)?'bg-purple-600':'bg-white border'}`}></div>
+          {assets.map(a => (
+            <button 
+              key={a.id}
+              onClick={() => toggleSelectAsset(a.id)}
+              className={`relative border rounded-xl overflow-hidden ${
+                selectedAssetIds.includes(a.id) 
+                  ? 'ring-2 ring-purple-500 border-purple-300' 
+                  : 'border-gray-200 hover:border-blue-300'
+              }`}
+            >
+              {a.type === 'video' ? (
+                <video src={a.url} className="w-full h-32 object-cover" controls />
+              ) : (
+                <img src={a.url} className="w-full h-32 object-cover" alt="creative" />
+              )}
+              <div className={`absolute top-2 right-2 w-5 h-5 rounded-full ${
+                selectedAssetIds.includes(a.id) ? 'bg-purple-600' : 'bg-white border'
+              }`}></div>
             </button>
           ))}
-          {assets.length===0 && <div className="text-gray-500 text-sm col-span-full">No creatives yet. Upload or generate above.</div>}
+          {assets.length === 0 && (
+            <div className="text-gray-500 text-sm col-span-full">
+              No creatives yet. Upload or generate above.
+            </div>
+          )}
         </div>
       </div>
 
-      {/* Variants & Rotation (persisted) */}
+      {/* Variants & Rotation */}
       <div className="bg-white rounded-2xl p-4 lg:p-6 shadow-lg">
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-lg lg:text-xl font-bold">Ad Variants & Rotation</h3>
-        <label className="flex items-center gap-2 text-sm">
+          <label className="flex items-center gap-2 text-sm">
             <span>Rotate</span>
-            <input type="checkbox" checked={rotate} onChange={toggleRotate}/>
+            <input type="checkbox" checked={rotate} onChange={toggleRotate} />
           </label>
         </div>
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          {localVariants.map(v=>(
+          {localVariants.map(v => (
             <div key={v.id} className="border rounded-xl p-3">
               <div className="font-semibold mb-1">{v.headline}</div>
               <div className="text-sm text-gray-700 mb-2">{v.copy}</div>
               <div className="text-xs text-gray-500 mb-2">CTA: {v.cta}</div>
               <div className="text-right">
-                <button onClick={()=>deleteVariant(v.id)} className="px-2 py-1 bg-gray-100 rounded text-sm">Delete</button>
+                <button 
+                  onClick={() => deleteVariant(v.id)} 
+                  className="px-2 py-1 bg-gray-100 rounded text-sm hover:bg-gray-200"
+                >
+                  Delete
+                </button>
               </div>
             </div>
           ))}
-          {localVariants.length===0 && <div className="text-gray-500">No variants yet. Use “Add Variant (from current)”.</div>}
+          {localVariants.length === 0 && (
+            <div className="text-gray-500">No variants yet. Use "Add Variant (from current)".</div>
+          )}
         </div>
       </div>
     </div>
   );
 };
+/* ---------- End of AdCreator component ---------- */
+
 /* ---------- Leads (click to edit + advanced statuses + notes + recordings) ---------- */
 
   const LeadManagement = () => {
