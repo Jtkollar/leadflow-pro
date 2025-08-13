@@ -737,11 +737,11 @@ const AdCreator = () => {
     genPrompt: ''               // one prompt for text, image, and video
   });
 
-  // Persisted variants/rotation (uses your existing adLab + setAdLabPersist)
-  const [localVariants, setLocalVariants] = useState(adLab.variants || []);
-  const [rotate, setRotate] = useState(adLab.rotate || false);
-
+    // Persisted variants/rotation (uses your existing adLab + setAdLabPersist)
+  const [localVariants, setLocalVariants] = useState(()=> (typeof adLab !== 'undefined' && Array.isArray(adLab.variants) ? adLab.variants : []));
+  const [rotate, setRotate] = useState(()=> (typeof adLab !== 'undefined' ? !!adLab.rotate : false));
   // Creative library (images & videos) + selection
+
   const [assets, setAssets] = useState([]); // [{id,url,type:'image'|'video',tags?:[]}]
   const [selectedAssetIds, setSelectedAssetIds] = useState([]);
 
@@ -766,19 +766,12 @@ const AdCreator = () => {
     return ()=>{ stop=true; };
   },[]);
 
-  // Templates (from PROMPT_TEMPLATES)
-  const currentTemplates = (PROMPT_TEMPLATES[adForm.market] || {})[adForm.subType] || [];
-  const applyTemplate = (tpl) => {
-    if (!tpl) return;
-    setAdForm(prev=>({
-      ...prev,
-      headline: tpl.h.replace('{{CITY}}','your area').replace('{{STATE}}','your state').replace('{{LOW_PRICE}}','15'),
-      copy: tpl.c.replace('{{CITY}}','your area').replace('{{STATE}}','your state').replace('{{PRICE}}','500k').replace('{{INDUSTRY}}','your industry'),
-      cta: tpl.cta || prev.cta
-    }));
-  };
-
+    // Templates (from PROMPT_TEMPLATES)
+  const MO   = (typeof MARKET_OPTIONS !== 'undefined'    ? MARKET_OPTIONS    : {});
+  const TPLS = (typeof PROMPT_TEMPLATES !== 'undefined'  ? PROMPT_TEMPLATES  : {});
+  const currentTemplates = (TPLS[adForm.market] || {})[adForm.subType] || [];
   /* === AI GENERATION (Text/Image/Video) === */
+
   async function generateTextFromPrompt() {
     if (!adForm.genPrompt.trim()) { alert('Enter a prompt first.'); return; }
     setBusy(b=>({...b, text:true})); setErr('');
